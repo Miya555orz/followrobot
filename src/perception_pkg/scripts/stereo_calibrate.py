@@ -12,6 +12,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge
+from rclpy.qos import SensorDataQoS
 
 
 class StereoCalibrator(Node):
@@ -43,14 +44,15 @@ class StereoCalibrator(Node):
         self.objp = np.zeros((rows * cols, 3), np.float32)
         self.objp[:, :2] = np.mgrid[0:cols, 0:rows].T.reshape(-1, 2) * square_size
 
+        qos_image = SensorDataQoS().keep_last(1)
         self.sub_sony = self.create_subscription(
-            Image, '/sony/image_raw', self.sony_cb, 10)
+            Image, '/sony/image_raw', self.sony_cb, qos_image)
         self.sub_gemini = self.create_subscription(
-            Image, '/camera/color/image_raw', self.gemini_cb, 10)
+            Image, '/camera/color/image_raw', self.gemini_cb, qos_image)
         self.sub_sony_info = self.create_subscription(
-            CameraInfo, '/sony/camera_info', self.sony_info_cb, 1)
+            CameraInfo, '/sony/camera_info', self.sony_info_cb, qos_image)
         self.sub_gemini_info = self.create_subscription(
-            CameraInfo, '/camera/color/camera_info', self.gemini_info_cb, 1)
+            CameraInfo, '/camera/color/camera_info', self.gemini_info_cb, qos_image)
 
         self.timer = self.create_timer(0.5, self.status_timer)
         self.get_logger().info(
