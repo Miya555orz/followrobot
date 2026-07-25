@@ -121,7 +121,14 @@ class StereoCalibrator(Node):
         # show annotated images for visual feedback
         cv2.drawChessboardCorners(self.sony_gray, (self.cols, self.rows), corners_s, ret_s)
         cv2.drawChessboardCorners(gemini_gray, (self.cols, self.rows), corners_g, ret_g)
-        combined = np.hstack([self.sony_gray, gemini_gray])
+        # resize gemini to match sony height for side-by-side display
+        if gemini_gray.shape[0] != self.sony_gray.shape[0]:
+            scale = self.sony_gray.shape[0] / gemini_gray.shape[0]
+            new_w = int(gemini_gray.shape[1] * scale)
+            gemini_resized = cv2.resize(gemini_gray, (new_w, self.sony_gray.shape[0]))
+        else:
+            gemini_resized = gemini_gray
+        combined = np.hstack([self.sony_gray, gemini_resized])
         cv2.imshow('stereo_calib (left=Sony, right=Gemini). Press ESC to close', combined)
         cv2.waitKey(1)
 
