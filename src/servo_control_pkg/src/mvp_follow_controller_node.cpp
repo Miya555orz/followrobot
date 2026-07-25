@@ -392,6 +392,9 @@ private:
     enable_base_translation_ = declare_described_parameter<bool>(
       "enable_base_translation", false,
       "Allow chassis linear.x only when metric depth passes every safety gate.");
+    enable_lost_prediction_control_ = declare_described_parameter<bool>(
+      "enable_lost_prediction_control", true,
+      "Allow only the currently locked LOST track to drive bounded prediction control.");
 
     // ── C) 相机参数 ──────────────────────────────────────────────────
     // fx/fy/cx/cy ≤ 0 时自动推断为 image_width/2, image_height/2（简易估计）。
@@ -534,6 +537,15 @@ private:
     target_timeout_ = declare_described_parameter<double>(
       "target_timeout", 0.5,
       "Seconds before the target is treated as lost.");
+    lost_prediction_control_timeout_ = declare_described_parameter<double>(
+      "lost_prediction_control_timeout", 0.8,
+      "Maximum seconds after the last visible target that LOST prediction may control.");
+    lost_prediction_gimbal_scale_ = declare_described_parameter<double>(
+      "lost_prediction_gimbal_scale", 0.7,
+      "Gimbal velocity scale during LOST prediction.");
+    lost_prediction_base_yaw_scale_ = declare_described_parameter<double>(
+      "lost_prediction_base_yaw_scale", 0.5,
+      "Chassis yaw velocity scale during LOST prediction.");
 
     // ── L) 瞄准目标（AimTarget2D）参数 ──────────────────────────────
     //
@@ -578,6 +590,15 @@ private:
         !finite_positive(min_valid_depth_) ||
         !std::isfinite(max_valid_depth_) || max_valid_depth_ <= min_valid_depth_) {
       throw std::invalid_argument("invalid metric depth safety gate configuration");
+    }
+    if (!finite_positive(lost_prediction_control_timeout_) ||
+        !std::isfinite(lost_prediction_gimbal_scale_) ||
+        lost_prediction_gimbal_scale_ < 0.0 || lost_prediction_gimbal_scale_ > 1.0 ||
+        !std::isfinite(lost_prediction_base_yaw_scale_) ||
+        lost_prediction_base_yaw_scale_ < 0.0 ||
+        lost_prediction_base_yaw_scale_ > 1.0) {
+      throw std::invalid_argument(
+        "lost prediction timeout must be positive and command scales must be in [0, 1]");
     }
   }
 

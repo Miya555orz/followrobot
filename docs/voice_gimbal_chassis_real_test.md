@@ -137,6 +137,7 @@ sudo lsof /dev/ttyACM0
 
 ```bash
 cd ~/ros2_ws
+
 source /opt/ros/humble/setup.bash
 source ~/venvs/fcr_runtime/bin/activate
 
@@ -146,11 +147,6 @@ export CUDA_VISIBLE_DEVICES=""
 
 colcon build \
   --packages-select \
-  vision_servo_msgs \
-  robot_platform_pkg \
-  external_control_pkg \
-  voice_intent_pkg \
-  --allow-overriding \
   vision_servo_msgs \
   robot_platform_pkg \
   external_control_pkg \

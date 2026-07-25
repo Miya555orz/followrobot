@@ -15,6 +15,13 @@ inline bool target_visible_for_control(const vision_servo_msgs::msg::Target& tar
   return target.visible && state_allowed;
 }
 
+inline bool target_is_lost_prediction(const vision_servo_msgs::msg::Target& target)
+{
+  using Target = vision_servo_msgs::msg::Target;
+  return !target.visible &&
+    target.tracking_state == Target::TRACKING_STATE_LOST;
+}
+
 inline bool metric_depth_valid(
   const vision_servo_msgs::msg::Target& target,
   double min_confidence,

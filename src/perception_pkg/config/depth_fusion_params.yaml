@@ -1,0 +1,26 @@
+depth_fusion_node:
+  ros__parameters:
+    # ---- TF frames ----
+    sony_frame: "sony_camera_optical_frame"
+    gemini_depth_frame: "camera_depth_optical_frame"
+
+    # ---- projection & ROI ----
+    default_depth_assume: 2.0             # Assumed depth for forward projection (m)
+    roi_expand_margin: 0.20               # ROI expansion ratio (20%)
+    min_roi_pixels: 25                    # Minimum ROI pixel count
+
+    # ---- depth validity ----
+    min_depth_meters: 0.30                # Minimum trusted depth (m)
+    max_depth_meters: 10.0                # Maximum trusted depth (m)
+    min_valid_depth_ratio: 0.30           # Reject if valid pixel ratio < 30%
+
+    # ---- statistical aggregation ----
+    depth_percentile: 0.50                # 0.50 = median
+    depth_temporal_alpha: 0.30            # Temporal smoothing (0=off, 1=frozen)
+
+    # ---- output ----
+    publish_debug_image: false            # Publish debug overlay
+
+    # ---- timeouts ----
+    tracks_timeout_seconds: 0.5
+    depth_timeout_seconds: 1.0

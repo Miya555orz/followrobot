@@ -25,6 +25,8 @@ find_package(message_filters REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
+find_package(tf2_eigen REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc dnn video calib3d)
 find_package(Threads REQUIRED)
 
@@ -141,11 +143,19 @@ ament_target_dependencies(face_aim_node
   rclcpp sensor_msgs vision_servo_msgs cv_bridge image_transport)
 target_link_libraries(face_aim_node perception_qos ${OpenCV_LIBS})
 
+add_executable(depth_fusion_node src/depth_fusion_node.cpp)
+target_include_directories(depth_fusion_node PRIVATE include ${OpenCV_INCLUDE_DIRS})
+ament_target_dependencies(depth_fusion_node
+  rclcpp rclcpp_components sensor_msgs vision_servo_msgs cv_bridge image_transport
+  tf2 tf2_ros tf2_geometry_msgs tf2_eigen Eigen3)
+target_link_libraries(depth_fusion_node perception_qos ${OpenCV_LIBS})
+
 install(TARGETS
   yolo_processing
   detection_node
   tracking_node
   face_aim_node
+  depth_fusion_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME})
@@ -155,6 +165,7 @@ install(FILES models/README.md models/manifest.json DESTINATION share/${PROJECT_
 install(PROGRAMS
   scripts/download_model.py
   scripts/video_publisher.py
+  scripts/stereo_calibrate.py
   scripts/check_perception.sh
   scripts/jetson_build_perception.sh
   scripts/jetson_acceptance.sh

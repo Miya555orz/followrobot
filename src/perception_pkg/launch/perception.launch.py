@@ -68,6 +68,11 @@ def generate_launch_description():
             description="Enable face_aim_node (aim target from tracks)",
         ),
         DeclareLaunchArgument("aim_target_topic", default_value="/perception/aim_target_2d"),
+        DeclareLaunchArgument(
+            "enable_depth_fusion",
+            default_value="true",
+            description="Enable depth_fusion_node (requires Gemini 335 depth stream)",
+        ),
     ]
 
     detection_node = Node(
@@ -132,4 +137,20 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("enable_face_aim")),
     )
 
-    return LaunchDescription(arguments + [detection_node, tracking_node, face_aim_node])
+    depth_fusion_node = Node(
+        package="perception_pkg",
+        executable="depth_fusion_node",
+        name="depth_fusion_node",
+        output="screen",
+        parameters=[
+            PathJoinSubstitution(
+                [package_share, "config", "depth_fusion_params.yaml"]
+            ),
+            {"use_sim_time": ParameterValue(use_sim_time, value_type=bool)},
+        ],
+        condition=IfCondition(LaunchConfiguration("enable_depth_fusion")),
+    )
+
+    return LaunchDescription(
+        arguments + [detection_node, tracking_node, face_aim_node, depth_fusion_node]
+    )
