@@ -29,7 +29,7 @@ private:
   bool project_bbox_to_depth(
     const vision_servo_msgs::msg::Target & target,
     cv::Rect & roi,
-    double assume_depth_m) const;
+    double assume_depth_m);
 
   float sample_depth_median(
     const cv::Mat & depth_img,

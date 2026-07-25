@@ -8,6 +8,8 @@
 #include <Eigen/Geometry>
 #include <algorithm>
 
+using namespace perception_pkg::qos;
+
 namespace perception_pkg
 {
 
@@ -32,11 +34,11 @@ DepthFusionNode::DepthFusionNode(const rclcpp::NodeOptions & options)
   tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
   tracks_sub_ = create_subscription<vision_servo_msgs::msg::TargetArray>(
-    "/perception/tracks", perception_qos::reliable_keep_last(1),
+    "/perception/tracks", perception(),
     std::bind(&DepthFusionNode::tracks_callback, this, std::placeholders::_1));
 
   depth_sub_ = create_subscription<sensor_msgs::msg::Image>(
-    "/camera/depth/image_raw", perception_qos::best_effort_keep_last(1),
+    "/camera/depth/image_raw", image(),
     std::bind(&DepthFusionNode::depth_callback, this, std::placeholders::_1));
 
   depth_info_sub_ = create_subscription<sensor_msgs::msg::CameraInfo>(
@@ -48,7 +50,7 @@ DepthFusionNode::DepthFusionNode(const rclcpp::NodeOptions & options)
     std::bind(&DepthFusionNode::sony_info_callback, this, std::placeholders::_1));
 
   targets_3d_pub_ = create_publisher<vision_servo_msgs::msg::TargetArray>(
-    "/perception/targets_3d", perception_qos::reliable_keep_last(1));
+    "/perception/targets_3d", perception());
 
   if (publish_debug_) {
     debug_pub_ = create_publisher<sensor_msgs::msg::Image>(
@@ -191,7 +193,7 @@ void DepthFusionNode::process_frame()
 bool DepthFusionNode::project_bbox_to_depth(
   const vision_servo_msgs::msg::Target & target,
   cv::Rect & roi,
-  double assume_depth_m) const
+  double assume_depth_m)
 {
   // Look up transform (static, cached in caller via static variable in process_frame)
   Eigen::Isometry3d T_s2d;
