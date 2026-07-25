@@ -1,5 +1,8 @@
 # 语音控制架构与执行边界
 
+真实云台与 LeKiwi 底盘的完整控制台模型测试流程见
+[`voice_gimbal_chassis_real_test.md`](voice_gimbal_chassis_real_test.md)。
+
 ## 1. 当前正式数据流
 
 ```text
