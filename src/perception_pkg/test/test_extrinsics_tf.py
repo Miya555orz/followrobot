@@ -44,3 +44,36 @@ def test_ros_parent_child_pose_matches_opencv_point_mapping():
     point_sony = np.array([0.3, 0.1, 2.0, 1.0])
     point_gemini = gemini_from_sony @ point_sony
     assert np.allclose(ros_parent_from_child @ point_sony, point_gemini)
+
+
+def test_schema3_prefers_direct_depth_transform():
+    direct = np.eye(4)
+    direct[:3, 3] = [0.03, -0.04, -0.05]
+    calibration = {
+        "schema_version": 3,
+        "frame_id": "camera_color_optical_frame",
+        "child_frame_id": "sony_camera_optical_frame",
+        "ros_tf_T_parent_from_child": np.eye(4).tolist(),
+        "direct_depth_tf": {
+            "frame_id": "camera_depth_optical_frame",
+            "child_frame_id": "sony_camera_optical_frame",
+            "ros_tf_T_depth_from_sony": direct.tolist(),
+        },
+    }
+    parent, child, transform = MODULE.select_calibrated_transform(calibration)
+    assert parent == "camera_depth_optical_frame"
+    assert child == "sony_camera_optical_frame"
+    assert np.allclose(transform, direct)
+
+
+def test_depth_transform_composition_direction():
+    color_from_sony = np.eye(4)
+    color_from_sony[:3, 3] = [0.02, -0.03, -0.04]
+    color_from_depth = np.eye(4)
+    color_from_depth[:3, 3] = [-0.014, 0.0, -0.002]
+
+    depth_from_sony = np.linalg.inv(color_from_depth) @ color_from_sony
+    point_sony = np.array([0.1, 0.2, 2.0, 1.0])
+    point_color_direct = color_from_sony @ point_sony
+    point_color_composed = color_from_depth @ depth_from_sony @ point_sony
+    assert np.allclose(point_color_composed, point_color_direct)

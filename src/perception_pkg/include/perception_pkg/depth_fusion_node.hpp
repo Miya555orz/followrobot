@@ -13,6 +13,7 @@
 #include <Eigen/Geometry>
 #include <opencv2/core.hpp>
 
+#include <deque>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -41,10 +42,34 @@ private:
     bool initialized{false};
   };
 
+  struct DepthFrame
+  {
+    cv::Mat meters;
+    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+    std::string frame_id;
+  };
+
+  struct TrackFrame
+  {
+    vision_servo_msgs::msg::TargetArray::SharedPtr message;
+    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+    rclcpp::Time enqueued_at{0, 0, RCL_ROS_TIME};
+  };
+
+  struct MatchedFrame
+  {
+    vision_servo_msgs::msg::TargetArray::SharedPtr tracks;
+    DepthFrame depth;
+    double skew_seconds{0.0};
+  };
+
   void tracks_callback(const vision_servo_msgs::msg::TargetArray::SharedPtr msg);
   void depth_callback(const sensor_msgs::msg::Image::SharedPtr msg);
   void depth_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
   void sony_info_callback(const sensor_msgs::msg::CameraInfo::SharedPtr msg);
+  void process_available_matches();
+  std::vector<MatchedFrame> collect_matches(const rclcpp::Time & now);
+  void prune_queues(const rclcpp::Time & now);
 
   void process_frame(
     const vision_servo_msgs::msg::TargetArray & tracks,
@@ -95,9 +120,9 @@ private:
   diagnostic_updater::Updater diagnostics_;
 
   mutable std::mutex data_mutex_;
-  cv::Mat depth_image_meters_;
-  rclcpp::Time depth_stamp_{0, 0, RCL_ROS_TIME};
-  std::string depth_frame_from_message_;
+  std::mutex processing_mutex_;
+  std::deque<DepthFrame> depth_queue_;
+  std::deque<TrackFrame> track_queue_;
   cv::Mat K_sony_;
   cv::Mat D_sony_;
   cv::Mat K_depth_;
@@ -124,8 +149,12 @@ private:
   double depth_temporal_alpha_;
   double velocity_temporal_alpha_;
   double max_sync_skew_s_;
+  double max_pair_wait_s_;
+  double max_data_age_s_;
   double tracks_timeout_s_;
   double depth_timeout_s_;
+  int depth_queue_capacity_;
+  int track_queue_capacity_;
   double filter_retention_s_;
   double max_position_jump_m_;
   bool use_distortion_;
@@ -136,6 +165,13 @@ private:
   double last_sync_skew_ms_{-1.0};
   int last_fused_count_{0};
   std::size_t last_projected_point_count_{0};
+  std::size_t matched_pair_count_{0};
+  std::size_t dropped_track_count_{0};
+  std::size_t dropped_depth_count_{0};
+  std::size_t last_depth_queue_size_{0};
+  std::size_t last_track_queue_size_{0};
+  double last_output_age_ms_{-1.0};
+  bool depth_to_sony_tf_available_{false};
 };
 
 }  // namespace perception_pkg

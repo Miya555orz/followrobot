@@ -83,9 +83,13 @@ DepthFusionNode::DepthFusionNode(const rclcpp::NodeOptions & options)
   velocity_temporal_alpha_ = declare_parameter("filter.velocity_alpha", 0.25);
   max_position_jump_m_ = declare_parameter("filter.max_position_jump_meters", 1.25);
   filter_retention_s_ = declare_parameter("filter.retention_seconds", 3.0);
-  max_sync_skew_s_ = declare_parameter("timing.max_sync_skew_seconds", 0.050);
+  max_sync_skew_s_ = declare_parameter("timing.max_sync_skew_seconds", 0.080);
+  max_pair_wait_s_ = declare_parameter("timing.max_pair_wait_seconds", 0.120);
+  max_data_age_s_ = declare_parameter("timing.max_data_age_seconds", 0.250);
   tracks_timeout_s_ = declare_parameter("timing.tracks_timeout_seconds", 0.50);
   depth_timeout_s_ = declare_parameter("timing.depth_timeout_seconds", 0.50);
+  depth_queue_capacity_ = declare_parameter("timing.depth_queue_capacity", 8);
+  track_queue_capacity_ = declare_parameter("timing.track_queue_capacity", 8);
   publish_debug_ = declare_parameter("debug.publish_image", false);
 
   if (depth_pixel_stride_ < 1 || min_target_samples_ < 1 ||
@@ -93,7 +97,9 @@ DepthFusionNode::DepthFusionNode(const rclcpp::NodeOptions & options)
     depth_percentile_ < 0.0 || depth_percentile_ > 1.0 ||
     depth_temporal_alpha_ <= 0.0 || depth_temporal_alpha_ > 1.0 ||
     velocity_temporal_alpha_ <= 0.0 || velocity_temporal_alpha_ > 1.0 ||
-    max_sync_skew_s_ < 0.0 || depth_timeout_s_ <= 0.0 || tracks_timeout_s_ <= 0.0)
+    max_sync_skew_s_ < 0.0 || max_pair_wait_s_ < 0.0 || max_data_age_s_ <= 0.0 ||
+    depth_timeout_s_ <= 0.0 || tracks_timeout_s_ <= 0.0 ||
+    depth_queue_capacity_ < 2 || track_queue_capacity_ < 2)
   {
     throw std::invalid_argument("Invalid depth_fusion_node parameter combination");
   }
@@ -124,8 +130,10 @@ DepthFusionNode::DepthFusionNode(const rclcpp::NodeOptions & options)
 
   RCLCPP_INFO(
     get_logger(),
-    "Depth fusion ready: depth points in %s are transformed into %s at track timestamps",
-    gemini_depth_frame_.c_str(), sony_frame_.c_str());
+    "Depth fusion ready: %s -> %s, queues depth=%d tracks=%d, skew<=%.0fms wait<=%.0fms",
+    gemini_depth_frame_.c_str(), sony_frame_.c_str(),
+    depth_queue_capacity_, track_queue_capacity_,
+    max_sync_skew_s_ * 1000.0, max_pair_wait_s_ * 1000.0);
 }
 
 void DepthFusionNode::tracks_callback(
@@ -134,6 +142,7 @@ void DepthFusionNode::tracks_callback(
   const rclcpp::Time track_stamp(msg->header.stamp, get_clock()->get_clock_type());
   const auto now = get_clock()->now();
   if (seconds_between(now, track_stamp) > tracks_timeout_s_) {
+    ++dropped_track_count_;
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 2000,
       "Rejecting stale tracks (age %.1f ms)",
@@ -141,36 +150,24 @@ void DepthFusionNode::tracks_callback(
     return;
   }
 
-  cv::Mat depth;
-  rclcpp::Time depth_stamp(0, 0, get_clock()->get_clock_type());
-  std::string depth_frame;
   {
     std::lock_guard<std::mutex> lock(data_mutex_);
-    if (depth_image_meters_.empty() || !sony_info_ready_ || !depth_info_ready_) {
-      health_state_ = "WAITING_INPUTS";
-      diagnostics_.force_update();
-      return;
+    TrackFrame frame;
+    frame.message = msg;
+    frame.stamp = track_stamp;
+    frame.enqueued_at = now;
+    const auto insertion = std::upper_bound(
+      track_queue_.begin(), track_queue_.end(), track_stamp,
+      [](const rclcpp::Time & stamp, const TrackFrame & queued) {
+        return stamp < queued.stamp;
+      });
+    track_queue_.insert(insertion, std::move(frame));
+    while (static_cast<int>(track_queue_.size()) > track_queue_capacity_) {
+      track_queue_.pop_front();
+      ++dropped_track_count_;
     }
-    depth = depth_image_meters_.clone();
-    depth_stamp = depth_stamp_;
-    depth_frame = depth_frame_from_message_;
   }
-
-  const double skew = seconds_between(track_stamp, depth_stamp);
-  const double depth_age = seconds_between(now, depth_stamp);
-  if (skew > max_sync_skew_s_ || depth_age > depth_timeout_s_) {
-    health_state_ = "TIME_UNSYNCED";
-    last_sync_skew_ms_ = skew * 1000.0;
-    diagnostics_.force_update();
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 2000,
-      "Rejecting unsynchronised depth (track-depth %.1f ms, depth age %.1f ms)",
-      skew * 1000.0, depth_age * 1000.0);
-    return;
-  }
-
-  last_sync_skew_ms_ = skew * 1000.0;
-  process_frame(*msg, depth, depth_stamp, depth_frame);
+  process_available_matches();
 }
 
 void DepthFusionNode::depth_callback(const sensor_msgs::msg::Image::SharedPtr msg)
@@ -193,14 +190,127 @@ void DepthFusionNode::depth_callback(const sensor_msgs::msg::Image::SharedPtr ms
       return;
     }
 
-    std::lock_guard<std::mutex> lock(data_mutex_);
-    depth_image_meters_ = std::move(meters);
-    depth_stamp_ = rclcpp::Time(msg->header.stamp, get_clock()->get_clock_type());
-    depth_frame_from_message_ =
-      msg->header.frame_id.empty() ? gemini_depth_frame_ : msg->header.frame_id;
+    {
+      std::lock_guard<std::mutex> lock(data_mutex_);
+      DepthFrame frame;
+      frame.meters = std::move(meters);
+      frame.stamp = rclcpp::Time(msg->header.stamp, get_clock()->get_clock_type());
+      frame.frame_id =
+        msg->header.frame_id.empty() ? gemini_depth_frame_ : msg->header.frame_id;
+      const auto insertion = std::upper_bound(
+        depth_queue_.begin(), depth_queue_.end(), frame.stamp,
+        [](const rclcpp::Time & stamp, const DepthFrame & queued) {
+          return stamp < queued.stamp;
+        });
+      depth_queue_.insert(insertion, std::move(frame));
+      while (static_cast<int>(depth_queue_.size()) > depth_queue_capacity_) {
+        depth_queue_.pop_front();
+        ++dropped_depth_count_;
+      }
+    }
+    process_available_matches();
   } catch (const cv_bridge::Exception & error) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000, "Depth conversion failed: %s", error.what());
+  }
+}
+
+void DepthFusionNode::process_available_matches()
+{
+  std::lock_guard<std::mutex> processing_lock(processing_mutex_);
+  const auto now = get_clock()->now();
+  auto matches = collect_matches(now);
+  if (matches.empty()) {
+    diagnostics_.force_update();
+    return;
+  }
+  for (auto & match : matches) {
+    last_sync_skew_ms_ = match.skew_seconds * 1000.0;
+    last_output_age_ms_ =
+      seconds_between(now, rclcpp::Time(
+        match.tracks->header.stamp, get_clock()->get_clock_type())) * 1000.0;
+    ++matched_pair_count_;
+    process_frame(
+      *match.tracks, match.depth.meters, match.depth.stamp, match.depth.frame_id);
+  }
+}
+
+std::vector<DepthFusionNode::MatchedFrame> DepthFusionNode::collect_matches(
+  const rclcpp::Time & now)
+{
+  std::vector<MatchedFrame> matches;
+  std::lock_guard<std::mutex> lock(data_mutex_);
+  prune_queues(now);
+
+  if (!sony_info_ready_ || !depth_info_ready_ || depth_queue_.empty()) {
+    health_state_ = "WAITING_INPUTS";
+    last_depth_queue_size_ = depth_queue_.size();
+    last_track_queue_size_ = track_queue_.size();
+    return matches;
+  }
+
+  while (!track_queue_.empty() && !depth_queue_.empty()) {
+    const auto & track = track_queue_.front();
+    auto closest = std::min_element(
+      depth_queue_.begin(), depth_queue_.end(),
+      [&track](const DepthFrame & lhs, const DepthFrame & rhs) {
+        return seconds_between(lhs.stamp, track.stamp) <
+               seconds_between(rhs.stamp, track.stamp);
+      });
+    const double skew = seconds_between(closest->stamp, track.stamp);
+    const double waited = std::max(0.0, (now - track.enqueued_at).seconds());
+    const bool observed_future_depth = depth_queue_.back().stamp >= track.stamp;
+
+    if (skew <= max_sync_skew_s_ &&
+      (observed_future_depth || waited >= max_pair_wait_s_))
+    {
+      MatchedFrame match;
+      match.tracks = track.message;
+      match.depth = *closest;
+      match.skew_seconds = skew;
+      matches.push_back(std::move(match));
+      track_queue_.pop_front();
+      continue;
+    }
+
+    if (!observed_future_depth && waited < max_pair_wait_s_) {
+      health_state_ = "WAITING_SYNC";
+      break;
+    }
+
+    last_sync_skew_ms_ = skew * 1000.0;
+    health_state_ = "TIME_UNSYNCED";
+    track_queue_.pop_front();
+    ++dropped_track_count_;
+  }
+
+  last_depth_queue_size_ = depth_queue_.size();
+  last_track_queue_size_ = track_queue_.size();
+  return matches;
+}
+
+void DepthFusionNode::prune_queues(const rclcpp::Time & now)
+{
+  while (!track_queue_.empty() &&
+    seconds_between(now, track_queue_.front().stamp) > max_data_age_s_)
+  {
+    track_queue_.pop_front();
+    ++dropped_track_count_;
+  }
+  while (!depth_queue_.empty() &&
+    seconds_between(now, depth_queue_.front().stamp) > max_data_age_s_)
+  {
+    depth_queue_.pop_front();
+    ++dropped_depth_count_;
+  }
+
+  if (!track_queue_.empty()) {
+    const auto oldest_usable =
+      track_queue_.front().stamp - rclcpp::Duration::from_seconds(max_sync_skew_s_);
+    while (depth_queue_.size() > 1 && depth_queue_[1].stamp < oldest_usable) {
+      depth_queue_.pop_front();
+      ++dropped_depth_count_;
+    }
   }
 }
 
@@ -239,8 +349,10 @@ bool DepthFusionNode::lookup_depth_to_sony(
       stamp,
       rclcpp::Duration::from_seconds(0.05));
     transform = tf2::transformToEigen(tf);
+    depth_to_sony_tf_available_ = true;
     return true;
   } catch (const tf2::TransformException & error) {
+    depth_to_sony_tf_available_ = false;
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 2000,
       "Missing depth-to-Sony TF at sensor timestamp: %s", error.what());
@@ -514,7 +626,7 @@ void DepthFusionNode::produce_diagnostics(
 {
   if (health_state_ == "READY") {
     status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, health_state_);
-  } else if (health_state_ == "WAITING_INPUTS") {
+  } else if (health_state_ == "WAITING_INPUTS" || health_state_ == "WAITING_SYNC") {
     status.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, health_state_);
   } else {
     status.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, health_state_);
@@ -522,6 +634,13 @@ void DepthFusionNode::produce_diagnostics(
   status.add("sync_skew_ms", last_sync_skew_ms_);
   status.add("fused_target_count", last_fused_count_);
   status.add("projected_depth_point_count", last_projected_point_count_);
+  status.add("depth_queue_size", last_depth_queue_size_);
+  status.add("track_queue_size", last_track_queue_size_);
+  status.add("matched_pair_count", matched_pair_count_);
+  status.add("dropped_track_count", dropped_track_count_);
+  status.add("dropped_depth_count", dropped_depth_count_);
+  status.add("output_age_ms", last_output_age_ms_);
+  status.add("direct_depth_tf_loaded", depth_to_sony_tf_available_);
   status.add("sony_frame", sony_frame_);
   status.add("gemini_depth_frame", gemini_depth_frame_);
 }

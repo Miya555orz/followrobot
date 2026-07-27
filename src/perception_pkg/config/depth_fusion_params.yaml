@@ -35,7 +35,13 @@ depth_fusion_node:
       retention_seconds: 3.0
 
     timing:
-      max_sync_skew_seconds: 0.050
+      # Tracks wait briefly for the next depth frame, then pair with the
+      # nearest timestamp. All queues are bounded and stale data is discarded.
+      max_sync_skew_seconds: 0.080
+      max_pair_wait_seconds: 0.120
+      max_data_age_seconds: 0.250
+      depth_queue_capacity: 8
+      track_queue_capacity: 8
       tracks_timeout_seconds: 0.50
       depth_timeout_seconds: 0.50
 

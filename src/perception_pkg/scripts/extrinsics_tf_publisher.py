@@ -51,28 +51,50 @@ def rotation_matrix_to_quaternion(matrix):
     return np.asarray(quaternion)
 
 
+def select_calibrated_transform(calibration):
+    """Return (parent, child, T_parent_from_child), preferring direct depth TF."""
+    schema_version = calibration.get('schema_version')
+    if schema_version not in (2, 3):
+        raise RuntimeError(
+            'Unsupported calibration schema. Re-run stereo_calibrate.py '
+            'and preserve the calibrated Gemini factory extrinsics.')
+
+    direct = calibration.get('direct_depth_tf')
+    if direct is not None:
+        return (
+            direct['frame_id'],
+            direct['child_frame_id'],
+            np.asarray(direct['ros_tf_T_depth_from_sony'], dtype=np.float64),
+        )
+    return (
+        calibration['frame_id'],
+        calibration['child_frame_id'],
+        np.asarray(calibration['ros_tf_T_parent_from_child'], dtype=np.float64),
+    )
+
+
 class ExtrinsicsTfPublisher(Node):
     def __init__(self, calibration_path):
         super().__init__('sony_gemini_extrinsics_tf_publisher')
         with open(calibration_path, 'r', encoding='utf-8') as stream:
             calibration = yaml.safe_load(stream)
-        if calibration.get('schema_version') != 2:
-            raise RuntimeError(
-                'Unsupported calibration schema. Re-run stereo_calibrate.py '
-                'to generate schema_version 2.')
 
-        transform = np.asarray(
-            calibration['ros_tf_T_parent_from_child'], dtype=np.float64)
+        parent_frame, child_frame, transform = select_calibrated_transform(calibration)
         if transform.shape != (4, 4):
-            raise RuntimeError('ros_tf_T_parent_from_child must be a 4x4 matrix')
+            raise RuntimeError('Calibrated ROS transform must be a 4x4 matrix')
+        if not np.allclose(transform[3], [0.0, 0.0, 0.0, 1.0], atol=1e-9):
+            raise RuntimeError('Calibrated transform has an invalid homogeneous row')
         rotation = transform[:3, :3]
-        if not np.allclose(rotation @ rotation.T, np.eye(3), atol=1e-4):
+        if (
+            not np.allclose(rotation @ rotation.T, np.eye(3), atol=1e-4) or
+            not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-4)
+        ):
             raise RuntimeError('Calibration rotation matrix is not orthonormal')
 
         message = TransformStamped()
         message.header.stamp = self.get_clock().now().to_msg()
-        message.header.frame_id = calibration['frame_id']
-        message.child_frame_id = calibration['child_frame_id']
+        message.header.frame_id = parent_frame
+        message.child_frame_id = child_frame
         message.transform.translation.x = float(transform[0, 3])
         message.transform.translation.y = float(transform[1, 3])
         message.transform.translation.z = float(transform[2, 3])

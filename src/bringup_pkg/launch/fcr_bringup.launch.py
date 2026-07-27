@@ -243,8 +243,15 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "fusion_calibration_file",
-            default_value="/home/nvidia/fcr_calibration/sony_gemini_extrinsics.yaml",
-            description="stereo_calibrate.py生成的schema-v2刚性外参文件",
+            default_value=PathJoinSubstitution(
+                [
+                    perception_share,
+                    "config",
+                    "calibration",
+                    "sony_gemini_extrinsics.yaml",
+                ]
+            ),
+            description="包含Gemini原厂depth-to-color外参的schema-v3刚性标定文件",
         ),
         DeclareLaunchArgument(
             "fusion_publish_debug_image", default_value="false",
