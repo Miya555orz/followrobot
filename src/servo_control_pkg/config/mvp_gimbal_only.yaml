@@ -38,6 +38,10 @@ mvp_follow_controller_node:
     filter_alpha_depth: 0.20
     filter_alpha_cmd: 0.20
     target_timeout: 0.25
+    enable_lost_prediction_control: true
+    lost_prediction_control_timeout: 0.8
+    lost_prediction_gimbal_scale: 0.7
+    lost_prediction_base_yaw_scale: 0.5
     aim_target_topic: /perception/aim_target_2d
     aim_target_timeout: 0.25
 

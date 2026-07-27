@@ -621,14 +621,39 @@ private:
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
     const auto selected = select_target(*msg);
-    if (!selected || !is_valid_target(*selected)) {
-      has_valid_target_ = false;
+    const auto current_time = now();
+    if (selected && is_valid_target(*selected)) {
+      active_target_ = *selected;
+      locked_target_id_ = selected->id;
+      lost_prediction_active_ = false;
+      has_valid_target_ = true;
+      last_valid_target_time_ = current_time;
+      last_visible_target_time_ = current_time;
       return;
     }
 
-    active_target_ = *selected;
-    has_valid_target_ = true;
-    last_valid_target_time_ = now();
+    const bool bounded_locked_prediction =
+      enable_lost_prediction_control_ &&
+      selected &&
+      locked_target_id_ >= 0 &&
+      selected->id == locked_target_id_ &&
+      mvp_safety::target_is_lost_prediction(*selected) &&
+      std::isfinite(target_center_pixels(*selected).first) &&
+      std::isfinite(target_center_pixels(*selected).second) &&
+      (current_time - last_visible_target_time_).seconds() <=
+        lost_prediction_control_timeout_;
+    if (bounded_locked_prediction) {
+      active_target_ = *selected;
+      has_valid_target_ = true;
+      lost_prediction_active_ = true;
+      return;
+    }
+
+    if (!selected || !is_valid_target(*selected)) {
+      has_valid_target_ = false;
+      lost_prediction_active_ = false;
+      return;
+    }
   }
 
   /**
@@ -839,7 +864,7 @@ private:
     // 注意：aim_target_callback 可能在 control_loop 之前已将
     // has_valid_aim_ 置 false（valid=false），因此不能以 has_valid_aim_
     // 为条件；必须无条件重置滤波器。
-    if (!has_recent_aim(current_time)) {
+    if (!has_recent_aim(current_time) && !lost_prediction_active_) {
       if (!aim_timeout_reported_) {
         RCLCPP_WARN(
           get_logger(),
@@ -868,6 +893,11 @@ private:
   {
     if (!has_valid_target_) {
       return false;
+    }
+    if (lost_prediction_active_) {
+      return enable_lost_prediction_control_ &&
+        (current_time - last_visible_target_time_).seconds() <=
+          lost_prediction_control_timeout_;
     }
     return (current_time - last_valid_target_time_).seconds() <= target_timeout_;
   }
@@ -950,10 +980,15 @@ private:
     const double desired_y = center_reference_ == "principal_point" && camera_cy_ > 0.0
       ? camera_cy_ : half_height;
 
-    const double aim_px = has_valid_aim_
-      ? static_cast<double>(active_aim_target_.pixel_x) : desired_x;
-    const double aim_py = has_valid_aim_
-      ? static_cast<double>(active_aim_target_.pixel_y) : desired_y;
+    const auto predicted_center = target_center_pixels(active_target_);
+    const bool use_lost_prediction_aim =
+      lost_prediction_active_ && enable_lost_prediction_control_;
+    const double aim_px = use_lost_prediction_aim
+      ? predicted_center.first
+      : (has_valid_aim_ ? static_cast<double>(active_aim_target_.pixel_x) : desired_x);
+    const double aim_py = use_lost_prediction_aim
+      ? predicted_center.second
+      : (has_valid_aim_ ? static_cast<double>(active_aim_target_.pixel_y) : desired_y);
 
     const double ex_raw = (aim_px - desired_x) / half_width;
     const double ey_raw = (aim_py - desired_y) / half_height;
@@ -1031,13 +1066,24 @@ private:
     // 两种模式可选：
     //   use_ibvs_gimbal_=true:  单点特征 IBVS 角速度求解（考虑透视投影几何）
     //   use_ibvs_gimbal_=false: 纯 P 控制，软件符号由 yaw_sign/pitch_sign 标定
-    const auto gimbal_command = enable_gimbal_tracking_ && has_valid_aim_
+    const auto gimbal_command =
+      enable_gimbal_tracking_ && (has_valid_aim_ || use_lost_prediction_aim)
       ? (use_ibvs_gimbal_
           ? compute_ibvs_gimbal_velocity(aim_px, aim_py)
           : compute_proportional_gimbal_velocity(ex, ey))
       : std::pair<double, double>{0.0, 0.0};
     double gimbal_yaw_vel = gimbal_command.first;
     double gimbal_pitch_vel = gimbal_command.second;
+
+    if (use_lost_prediction_aim) {
+      // Prediction may only continue angular search for the already locked ID.
+      // Translation is forbidden without a current, visible metric-depth sample.
+      base_vx = 0.0;
+      filtered_base_vx_ = 0.0;
+      base_wz *= lost_prediction_base_yaw_scale_;
+      gimbal_yaw_vel *= lost_prediction_gimbal_scale_;
+      gimbal_pitch_vel *= lost_prediction_gimbal_scale_;
+    }
 
     // ── 步骤 7: 第二级低通滤波（输出指令平滑） ───────────────────
     //
@@ -1053,11 +1099,18 @@ private:
     // ── 步骤 8: 限幅并打包指令 ────────────────────────────────────
     ControlCommand command;
     command.base_vx = std::clamp(filtered_base_vx_, -max_base_vx_, max_base_vx_);
-    command.base_wz = std::clamp(filtered_base_wz_, -max_base_wz_, max_base_wz_);
+    const double active_base_wz_limit = use_lost_prediction_aim
+      ? max_base_wz_ * lost_prediction_base_yaw_scale_ : max_base_wz_;
+    const double active_gimbal_yaw_limit = use_lost_prediction_aim
+      ? max_gimbal_yaw_vel_ * lost_prediction_gimbal_scale_ : max_gimbal_yaw_vel_;
+    const double active_gimbal_pitch_limit = use_lost_prediction_aim
+      ? max_gimbal_pitch_vel_ * lost_prediction_gimbal_scale_ : max_gimbal_pitch_vel_;
+    command.base_wz = std::clamp(
+      filtered_base_wz_, -active_base_wz_limit, active_base_wz_limit);
     command.gimbal_yaw_vel = std::clamp(
-      filtered_gimbal_yaw_vel_, -max_gimbal_yaw_vel_, max_gimbal_yaw_vel_);
+      filtered_gimbal_yaw_vel_, -active_gimbal_yaw_limit, active_gimbal_yaw_limit);
     command.gimbal_pitch_vel = std::clamp(
-      filtered_gimbal_pitch_vel_, -max_gimbal_pitch_vel_, max_gimbal_pitch_vel_);
+      filtered_gimbal_pitch_vel_, -active_gimbal_pitch_limit, active_gimbal_pitch_limit);
 
     // ── 步骤 9: 节流调试日志 ─────────────────────────────────────
     RCLCPP_DEBUG_THROTTLE(
@@ -1326,6 +1379,7 @@ private:
   bool enable_gimbal_tracking_ = true;
   bool enable_base_yaw_ = false;
   bool enable_base_translation_ = false;
+  bool enable_lost_prediction_control_ = true;
 
   // ── C) 相机参数 ──────────────────────────────────────────────────
   int image_width_ = 640;                 ///< 图像宽度 (px)
@@ -1386,6 +1440,9 @@ private:
 
   // ── J) 目标超时 ──────────────────────────────────────────────────
   double target_timeout_ = 0.5;           ///< 目标丢失判定超时 (s)
+  double lost_prediction_control_timeout_ = 0.8;
+  double lost_prediction_gimbal_scale_ = 0.7;
+  double lost_prediction_base_yaw_scale_ = 0.5;
 
   // ── K) Mock 云台状态（独立测试用）──────────────────────────────
   double mock_q_yaw_ = 0.0;               ///< mock 云台偏航角 (rad)
@@ -1403,6 +1460,9 @@ private:
   Target active_target_;                  ///< 当前伺服跟踪的目标（值拷贝）
   bool has_valid_target_ = false;         ///< 是否有有效目标可供控制
   rclcpp::Time last_valid_target_time_;   ///< 最后一次收到有效目标的时刻
+  rclcpp::Time last_visible_target_time_;
+  int locked_target_id_ = -1;
+  bool lost_prediction_active_ = false;
 
   // ── N) 运行时状态 — 瞄准目标数据 ────────────────────────────────
   vision_servo_msgs::msg::AimTarget2D active_aim_target_;  ///< 缓存的瞄准目标

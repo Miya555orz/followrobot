@@ -42,6 +42,10 @@ mvp_follow_controller_node:
     filter_alpha_depth: 0.20
     filter_alpha_cmd: 0.20
     target_timeout: 0.25
+    enable_lost_prediction_control: true
+    lost_prediction_control_timeout: 0.8
+    lost_prediction_gimbal_scale: 0.7
+    lost_prediction_base_yaw_scale: 0.5
 
     min_depth_confidence: 0.60
     min_valid_depth: 0.30
