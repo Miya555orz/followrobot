@@ -55,7 +55,7 @@ private:
   bool lookup_depth_to_sony(
     const rclcpp::Time & stamp,
     const std::string & depth_frame,
-    Eigen::Isometry3d & transform) const;
+    Eigen::Isometry3d & transform);
 
   std::vector<DepthSample> reproject_depth_points(
     const cv::Mat & depth_meters,

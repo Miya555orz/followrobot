@@ -229,7 +229,7 @@ void DepthFusionNode::sony_info_callback(
 bool DepthFusionNode::lookup_depth_to_sony(
   const rclcpp::Time & stamp,
   const std::string & depth_frame,
-  Eigen::Isometry3d & transform) const
+  Eigen::Isometry3d & transform)
 {
   try {
     // tf2 returns T_target_source. This is directly T_sony_depth; no inverse is required.
