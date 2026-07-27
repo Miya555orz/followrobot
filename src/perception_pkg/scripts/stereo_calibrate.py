@@ -67,11 +67,50 @@ def rotation_distance_degrees(first, second):
     return float(np.degrees(np.arccos(cosine)))
 
 
+def write_ros_camera_info(path, camera_name, image_size, camera_matrix, distortion):
+    """Write a camera_info_manager-compatible pinhole calibration file."""
+    width, height = image_size
+    fx = float(camera_matrix[0, 0])
+    fy = float(camera_matrix[1, 1])
+    cx = float(camera_matrix[0, 2])
+    cy = float(camera_matrix[1, 2])
+    document = {
+        'image_width': int(width),
+        'image_height': int(height),
+        'camera_name': camera_name,
+        'camera_matrix': {
+            'rows': 3, 'cols': 3,
+            'data': np.asarray(camera_matrix).reshape(-1).tolist(),
+        },
+        'distortion_model': 'plumb_bob',
+        'distortion_coefficients': {
+            'rows': 1,
+            'cols': int(np.asarray(distortion).size),
+            'data': np.asarray(distortion).reshape(-1).tolist(),
+        },
+        'rectification_matrix': {
+            'rows': 3, 'cols': 3,
+            'data': np.eye(3).reshape(-1).tolist(),
+        },
+        'projection_matrix': {
+            'rows': 3, 'cols': 4,
+            'data': [
+                fx, 0.0, cx, 0.0,
+                0.0, fy, cy, 0.0,
+                0.0, 0.0, 1.0, 0.0,
+            ],
+        },
+    }
+    with open(path, 'w', encoding='utf-8') as stream:
+        yaml.safe_dump(document, stream, sort_keys=False)
+
+
 class StereoCalibrator(Node):
     def __init__(
             self, rows, cols, square_size, output_path, max_skew_ms, max_rmse_px,
             show_preview, samples_dir, frame_buffer_size, min_sharpness,
-            max_mono_rmse_px, max_pair_translation_m, max_pair_rotation_deg):
+            max_mono_rmse_px, max_pair_translation_m, max_pair_rotation_deg,
+            refine_intrinsics):
         super().__init__('stereo_calibrator')
         self.bridge = CvBridge()
         self.rows = rows
@@ -85,6 +124,7 @@ class StereoCalibrator(Node):
         self.max_mono_rmse_px = max_mono_rmse_px
         self.max_pair_translation_m = max_pair_translation_m
         self.max_pair_rotation_deg = max_pair_rotation_deg
+        self.refine_intrinsics = refine_intrinsics
         self.samples_dir = Path(samples_dir)
         self.samples_dir.mkdir(parents=True, exist_ok=True)
         Path(self.output_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
@@ -131,7 +171,8 @@ class StereoCalibrator(Node):
         self.timer = self.create_timer(0.5, self.status_timer)
         self.get_logger().info(
             'StereoCalibrator ready. Press ENTER in terminal to capture an image pair, '
-            'or type "calib" to run calibration, "quit" to exit.'
+            'type "load" to load samples-dir, "calib" to run calibration, '
+            'or "quit" to exit.'
         )
 
     def sony_cb(self, msg):
@@ -297,6 +338,77 @@ class StereoCalibrator(Node):
             with self.preview_lock:
                 self.preview_image = combined
 
+    def load_saved_samples(self):
+        """Reload accepted PNG pairs so calibration can be repeated offline."""
+        if self.K_sony is None or self.K_gemini is None:
+            self.get_logger().warn(
+                'Cannot load samples yet: waiting for both CameraInfo messages')
+            return
+        if self.count:
+            self.get_logger().error(
+                'Cannot load into a non-empty session; restart the calibrator first')
+            return
+
+        sony_paths = sorted(self.samples_dir.glob('pair_*_sony.png'))
+        if not sony_paths:
+            self.get_logger().error(
+                f'No pair_*_sony.png files found in {self.samples_dir}')
+            return
+
+        loaded = 0
+        for sony_path in sony_paths:
+            gemini_path = Path(
+                str(sony_path).replace('_sony.png', '_gemini.png'))
+            if not gemini_path.exists():
+                self.get_logger().warn(
+                    f'Skipping {sony_path.name}: matching Gemini image is missing')
+                continue
+            sony_gray = cv2.imread(str(sony_path), cv2.IMREAD_GRAYSCALE)
+            gemini_gray = cv2.imread(str(gemini_path), cv2.IMREAD_GRAYSCALE)
+            if sony_gray is None or gemini_gray is None:
+                self.get_logger().warn(
+                    f'Skipping {sony_path.name}: image could not be decoded')
+                continue
+
+            flags = cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE
+            ret_s, corners_s = cv2.findChessboardCorners(
+                sony_gray, (self.cols, self.rows), flags)
+            ret_g, corners_g = cv2.findChessboardCorners(
+                gemini_gray, (self.cols, self.rows), flags)
+            if not ret_s or not ret_g:
+                self.get_logger().warn(
+                    f'Skipping {sony_path.name}: chessboard redetection failed '
+                    f'(Sony={ret_s}, Gemini={ret_g})')
+                continue
+
+            criteria = (
+                cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+            cv2.cornerSubPix(
+                sony_gray, corners_s, (11, 11), (-1, -1), criteria)
+            cv2.cornerSubPix(
+                gemini_gray, corners_g, (11, 11), (-1, -1), criteria)
+            sony_rmse, sony_pose = reprojection_rmse(
+                self.objp, corners_s, self.K_sony, self.D_sony)
+            gemini_rmse, gemini_pose = reprojection_rmse(
+                self.objp, corners_g, self.K_gemini, self.D_gemini)
+            if max(sony_rmse, gemini_rmse) > self.max_mono_rmse_px:
+                self.get_logger().warn(
+                    f'Skipping {sony_path.name}: mono RMSE '
+                    f'{sony_rmse:.3f}/{gemini_rmse:.3f}px exceeds '
+                    f'{self.max_mono_rmse_px:.3f}px')
+                continue
+
+            self.sony_points.append(corners_s)
+            self.gemini_points.append(corners_g)
+            self.pair_transforms.append(
+                gemini_pose @ np.linalg.inv(sony_pose))
+            loaded += 1
+
+        self.count = loaded
+        self.get_logger().info(
+            f'Loaded {loaded}/{len(sony_paths)} saved image pairs from '
+            f'{self.samples_dir}')
+
     def run_calibration(self):
         if self.count < 20:
             self.get_logger().error(f'Need at least 20 pairs, only have {self.count}')
@@ -347,12 +459,14 @@ class StereoCalibrator(Node):
             translation_errors - translation_median)))
         rotation_mad = float(np.median(np.abs(
             rotation_errors - rotation_median)))
-        translation_limit = max(
+        # Robust statistics adapt to normal PnP noise, while the configured
+        # maxima remain hard caps rather than accidentally widening the gate.
+        translation_limit = min(
             self.max_pair_translation_m,
-            translation_median + 3.0 * max(translation_mad, 1e-6))
-        rotation_limit = max(
+            max(0.01, translation_median + 3.0 * max(translation_mad, 1e-6)))
+        rotation_limit = min(
             self.max_pair_rotation_deg,
-            rotation_median + 3.0 * max(rotation_mad, 1e-6))
+            max(0.5, rotation_median + 3.0 * max(rotation_mad, 1e-6)))
         kept_indices = [
             index for index in range(self.count)
             if translation_errors[index] <= translation_limit and
@@ -377,13 +491,19 @@ class StereoCalibrator(Node):
 
         self.get_logger().info(
             f'Running stereoCalibrate with {len(kept_indices)}/{self.count} pairs...')
-        flags = cv2.CALIB_FIX_INTRINSIC
+        camera_matrix_sony = self.K_sony.copy()
+        distortion_sony = self.D_sony.copy()
+        camera_matrix_gemini = self.K_gemini.copy()
+        distortion_gemini = self.D_gemini.copy()
+        flags = (
+            cv2.CALIB_USE_INTRINSIC_GUESS
+            if self.refine_intrinsics else cv2.CALIB_FIX_INTRINSIC)
         ret, K1, D1, K2, D2, R, T, E, F = cv2.stereoCalibrate(
             obj_points,
             sony_points,    # image points cam 0 (Sony)
             gemini_points,  # image points cam 1 (Gemini)
-            self.K_sony, self.D_sony,
-            self.K_gemini, self.D_gemini,
+            camera_matrix_sony, distortion_sony,
+            camera_matrix_gemini, distortion_gemini,
             self.sony_size,
             criteria=(cv2.TERM_CRITERIA_COUNT + cv2.TERM_CRITERIA_EPS, 100, 1e-5),
             flags=flags,
@@ -397,6 +517,10 @@ class StereoCalibrator(Node):
             return
         self.get_logger().info(f'R:\n{R}')
         self.get_logger().info(f'T (m): {T.T}')
+        if self.refine_intrinsics:
+            self.get_logger().info(
+                'Joint intrinsic refinement was enabled; writing matched '
+                'Sony and Gemini CameraInfo files next to the extrinsics')
 
         # OpenCV returns p_gemini = R * p_sony + T, i.e. T_gemini<-sony.
         T_gemini_from_sony = np.eye(4)
@@ -417,6 +541,11 @@ class StereoCalibrator(Node):
             'num_pairs': len(kept_indices),
             'num_pairs_captured': self.count,
             'rejected_pair_indices': rejected_indices,
+            'intrinsics_refined': self.refine_intrinsics,
+            'sony_camera_matrix': K1.tolist(),
+            'sony_distortion': np.asarray(D1).reshape(-1).tolist(),
+            'gemini_camera_matrix': K2.tolist(),
+            'gemini_distortion': np.asarray(D2).reshape(-1).tolist(),
             'board_rows': self.rows,
             'board_cols': self.cols,
             'square_size_meters': self.square_size,
@@ -429,6 +558,14 @@ class StereoCalibrator(Node):
         }
         with open(self.output_path, 'w') as f:
             yaml.dump(result, f, default_flow_style=False)
+        if self.refine_intrinsics:
+            output_parent = Path(self.output_path).expanduser().parent
+            write_ros_camera_info(
+                output_parent / 'sony_refined_camera_info.yaml',
+                'sony_zv_e10_ii', self.sony_size, K1, D1)
+            write_ros_camera_info(
+                output_parent / 'gemini_refined_camera_info.yaml',
+                'camera', self.gemini_size, K2, D2)
         self.get_logger().info(f'Saved to {self.output_path}')
 
 
@@ -465,6 +602,9 @@ def main():
     parser.add_argument(
         '--max-pair-rotation-deg', type=float, default=5.0,
         help='Minimum rigid-pose outlier threshold for relative rotation')
+    parser.add_argument(
+        '--refine-intrinsics', action='store_true',
+        help='Jointly refine both intrinsics and write matched CameraInfo YAML files')
     args = parser.parse_args()
     if args.samples_dir:
         samples_dir = args.samples_dir
@@ -478,7 +618,7 @@ def main():
         args.max_skew_ms, args.max_rmse_px, args.show_preview,
         samples_dir, args.frame_buffer_size, args.min_sharpness,
         args.max_mono_rmse_px, args.max_pair_translation_m,
-        args.max_pair_rotation_deg)
+        args.max_pair_rotation_deg, args.refine_intrinsics)
 
     def input_thread():
         while rclpy.ok():
@@ -487,6 +627,8 @@ def main():
                 if cmd.strip() == 'quit':
                     rclpy.shutdown()
                     return
+                elif cmd.strip() == 'load':
+                    node.load_saved_samples()
                 elif cmd.strip() == 'calib':
                     node.run_calibration()
                 else:
