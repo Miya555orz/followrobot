@@ -45,6 +45,10 @@ classifier/bert_intent_output/training_args.bin
 # Keep all vendor headers, sample sources, and ARM64 shared libraries out of Git.
 src/sony_camera_pkg/sdk/
 
+# Generated artifacts
+output/
+tmp/
+
 # Runtime ML artifacts are downloaded from a release or generated on the target.
 src/perception_pkg/models/*
 !src/perception_pkg/models/README.md
