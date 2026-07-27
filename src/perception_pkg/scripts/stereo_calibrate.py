@@ -67,6 +67,28 @@ def rotation_distance_degrees(first, second):
     return float(np.degrees(np.arccos(cosine)))
 
 
+def symmetric_epipolar_rmse(first_points, second_points, fundamental):
+    """Return symmetric point-to-epipolar-line RMSE for one image pair."""
+    first = first_points.reshape(-1, 2).astype(np.float64)
+    second = second_points.reshape(-1, 2).astype(np.float64)
+    first_h = np.column_stack([first, np.ones(len(first))])
+    second_h = np.column_stack([second, np.ones(len(second))])
+    lines_in_second = (fundamental @ first_h.T).T
+    lines_in_first = (fundamental.T @ second_h.T).T
+    second_denominator = np.maximum(
+        np.linalg.norm(lines_in_second[:, :2], axis=1), 1e-12)
+    first_denominator = np.maximum(
+        np.linalg.norm(lines_in_first[:, :2], axis=1), 1e-12)
+    distance_second = np.sum(
+        second_h * lines_in_second, axis=1) / second_denominator
+    distance_first = np.sum(
+        first_h * lines_in_first, axis=1) / first_denominator
+    squared = 0.5 * (
+        distance_first * distance_first +
+        distance_second * distance_second)
+    return float(np.sqrt(np.mean(squared)))
+
+
 def write_ros_camera_info(path, camera_name, image_size, camera_matrix, distortion):
     """Write a camera_info_manager-compatible pinhole calibration file."""
     width, height = image_size
@@ -110,7 +132,8 @@ class StereoCalibrator(Node):
             self, rows, cols, square_size, output_path, max_skew_ms, max_rmse_px,
             show_preview, samples_dir, frame_buffer_size, min_sharpness,
             max_mono_rmse_px, max_pair_translation_m, max_pair_rotation_deg,
-            refine_intrinsics):
+            refine_intrinsics, max_epipolar_rmse_px,
+            max_stereo_outlier_fraction):
         super().__init__('stereo_calibrator')
         self.bridge = CvBridge()
         self.rows = rows
@@ -125,6 +148,8 @@ class StereoCalibrator(Node):
         self.max_pair_translation_m = max_pair_translation_m
         self.max_pair_rotation_deg = max_pair_rotation_deg
         self.refine_intrinsics = refine_intrinsics
+        self.max_epipolar_rmse_px = max_epipolar_rmse_px
+        self.max_stereo_outlier_fraction = max_stereo_outlier_fraction
         self.samples_dir = Path(samples_dir)
         self.samples_dir.mkdir(parents=True, exist_ok=True)
         Path(self.output_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
@@ -485,29 +510,67 @@ class StereoCalibrator(Node):
                 'capture more diverse, stationary pairs')
             return
 
-        sony_points = [self.sony_points[index] for index in kept_indices]
-        gemini_points = [self.gemini_points[index] for index in kept_indices]
-        obj_points = [self.objp] * len(kept_indices)
-
-        self.get_logger().info(
-            f'Running stereoCalibrate with {len(kept_indices)}/{self.count} pairs...')
-        camera_matrix_sony = self.K_sony.copy()
-        distortion_sony = self.D_sony.copy()
-        camera_matrix_gemini = self.K_gemini.copy()
-        distortion_gemini = self.D_gemini.copy()
         flags = (
             cv2.CALIB_USE_INTRINSIC_GUESS
             if self.refine_intrinsics else cv2.CALIB_FIX_INTRINSIC)
-        ret, K1, D1, K2, D2, R, T, E, F = cv2.stereoCalibrate(
-            obj_points,
-            sony_points,    # image points cam 0 (Sony)
-            gemini_points,  # image points cam 1 (Gemini)
-            camera_matrix_sony, distortion_sony,
-            camera_matrix_gemini, distortion_gemini,
-            self.sony_size,
-            criteria=(cv2.TERM_CRITERIA_COUNT + cv2.TERM_CRITERIA_EPS, 100, 1e-5),
-            flags=flags,
-        )
+        active_indices = list(kept_indices)
+        maximum_stereo_rejections = int(np.floor(
+            len(active_indices) * self.max_stereo_outlier_fraction))
+        stereo_rejected_indices = []
+
+        while True:
+            sony_points = [
+                self.sony_points[index] for index in active_indices]
+            gemini_points = [
+                self.gemini_points[index] for index in active_indices]
+            obj_points = [self.objp] * len(active_indices)
+            self.get_logger().info(
+                f'Running stereoCalibrate with {len(active_indices)}/'
+                f'{self.count} pairs...')
+            ret, K1, D1, K2, D2, R, T, E, F = cv2.stereoCalibrate(
+                obj_points,
+                sony_points,
+                gemini_points,
+                self.K_sony.copy(), self.D_sony.copy(),
+                self.K_gemini.copy(), self.D_gemini.copy(),
+                self.sony_size,
+                criteria=(
+                    cv2.TERM_CRITERIA_COUNT + cv2.TERM_CRITERIA_EPS,
+                    100, 1e-5),
+                flags=flags,
+            )
+
+            epipolar_errors = np.asarray([
+                symmetric_epipolar_rmse(first, second, F)
+                for first, second in zip(sony_points, gemini_points)
+            ])
+            epipolar_median = float(np.median(epipolar_errors))
+            epipolar_mad = float(np.median(np.abs(
+                epipolar_errors - epipolar_median)))
+            worst_local_index = int(np.argmax(epipolar_errors))
+            worst_error = float(epipolar_errors[worst_local_index])
+            robust_limit = max(
+                self.max_epipolar_rmse_px,
+                epipolar_median + 3.0 * max(epipolar_mad, 1e-6))
+            self.get_logger().info(
+                f'Stereo diagnostics: RMSE={ret:.4f}px, epipolar '
+                f'median={epipolar_median:.3f}px, '
+                f'max={worst_error:.3f}px')
+
+            can_remove = (
+                ret > self.max_rmse_px and
+                worst_error > robust_limit and
+                len(active_indices) > 20 and
+                len(stereo_rejected_indices) < maximum_stereo_rejections)
+            if not can_remove:
+                break
+
+            rejected_original_index = active_indices.pop(worst_local_index)
+            stereo_rejected_indices.append(rejected_original_index + 1)
+            self.get_logger().warn(
+                f'Rejected stereo epipolar outlier pair '
+                f'{rejected_original_index + 1} '
+                f'({worst_error:.3f}px > {robust_limit:.3f}px)')
 
         self.get_logger().info(f'Calibration done. RMSE={ret:.4f} px')
         if ret > self.max_rmse_px:
@@ -538,9 +601,12 @@ class StereoCalibrator(Node):
             'R': R.tolist(),
             'T': T.ravel().tolist(),
             'rmse_px': float(ret),
-            'num_pairs': len(kept_indices),
+            'num_pairs': len(active_indices),
             'num_pairs_captured': self.count,
             'rejected_pair_indices': rejected_indices,
+            'stereo_rejected_pair_indices': stereo_rejected_indices,
+            'epipolar_rmse_median_px': epipolar_median,
+            'epipolar_rmse_max_px': worst_error,
             'intrinsics_refined': self.refine_intrinsics,
             'sony_camera_matrix': K1.tolist(),
             'sony_distortion': np.asarray(D1).reshape(-1).tolist(),
@@ -605,7 +671,19 @@ def main():
     parser.add_argument(
         '--refine-intrinsics', action='store_true',
         help='Jointly refine both intrinsics and write matched CameraInfo YAML files')
+    parser.add_argument(
+        '--max-epipolar-rmse-px', type=float, default=1.5,
+        help='Minimum robust threshold for rejecting a stereo correspondence pair')
+    parser.add_argument(
+        '--max-stereo-outlier-fraction', type=float, default=0.25,
+        help='Maximum fraction removed by iterative epipolar outlier rejection')
     args = parser.parse_args()
+    if args.frame_buffer_size < 2:
+        parser.error('--frame-buffer-size must be at least 2')
+    if args.max_skew_ms <= 0.0:
+        parser.error('--max-skew-ms must be positive')
+    if not 0.0 <= args.max_stereo_outlier_fraction <= 0.5:
+        parser.error('--max-stereo-outlier-fraction must be between 0.0 and 0.5')
     if args.samples_dir:
         samples_dir = args.samples_dir
     else:
@@ -618,7 +696,8 @@ def main():
         args.max_skew_ms, args.max_rmse_px, args.show_preview,
         samples_dir, args.frame_buffer_size, args.min_sharpness,
         args.max_mono_rmse_px, args.max_pair_translation_m,
-        args.max_pair_rotation_deg, args.refine_intrinsics)
+        args.max_pair_rotation_deg, args.refine_intrinsics,
+        args.max_epipolar_rmse_px, args.max_stereo_outlier_fraction)
 
     def input_thread():
         while rclpy.ok():
