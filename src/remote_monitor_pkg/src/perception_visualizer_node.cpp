@@ -598,6 +598,8 @@ private:
   void target_3d_callback(const TargetArray::ConstSharedPtr& message)
   {
     std::lock_guard<std::mutex> lock(state_mutex_);
+    latest_targets_3d_ = *message;
+    target_3d_message_last_update_ = SteadyClock::now();
     const Target* selected = nullptr;
     for (const auto& target : message->targets) {
       if (target.depth_confidence <= 0.0F) {
@@ -750,6 +752,14 @@ private:
       }
 
       if (draw_tracks_) {
+        std::optional<TargetArray> targets_3d;
+        {
+          std::lock_guard<std::mutex> lock(state_mutex_);
+          if (latest_targets_3d_ &&
+              fresh(target_3d_message_last_update_, SteadyClock::now())) {
+            targets_3d = latest_targets_3d_;
+          }
+        }
         for (const auto& track : tracks->targets) {
           const cv::Rect box = clipped_box(track, canvas.size());
           if (box.empty()) {
@@ -772,6 +782,32 @@ private:
                 << tracking_state_name(track.tracking_state) << ' '
                 << std::fixed << std::setprecision(2) << track.confidence;
           draw_label(canvas, label.str(), {box.x, box.y - 20}, color, 0.5);
+
+          if (targets_3d) {
+            const auto fused = std::find_if(
+                targets_3d->targets.begin(), targets_3d->targets.end(),
+                [&track](const Target& candidate) {
+                  return candidate.id == track.id &&
+                      candidate.depth_confidence > 0.0F;
+                });
+            if (fused != targets_3d->targets.end()) {
+              const float distance = std::sqrt(
+                  fused->position[0] * fused->position[0] +
+                  fused->position[1] * fused->position[1] +
+                  fused->position[2] * fused->position[2]);
+              std::ostringstream depth_label;
+              depth_label << std::fixed << std::setprecision(2)
+                          << "3D X:" << fused->position[0]
+                          << " Y:" << fused->position[1]
+                          << " Z:" << fused->position[2]
+                          << " D:" << distance << "m"
+                          << " C:" << fused->depth_confidence;
+              draw_label(
+                  canvas, depth_label.str(),
+                  {box.x, std::min(canvas.rows - 4, box.y + box.height + 18)},
+                  cv::Scalar(0, 255, 255), 0.48);
+            }
+          }
         }
       }
 
@@ -920,6 +956,24 @@ private:
     }
     {
       std::ostringstream line;
+      if (status.target_3d_available) {
+        const float distance = std::sqrt(
+            status.target_3d_position[0] * status.target_3d_position[0] +
+            status.target_3d_position[1] * status.target_3d_position[1] +
+            status.target_3d_position[2] * status.target_3d_position[2]);
+        line << std::fixed << std::setprecision(2)
+             << "Target3D X/Y/Z: "
+             << status.target_3d_position[0] << '/'
+             << status.target_3d_position[1] << '/'
+             << status.target_3d_position[2]
+             << " m  D:" << distance << " m";
+      } else {
+        line << "Target3D: unavailable";
+      }
+      lines.push_back(line.str());
+    }
+    {
+      std::ostringstream line;
       line << "Servo: ";
       switch (servo_state_) {
         case vision_servo_msgs::msg::ServoState::IDLE:
@@ -1034,6 +1088,8 @@ private:
   float gimbal_yaw_ = 0.0F;
   float gimbal_pitch_ = 0.0F;
   SteadyClock::time_point target_3d_last_update_{};
+  std::optional<TargetArray> latest_targets_3d_;
+  SteadyClock::time_point target_3d_message_last_update_{};
   SteadyClock::time_point cmd_vel_last_update_{};
   SteadyClock::time_point gimbal_last_update_{};
 
