@@ -1,26 +1,43 @@
 depth_fusion_node:
   ros__parameters:
-    # ---- TF frames ----
-    sony_frame: "sony_camera_optical_frame"
-    gemini_depth_frame: "camera_depth_optical_frame"
+    topics:
+      tracks: "/perception/tracks"
+      depth_image: "/camera/depth/image_raw"
+      depth_camera_info: "/camera/depth/camera_info"
+      sony_camera_info: "/sony/camera_info"
+      targets_3d: "/perception/targets_3d"
+      debug_image: "/perception/targets_3d_debug"
 
-    # ---- projection & ROI ----
-    default_depth_assume: 2.0             # Assumed depth for forward projection (m)
-    roi_expand_margin: 0.20               # ROI expansion ratio (20%)
-    min_roi_pixels: 25                    # Minimum ROI pixel count
+    frames:
+      sony_optical: "sony_camera_optical_frame"
+      gemini_depth_optical: "camera_depth_optical_frame"
 
-    # ---- depth validity ----
-    min_depth_meters: 0.30                # Minimum trusted depth (m)
-    max_depth_meters: 10.0                # Maximum trusted depth (m)
-    min_valid_depth_ratio: 0.30           # Reject if valid pixel ratio < 30%
+    projection:
+      # Reproject every Nth Gemini depth pixel into the Sony image. 2 is a
+      # practical Jetson default; use 1 for maximum density.
+      depth_pixel_stride: 2
+      min_target_samples: 40
+      # Keep false when both CameraInfo streams describe rectified images.
+      use_distortion: false
 
-    # ---- statistical aggregation ----
-    depth_percentile: 0.50                # 0.50 = median
-    depth_temporal_alpha: 0.30            # Temporal smoothing (0=off, 1=frozen)
+    depth:
+      min_meters: 0.30
+      max_meters: 10.0
+      min_valid_ratio: 0.10
+      # 0.40 favours the person's foreground over background inside a bbox.
+      percentile: 0.40
 
-    # ---- output ----
-    publish_debug_image: false            # Publish debug overlay
+    filter:
+      # alpha=1 uses the new measurement directly; lower values smooth more.
+      position_alpha: 0.35
+      velocity_alpha: 0.25
+      max_position_jump_meters: 1.25
+      retention_seconds: 3.0
 
-    # ---- timeouts ----
-    tracks_timeout_seconds: 0.5
-    depth_timeout_seconds: 1.0
+    timing:
+      max_sync_skew_seconds: 0.050
+      tracks_timeout_seconds: 0.50
+      depth_timeout_seconds: 0.50
+
+    debug:
+      publish_image: false

@@ -101,6 +101,20 @@ def generate_launch_description():
         }.items(),
     )
 
+    # Calibrated Gemini depth fusion is opt-in. It owns Gemini startup and the
+    # rigid Sony->Gemini static transform, while the RGB perception launch
+    # above remains usable on its own.
+    depth_fusion_launch = IncludeLaunchDescription(
+        PathJoinSubstitution([perception_share, "launch", "depth_fusion.launch.py"]),
+        launch_arguments={
+            "start_gemini": LaunchConfiguration("start_gemini"),
+            "gemini_serial_number": LaunchConfiguration("gemini_serial_number"),
+            "calibration_file": LaunchConfiguration("fusion_calibration_file"),
+            "publish_debug_image": LaunchConfiguration("fusion_publish_debug_image"),
+        }.items(),
+        condition=IfCondition(LaunchConfiguration("enable_depth_fusion")),
+    )
+
     # ── 2b. Mock 检测器（仿真模式下的合成检测结果） ──────────
     mock_detector = Node(
         package="simulation_pkg",
@@ -215,6 +229,27 @@ def generate_launch_description():
                               description="是否启动真实 YOLO 检测节点"),
         DeclareLaunchArgument("enable_tracking", default_value="true",
                               description="是否启动目标跟踪节点"),
+        DeclareLaunchArgument(
+            "enable_depth_fusion", default_value="false",
+            description="启用Gemini 335、刚性外参TF和/perception/targets_3d",
+        ),
+        DeclareLaunchArgument(
+            "start_gemini", default_value="true",
+            description="融合启动文件是否同时启动Gemini 335驱动",
+        ),
+        DeclareLaunchArgument(
+            "gemini_serial_number", default_value="",
+            description="可选的Gemini设备序列号",
+        ),
+        DeclareLaunchArgument(
+            "fusion_calibration_file",
+            default_value="/home/nvidia/fcr_calibration/sony_gemini_extrinsics.yaml",
+            description="stereo_calibrate.py生成的schema-v2刚性外参文件",
+        ),
+        DeclareLaunchArgument(
+            "fusion_publish_debug_image", default_value="false",
+            description="发布深度点重投影调试图/perception/targets_3d_debug",
+        ),
         DeclareLaunchArgument("use_rviz", default_value="false",
                               description="是否启动 RViz2"),
         DeclareLaunchArgument("use_foxglove", default_value="false",
@@ -294,6 +329,7 @@ def generate_launch_description():
 
         # 阶段 2：感知管线 (t=2s，等待相机驱动就绪)
         TimerAction(period=2.0, actions=[perception_launch]),
+        TimerAction(period=2.0, actions=[depth_fusion_launch]),
 
         # 阶段 3：伺服控制 (t=3s，等待感知输出 + 平台状态)
         TimerAction(period=3.0, actions=[servo_launch]),

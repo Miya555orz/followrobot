@@ -2,7 +2,7 @@
 """
 Sony ZV-E10 II <-> Orbbec Gemini 335 RGB stereo calibration.
 Detects chessboard corners on both camera streams simultaneously,
-runs cv2.stereoCalibrate, and saves T_sony_gemini (4x4) to YAML.
+runs cv2.stereoCalibrate, and saves unambiguous OpenCV and ROS TF transforms.
 """
 import argparse
 import yaml
@@ -16,13 +16,18 @@ from rclpy.qos import qos_profile_sensor_data
 
 
 class StereoCalibrator(Node):
-    def __init__(self, rows, cols, square_size, output_path):
+    def __init__(
+            self, rows, cols, square_size, output_path, max_skew_ms, max_rmse_px,
+            show_preview):
         super().__init__('stereo_calibrator')
         self.bridge = CvBridge()
         self.rows = rows
         self.cols = cols
         self.square_size = square_size
         self.output_path = output_path
+        self.max_skew_ns = int(max_skew_ms * 1_000_000)
+        self.max_rmse_px = max_rmse_px
+        self.show_preview = show_preview
 
         # storage
         self.sony_points = []
@@ -38,7 +43,8 @@ class StereoCalibrator(Node):
         self.D_sony = None
         self.K_gemini = None
         self.D_gemini = None
-        self.img_size = None
+        self.sony_size = None
+        self.gemini_size = None
 
         # prepare chessboard object points
         self.objp = np.zeros((rows * cols, 3), np.float32)
@@ -72,13 +78,14 @@ class StereoCalibrator(Node):
         if self.K_sony is None:
             self.K_sony = np.array(msg.k).reshape(3, 3)
             self.D_sony = np.array(msg.d)
-            self.img_size = (msg.width, msg.height)
+            self.sony_size = (msg.width, msg.height)
             self.get_logger().info(f'Sony intrinsics loaded: {msg.width}x{msg.height}')
 
     def gemini_info_cb(self, msg):
         if self.K_gemini is None:
             self.K_gemini = np.array(msg.k).reshape(3, 3)
             self.D_gemini = np.array(msg.d)
+            self.gemini_size = (msg.width, msg.height)
             self.get_logger().info(f'Gemini color intrinsics loaded: {msg.width}x{msg.height}')
 
     def status_timer(self):
@@ -88,6 +95,14 @@ class StereoCalibrator(Node):
     def capture_pair(self):
         if self.sony_gray is None or self.gemini_color is None:
             self.get_logger().warn('No images received yet')
+            return
+        sony_ns = self.sony_ts.sec * 1_000_000_000 + self.sony_ts.nanosec
+        gemini_ns = self.gemini_ts.sec * 1_000_000_000 + self.gemini_ts.nanosec
+        skew_ns = abs(sony_ns - gemini_ns)
+        if skew_ns > self.max_skew_ns:
+            self.get_logger().warn(
+                f'Pair rejected: timestamp skew {skew_ns / 1e6:.1f} ms exceeds '
+                f'{self.max_skew_ns / 1e6:.1f} ms')
             return
 
         gemini_gray = cv2.cvtColor(self.gemini_color, cv2.COLOR_BGR2GRAY)
@@ -118,27 +133,47 @@ class StereoCalibrator(Node):
                 f'Gemini={"OK" if ret_g else "FAIL"}'
             )
 
-        # show annotated images for visual feedback
-        cv2.drawChessboardCorners(self.sony_gray, (self.cols, self.rows), corners_s, ret_s)
-        cv2.drawChessboardCorners(gemini_gray, (self.cols, self.rows), corners_g, ret_g)
-        # resize gemini to match sony height for side-by-side display
-        if gemini_gray.shape[0] != self.sony_gray.shape[0]:
-            scale = self.sony_gray.shape[0] / gemini_gray.shape[0]
-            new_w = int(gemini_gray.shape[1] * scale)
-            gemini_resized = cv2.resize(gemini_gray, (new_w, self.sony_gray.shape[0]))
-        else:
-            gemini_resized = gemini_gray
-        combined = np.hstack([self.sony_gray, gemini_resized])
-        cv2.imshow('stereo_calib (left=Sony, right=Gemini). Press ESC to close', combined)
-        cv2.waitKey(1)
+        if self.show_preview:
+            cv2.drawChessboardCorners(
+                self.sony_gray, (self.cols, self.rows), corners_s, ret_s)
+            cv2.drawChessboardCorners(
+                gemini_gray, (self.cols, self.rows), corners_g, ret_g)
+            if gemini_gray.shape[0] != self.sony_gray.shape[0]:
+                scale = self.sony_gray.shape[0] / gemini_gray.shape[0]
+                new_w = int(gemini_gray.shape[1] * scale)
+                gemini_resized = cv2.resize(
+                    gemini_gray, (new_w, self.sony_gray.shape[0]))
+            else:
+                gemini_resized = gemini_gray
+            combined = np.hstack([self.sony_gray, gemini_resized])
+            cv2.imshow('stereo_calib (left=Sony, right=Gemini)', combined)
+            cv2.waitKey(1)
 
     def run_calibration(self):
-        if self.count < 10:
-            self.get_logger().error(f'Need at least 10 pairs, only have {self.count}')
+        if self.count < 20:
+            self.get_logger().error(f'Need at least 20 pairs, only have {self.count}')
             return
         if self.K_sony is None or self.K_gemini is None:
             self.get_logger().error('Missing camera intrinsics')
             return
+        if self.K_sony[0, 0] <= 0 or self.K_sony[1, 1] <= 0:
+            self.get_logger().error('Sony CameraInfo has invalid focal lengths')
+            return
+        if self.K_gemini[0, 0] <= 0 or self.K_gemini[1, 1] <= 0:
+            self.get_logger().error('Gemini CameraInfo has invalid focal lengths')
+            return
+
+        for name, samples, size in (
+                ('Sony', self.sony_points, self.sony_size),
+                ('Gemini', self.gemini_points, self.gemini_size)):
+            centers = np.asarray(
+                [corners.reshape(-1, 2).mean(axis=0) for corners in samples])
+            span = (centers.max(axis=0) - centers.min(axis=0)) / np.asarray(size)
+            if span[0] < 0.35 or span[1] < 0.25:
+                self.get_logger().error(
+                    f'{name} calibration-board coverage is too narrow '
+                    f'(x={span[0]:.2f}, y={span[1]:.2f}); capture corners and centre')
+                return
 
         obj_points = [self.objp] * self.count
 
@@ -150,30 +185,46 @@ class StereoCalibrator(Node):
             self.gemini_points,  # image points cam 1 (Gemini)
             self.K_sony, self.D_sony,
             self.K_gemini, self.D_gemini,
-            self.img_size,
+            self.sony_size,
             criteria=(cv2.TERM_CRITERIA_COUNT + cv2.TERM_CRITERIA_EPS, 100, 1e-5),
             flags=flags,
         )
 
         self.get_logger().info(f'Calibration done. RMSE={ret:.4f} px')
+        if ret > self.max_rmse_px:
+            self.get_logger().error(
+                f'RMSE {ret:.3f}px exceeds {self.max_rmse_px:.3f}px; '
+                'calibration file was not written')
+            return
         self.get_logger().info(f'R:\n{R}')
         self.get_logger().info(f'T (m): {T.T}')
 
-        T_sony_gemini = np.eye(4)
-        T_sony_gemini[:3, :3] = R
-        T_sony_gemini[:3, 3] = T.ravel()
+        # OpenCV returns p_gemini = R * p_sony + T, i.e. T_gemini<-sony.
+        T_gemini_from_sony = np.eye(4)
+        T_gemini_from_sony[:3, :3] = R
+        T_gemini_from_sony[:3, 3] = T.ravel()
+        # The Orbbec driver already owns camera_link -> camera_color_optical_frame.
+        # Connect the otherwise-unparented Sony optical frame below Gemini color:
+        # parent=Gemini color, child=Sony. Its ROS pose is exactly T_gemini<-sony.
 
         # Save
         result = {
-            'T_sony_color_optical_to_gemini_color_optical': T_sony_gemini.tolist(),
+            'schema_version': 2,
+            'opencv_T_gemini_from_sony': T_gemini_from_sony.tolist(),
+            'ros_tf_T_parent_from_child': T_gemini_from_sony.tolist(),
             'R': R.tolist(),
             'T': T.ravel().tolist(),
             'rmse_px': float(ret),
             'num_pairs': self.count,
+            'board_rows': self.rows,
+            'board_cols': self.cols,
+            'square_size_meters': self.square_size,
+            'sony_image_size': list(self.sony_size),
+            'gemini_image_size': list(self.gemini_size),
             'cam0': 'sony_zv_e10_ii',
             'cam1': 'gemini_335_color',
-            'frame_id': 'sony_camera_optical_frame',
-            'child_frame_id': 'camera_color_optical_frame',
+            'frame_id': 'camera_color_optical_frame',
+            'child_frame_id': 'sony_camera_optical_frame',
         }
         with open(self.output_path, 'w') as f:
             yaml.dump(result, f, default_flow_style=False)
@@ -186,10 +237,21 @@ def main():
     parser.add_argument('--cols', type=int, default=8, help='Chessboard inner corners: cols')
     parser.add_argument('--square', type=float, default=0.025, help='Square size in meters')
     parser.add_argument('--output', type=str, default='T_sony_gemini.yaml')
+    parser.add_argument(
+        '--max-skew-ms', type=float, default=50.0,
+        help='Reject a manually captured pair when timestamps differ by more than this')
+    parser.add_argument(
+        '--max-rmse-px', type=float, default=1.0,
+        help='Do not write a calibration whose stereo RMSE exceeds this threshold')
+    parser.add_argument(
+        '--show-preview', action='store_true',
+        help='Open an OpenCV window; omit this option for headless SSH calibration')
     args = parser.parse_args()
 
     rclpy.init()
-    node = StereoCalibrator(args.rows, args.cols, args.square, args.output)
+    node = StereoCalibrator(
+        args.rows, args.cols, args.square, args.output,
+        args.max_skew_ms, args.max_rmse_px, args.show_preview)
 
     import threading
     def input_thread():

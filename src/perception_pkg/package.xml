@@ -8,12 +8,12 @@
   感知管线包，实现从 Sony RGB 图像到 2D 检测与跟踪的处理链：
     - YOLOv5/v8 ONNX 目标检测（OpenCV DNN 后端）
     - 基于卡尔曼滤波和 IoU 关联的轻量多目标跟踪
-    - 保留现有深度估计与仿真管线，双相机融合留待后续阶段
+    - Sony RGB 与 Gemini 335 深度的标定、重投影和三维目标融合
   -->
 
   <name>perception_pkg</name>
   <version>0.1.0</version>
-  <description>融合前视觉感知：YOLO ONNX/TensorRT 检测与 2D 多目标跟踪</description>
+  <description>YOLO/TensorRT检测、ByteTrack跟踪及Sony-Gemini标定深度融合</description>
   <maintainer email="dev@fcr-project.org">FCR Dev Team</maintainer>
   <license>Apache-2.0</license>
 
@@ -36,11 +36,17 @@
   <depend>tf2_ros</depend>             <!-- 坐标变换 -->
   <depend>tf2_geometry_msgs</depend>
   <depend>tf2_eigen</depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>orbbec_camera</exec_depend>
   <depend>eigen</depend>
   <depend>libopencv-dev</depend>              <!-- 图像处理 -->
   <depend>onnxruntime_vendor</depend>   <!-- ONNX Runtime C++ 库 (YOLOv8 推理后端) -->
 
   <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>launch_testing</test_depend>
   <test_depend>launch_testing_ament_cmake</test_depend>
   <test_depend>rclpy</test_depend>

@@ -146,7 +146,7 @@ target_link_libraries(face_aim_node perception_qos ${OpenCV_LIBS})
 add_executable(depth_fusion_node src/depth_fusion_node.cpp)
 target_include_directories(depth_fusion_node PRIVATE include ${OpenCV_INCLUDE_DIRS})
 ament_target_dependencies(depth_fusion_node
-  rclcpp rclcpp_components sensor_msgs vision_servo_msgs cv_bridge image_transport
+  rclcpp diagnostic_updater diagnostic_msgs sensor_msgs vision_servo_msgs cv_bridge image_transport
   tf2 tf2_ros tf2_geometry_msgs tf2_eigen Eigen3)
 target_link_libraries(depth_fusion_node perception_qos ${OpenCV_LIBS})
 
@@ -166,6 +166,7 @@ install(PROGRAMS
   scripts/download_model.py
   scripts/video_publisher.py
   scripts/stereo_calibrate.py
+  scripts/extrinsics_tf_publisher.py
   scripts/check_perception.sh
   scripts/jetson_build_perception.sh
   scripts/jetson_acceptance.sh
@@ -180,6 +181,7 @@ endif()
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
   find_package(launch_testing_ament_cmake REQUIRED)
   ament_add_gtest(test_multi_object_tracker
     test/test_multi_object_tracker.cpp
@@ -225,6 +227,7 @@ if(BUILD_TESTING)
     ament_target_dependencies(test_target_selector vision_servo_msgs)
   endif()
   add_launch_test(test/test_tracking_launch.py TIMEOUT 30)
+  ament_add_pytest_test(test_extrinsics_tf test/test_extrinsics_tf.py)
 endif()
 
 # ── 模型文件（供 detection_params.yaml 用 find-pkg-share 解析） ───────
