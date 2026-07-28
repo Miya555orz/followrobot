@@ -185,11 +185,13 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
     apply_deadband(last_depth_error_, depth_deadband_m_);
 
   // Camera optical twist.  At the neutral mount, +wy maps to negative
-  // gimbal yaw and -wx maps to positive gimbal pitch.  RS2 positive pitch is
-  // upward, so a target below the image centre (positive optical Y) must
-  // produce a negative physical pitch command (move the camera downward).
+  // physical gimbal yaw and -wx maps to positive physical gimbal pitch.
+  // RS2 yaw follows the opposite sign convention to the camera optical
+  // bearing: a target on image-right (positive optical X) needs positive
+  // physical yaw.  RS2 positive pitch is upward, so a target below centre
+  // (positive optical Y) needs negative physical pitch.
   velocity(3) = rotational_gain_ * pitch_control;
-  velocity(4) = rotational_gain_ * yaw_control;
+  velocity(4) = -rotational_gain_ * yaw_control;
   velocity(2) = translational_gain_ * depth_control;
   if (enable_lateral_translation_) {
     velocity(0) = lateral_gain_ * x;
