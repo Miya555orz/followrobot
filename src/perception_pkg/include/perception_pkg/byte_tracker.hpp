@@ -25,6 +25,12 @@ struct ByteTrackerConfig {
   float lost_center_gate = 1.50F;
   float minimum_size_ratio = 0.50F;
   float maximum_size_ratio = 2.00F;
+  float occlusion_min_containment = 0.60F;
+  float occlusion_center_gate = 0.85F;
+  float occlusion_minimum_size_ratio = 0.15F;
+  float occlusion_maximum_size_ratio = 5.00F;
+  float occlusion_mahalanobis_gate = 25.0F;
+  float occlusion_size_noise_scale = 100.0F;
   float iou_cost_weight = 0.55F;
   float center_cost_weight = 0.30F;
   float size_cost_weight = 0.15F;
@@ -120,6 +126,12 @@ private:
   static float compute_iou(
       const vision_servo_msgs::msg::Target& left,
       const vision_servo_msgs::msg::Target& right);
+  static float compute_containment(
+      const vision_servo_msgs::msg::Target& left,
+      const vision_servo_msgs::msg::Target& right);
+  bool is_occlusion_compatible(
+      const vision_servo_msgs::msg::Target& predicted,
+      const vision_servo_msgs::msg::Target& detection) const;
   static vision_servo_msgs::msg::Target target_from_track(const Track& track);
   static float normalized_center_distance(
       const vision_servo_msgs::msg::Target& left,
@@ -128,6 +140,9 @@ private:
       const vision_servo_msgs::msg::Target& left,
       const vision_servo_msgs::msg::Target& right);
   float mahalanobis_distance_squared(
+      const Track& track,
+      const vision_servo_msgs::msg::Target& detection) const;
+  float position_mahalanobis_distance_squared(
       const Track& track,
       const vision_servo_msgs::msg::Target& detection) const;
   cv::Mat measurement_for(const vision_servo_msgs::msg::Target& detection) const;

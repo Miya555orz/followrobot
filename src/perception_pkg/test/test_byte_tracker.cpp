@@ -315,6 +315,61 @@ TEST(ByteTracker, LostTrackUsesRelaxedRecoveryGate)
   EXPECT_TRUE(tracks.targets.front().visible);
 }
 
+TEST(ByteTracker, KeepsIdWhenDetectionChangesFromFullToPartialBody)
+{
+  auto config = test_config();
+  config.enable_mahalanobis_gating = true;
+  perception_pkg::ByteTracker tracker(config);
+
+  auto full = make_frame(1'000'000'000ULL);
+  full.targets.push_back(make_detection(
+      100.0F, 120.0F, 60.0F, 160.0F, 0.90F));
+  tracker.update(full);
+  const int original_id = tracker.get_tracks(
+      1'000'000'000ULL, full.header.frame_id).targets.front().id;
+
+  // Only the upper half remains visible. Its area is 25% of the persistent
+  // full-body box, below the normal 0.50 size gate.
+  auto partial = make_frame(1'033'000'000ULL);
+  partial.targets.push_back(make_detection(
+      100.0F, 82.0F, 60.0F, 40.0F, 0.86F));
+  tracker.update(partial);
+  const auto tracks = tracker.get_tracks(
+      1'033'000'000ULL, partial.header.frame_id);
+  ASSERT_EQ(tracks.targets.size(), 1U);
+  EXPECT_EQ(tracks.targets.front().id, original_id);
+  EXPECT_TRUE(tracks.targets.front().visible);
+  EXPECT_GT(tracks.targets.front().height, 100.0F);
+}
+
+TEST(ByteTracker, RecoversSameIdAfterFrameEdgeTruncation)
+{
+  auto config = test_config();
+  config.lost_timeout_seconds = 1.0;
+  config.enable_mahalanobis_gating = true;
+  perception_pkg::ByteTracker tracker(config);
+
+  auto full = make_frame(1'000'000'000ULL);
+  full.targets.push_back(make_detection(
+      100.0F, 120.0F, 60.0F, 160.0F, 0.90F));
+  tracker.update(full);
+  const int original_id = tracker.get_tracks(
+      1'000'000'000ULL, full.header.frame_id).targets.front().id;
+
+  auto missing = make_frame(1'033'000'000ULL);
+  tracker.update(missing);
+
+  auto truncated = make_frame(1'066'000'000ULL);
+  truncated.targets.push_back(make_detection(
+      100.0F, 82.0F, 60.0F, 40.0F, 0.88F));
+  tracker.update(truncated);
+  const auto tracks = tracker.get_tracks(
+      1'066'000'000ULL, truncated.header.frame_id);
+  ASSERT_EQ(tracks.targets.size(), 1U);
+  EXPECT_EQ(tracks.targets.front().id, original_id);
+  EXPECT_TRUE(tracks.targets.front().visible);
+}
+
 TEST(ByteTracker, AppliesCameraMotionToLostPrediction)
 {
   perception_pkg::ByteTracker tracker(test_config());

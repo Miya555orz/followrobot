@@ -14,6 +14,14 @@ tracking_node:
     lost_center_gate: 1.50
     minimum_size_ratio: 0.50
     maximum_size_ratio: 2.00
+    # Partial-body / frame-edge recovery. These relaxed size limits are used
+    # only when boxes strongly overlap by containment and motion remains valid.
+    occlusion_min_containment: 0.60
+    occlusion_center_gate: 0.85
+    occlusion_minimum_size_ratio: 0.15
+    occlusion_maximum_size_ratio: 5.00
+    occlusion_mahalanobis_gate: 25.0
+    occlusion_size_noise_scale: 100.0
     iou_cost_weight: 0.55
     center_cost_weight: 0.30
     size_cost_weight: 0.15

@@ -67,6 +67,18 @@ void ByteTracker::validate_config() const
     throw std::invalid_argument(
         "size ratios require 0 < minimum_size_ratio <= 1 <= maximum_size_ratio");
   }
+  if (!valid_unit_interval(config_.occlusion_min_containment) ||
+      !std::isfinite(config_.occlusion_center_gate) ||
+      !std::isfinite(config_.occlusion_minimum_size_ratio) ||
+      !std::isfinite(config_.occlusion_maximum_size_ratio) ||
+      config_.occlusion_center_gate <= 0.0F ||
+      config_.occlusion_minimum_size_ratio <= 0.0F ||
+      config_.occlusion_minimum_size_ratio > 1.0F ||
+      config_.occlusion_maximum_size_ratio < 1.0F ||
+      config_.occlusion_minimum_size_ratio > config_.minimum_size_ratio ||
+      config_.occlusion_maximum_size_ratio < config_.maximum_size_ratio) {
+    throw std::invalid_argument("invalid occlusion-recovery geometry thresholds");
+  }
   const float weight_sum = config_.iou_cost_weight + config_.center_cost_weight +
       config_.size_cost_weight;
   if (!std::isfinite(weight_sum) || weight_sum <= 0.0F ||
@@ -76,9 +88,15 @@ void ByteTracker::validate_config() const
   }
   if (!std::isfinite(config_.confirmed_mahalanobis_gate) ||
       !std::isfinite(config_.lost_mahalanobis_gate) ||
+      !std::isfinite(config_.occlusion_mahalanobis_gate) ||
       config_.confirmed_mahalanobis_gate <= 0.0F ||
-      config_.lost_mahalanobis_gate <= 0.0F) {
+      config_.lost_mahalanobis_gate <= 0.0F ||
+      config_.occlusion_mahalanobis_gate <= 0.0F) {
     throw std::invalid_argument("Mahalanobis gates must be finite and positive");
+  }
+  if (!std::isfinite(config_.occlusion_size_noise_scale) ||
+      config_.occlusion_size_noise_scale < 1.0F) {
+    throw std::invalid_argument("occlusion_size_noise_scale must be at least one");
   }
   if (!std::isfinite(config_.lost_timeout_seconds) ||
       config_.lost_timeout_seconds < 0.0) {
@@ -350,26 +368,46 @@ ByteTracker::AssociationResult ByteTracker::associate(
         continue;
       }
       const float iou = compute_iou(predicted, detection);
+      const float containment = compute_containment(predicted, detection);
       const float center_distance = normalized_center_distance(predicted, detection);
       const float relative_size = size_ratio(predicted, detection);
-      if ((iou < options.minimum_iou && center_distance > options.center_gate) ||
-          relative_size < config_.minimum_size_ratio ||
-          relative_size > config_.maximum_size_ratio) {
+      const bool occlusion_match = is_occlusion_compatible(predicted, detection);
+      if (((iou < options.minimum_iou && center_distance > options.center_gate) &&
+           !occlusion_match) ||
+          ((relative_size < config_.minimum_size_ratio ||
+            relative_size > config_.maximum_size_ratio) && !occlusion_match)) {
         continue;
       }
       if (options.use_mahalanobis_gate &&
           mahalanobis_distance_squared(track, detection) > options.mahalanobis_gate) {
-        continue;
+        if (!occlusion_match ||
+            position_mahalanobis_distance_squared(track, detection) >
+                config_.occlusion_mahalanobis_gate) {
+          continue;
+        }
       }
 
       const float size_cost = maximum_log_size > 1.0e-6F
           ? std::clamp(std::abs(std::log(relative_size)) / maximum_log_size, 0.0F, 1.0F)
           : 0.0F;
+      // IoS remains high when a detector returns only the visible half of a
+      // person. It is used only for an already established spatially
+      // compatible trajectory, so unrelated nearby people do not bypass the
+      // motion and center gates.
+      const float overlap_score = occlusion_match
+          ? std::max(iou, 0.75F * containment)
+          : iou;
       double cost = (
-          config_.iou_cost_weight * (1.0F - iou) +
+          config_.iou_cost_weight * (1.0F - overlap_score) +
           config_.center_cost_weight *
-              std::clamp(center_distance / options.center_gate, 0.0F, 1.0F) +
-          config_.size_cost_weight * size_cost) / weight_sum;
+              std::clamp(
+                  center_distance /
+                      (occlusion_match
+                          ? std::max(options.center_gate, config_.occlusion_center_gate)
+                          : options.center_gate),
+                  0.0F, 1.0F) +
+          config_.size_cost_weight * (occlusion_match ? 0.25F * size_cost : size_cost)) /
+          weight_sum;
       if (options.fuse_detection_score) {
         cost += 0.05 * (1.0 - std::clamp(
             static_cast<double>(detection.confidence), 0.0, 1.0));
@@ -397,7 +435,21 @@ ByteTracker::AssociationResult ByteTracker::associate(
 void ByteTracker::update_track(
     Track& track, const vision_servo_msgs::msg::Target& detection)
 {
+  const auto predicted = target_from_track(track);
+  const float relative_size = size_ratio(predicted, detection);
+  const bool partial_observation =
+      is_occlusion_compatible(predicted, detection) &&
+      (relative_size < config_.minimum_size_ratio ||
+       relative_size > config_.maximum_size_ratio);
   track.kf.measurementNoiseCov = measurement_noise_for(track, detection.confidence);
+  if (partial_observation) {
+    // Trust the measured center, but do not let a one-frame half-body box
+    // collapse the persistent full-person aspect/height state.
+    track.kf.measurementNoiseCov.at<float>(2, 2) *=
+        config_.occlusion_size_noise_scale;
+    track.kf.measurementNoiseCov.at<float>(3, 3) *=
+        config_.occlusion_size_noise_scale;
+  }
   track.kf.correct(measurement_for(detection));
   track.class_name = detection.class_name;
   track.confidence = detection.confidence;
@@ -463,12 +515,18 @@ void ByteTracker::update_pending_candidates(
       const float iou = compute_iou(candidate.detection, detection);
       const float center = normalized_center_distance(candidate.detection, detection);
       const float ratio = size_ratio(candidate.detection, detection);
+      const bool occlusion_match =
+          is_occlusion_compatible(candidate.detection, detection);
       if ((iou < config_.unconfirmed_match_min_iou &&
            center > config_.confirmed_center_gate) ||
-          ratio < config_.minimum_size_ratio || ratio > config_.maximum_size_ratio) {
+          ((ratio < config_.minimum_size_ratio ||
+            ratio > config_.maximum_size_ratio) && !occlusion_match)) {
         continue;
       }
-      const float cost = (1.0F - iou) + center;
+      const float cost =
+          (1.0F - (occlusion_match
+              ? std::max(iou, 0.75F * compute_containment(candidate.detection, detection))
+              : iou)) + center;
       if (cost < best_cost) {
         best_cost = cost;
         best_index = index;
@@ -518,7 +576,9 @@ bool ByteTracker::detection_near_lost_track(
     const auto predicted = target_from_track(track);
     const float ratio = size_ratio(predicted, detection);
     if (normalized_center_distance(predicted, detection) <= config_.lost_center_gate &&
-        ratio >= config_.minimum_size_ratio && ratio <= config_.maximum_size_ratio) {
+        ((ratio >= config_.minimum_size_ratio &&
+          ratio <= config_.maximum_size_ratio) ||
+         is_occlusion_compatible(predicted, detection))) {
       return true;
     }
   }
@@ -642,6 +702,25 @@ float ByteTracker::mahalanobis_distance_squared(
   return static_cast<float>(residual.dot(solved));
 }
 
+float ByteTracker::position_mahalanobis_distance_squared(
+    const Track& track,
+    const vision_servo_msgs::msg::Target& detection) const
+{
+  const cv::Mat full_residual = measurement_for(detection) -
+      track.kf.measurementMatrix * track.kf.statePre;
+  const cv::Mat full_covariance =
+      track.kf.measurementMatrix * track.kf.errorCovPre *
+      track.kf.measurementMatrix.t() +
+      measurement_noise_for(track, detection.confidence);
+  const cv::Mat residual = full_residual.rowRange(0, 2);
+  const cv::Mat covariance = full_covariance(cv::Rect(0, 0, 2, 2));
+  cv::Mat solved;
+  if (!cv::solve(covariance, residual, solved, cv::DECOMP_CHOLESKY)) {
+    return std::numeric_limits<float>::infinity();
+  }
+  return static_cast<float>(residual.dot(solved));
+}
+
 float ByteTracker::compute_iou(
     const vision_servo_msgs::msg::Target& left,
     const vision_servo_msgs::msg::Target& right)
@@ -654,6 +733,32 @@ float ByteTracker::compute_iou(
       std::max(0.0F, x2 - x1) * std::max(0.0F, y2 - y1);
   const float union_area = target_area(left) + target_area(right) - intersection;
   return union_area > 1.0e-6F ? intersection / union_area : 0.0F;
+}
+
+float ByteTracker::compute_containment(
+    const vision_servo_msgs::msg::Target& left,
+    const vision_servo_msgs::msg::Target& right)
+{
+  const float x1 = std::max(left.bbox[0], right.bbox[0]);
+  const float y1 = std::max(left.bbox[1], right.bbox[1]);
+  const float x2 = std::min(left.bbox[2], right.bbox[2]);
+  const float y2 = std::min(left.bbox[3], right.bbox[3]);
+  const float intersection =
+      std::max(0.0F, x2 - x1) * std::max(0.0F, y2 - y1);
+  const float smaller_area = std::min(target_area(left), target_area(right));
+  return smaller_area > 1.0e-6F ? intersection / smaller_area : 0.0F;
+}
+
+bool ByteTracker::is_occlusion_compatible(
+    const vision_servo_msgs::msg::Target& predicted,
+    const vision_servo_msgs::msg::Target& detection) const
+{
+  const float ratio = size_ratio(predicted, detection);
+  return ratio >= config_.occlusion_minimum_size_ratio &&
+      ratio <= config_.occlusion_maximum_size_ratio &&
+      compute_containment(predicted, detection) >= config_.occlusion_min_containment &&
+      normalized_center_distance(predicted, detection) <=
+          config_.occlusion_center_gate;
 }
 
 float ByteTracker::normalized_center_distance(

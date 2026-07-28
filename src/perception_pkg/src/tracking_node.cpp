@@ -117,6 +117,18 @@ TrackingNode::TrackingNode(const rclcpp::NodeOptions& options)
       floating_descriptor("Minimum detection/prediction box-area ratio.", 0.01, 1.0));
   this->declare_parameter("maximum_size_ratio", 2.00,
       floating_descriptor("Maximum detection/prediction box-area ratio.", 1.0, 100.0));
+  this->declare_parameter("occlusion_min_containment", 0.60,
+      floating_descriptor("Minimum intersection-over-smaller-box for partial-body recovery.", 0.0, 1.0));
+  this->declare_parameter("occlusion_center_gate", 0.85,
+      floating_descriptor("Center-distance gate for partial-body recovery.", 0.01, 10.0));
+  this->declare_parameter("occlusion_minimum_size_ratio", 0.15,
+      floating_descriptor("Minimum partial/full box-area ratio accepted during occlusion.", 0.01, 1.0));
+  this->declare_parameter("occlusion_maximum_size_ratio", 5.00,
+      floating_descriptor("Maximum partial/full box-area ratio accepted during recovery.", 1.0, 100.0));
+  this->declare_parameter("occlusion_mahalanobis_gate", 25.0,
+      floating_descriptor("Squared position-only innovation gate during partial-body recovery.", 0.01, 1000.0));
+  this->declare_parameter("occlusion_size_noise_scale", 100.0,
+      floating_descriptor("Measurement-noise multiplier for aspect/height during partial observations.", 1.0, 1000000.0));
   this->declare_parameter("iou_cost_weight", 0.55,
       floating_descriptor("IoU component weight in association cost.", 0.0, 100.0));
   this->declare_parameter("center_cost_weight", 0.30,
@@ -199,6 +211,18 @@ TrackingNode::TrackingNode(const rclcpp::NodeOptions& options)
         this->get_parameter("minimum_size_ratio").as_double());
     config.maximum_size_ratio = static_cast<float>(
         this->get_parameter("maximum_size_ratio").as_double());
+    config.occlusion_min_containment = static_cast<float>(
+        this->get_parameter("occlusion_min_containment").as_double());
+    config.occlusion_center_gate = static_cast<float>(
+        this->get_parameter("occlusion_center_gate").as_double());
+    config.occlusion_minimum_size_ratio = static_cast<float>(
+        this->get_parameter("occlusion_minimum_size_ratio").as_double());
+    config.occlusion_maximum_size_ratio = static_cast<float>(
+        this->get_parameter("occlusion_maximum_size_ratio").as_double());
+    config.occlusion_mahalanobis_gate = static_cast<float>(
+        this->get_parameter("occlusion_mahalanobis_gate").as_double());
+    config.occlusion_size_noise_scale = static_cast<float>(
+        this->get_parameter("occlusion_size_noise_scale").as_double());
     config.iou_cost_weight = static_cast<float>(
         this->get_parameter("iou_cost_weight").as_double());
     config.center_cost_weight = static_cast<float>(
