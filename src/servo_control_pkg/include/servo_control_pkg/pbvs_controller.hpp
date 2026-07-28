@@ -75,6 +75,8 @@ private:
   // ── PBVS 控制参数 ──────────────────────────────────────────────
   double translational_gain_;
   double rotational_gain_;
+  double pitch_gain_;
+  double pitch_filter_alpha_;
   double lateral_gain_;
   double yaw_deadband_rad_;
   double pitch_deadband_rad_;
@@ -85,6 +87,7 @@ private:
   // [bearing_yaw, bearing_pitch, depth, lateral_x, lateral_y, 0].
   double last_yaw_error_{0.0};
   double last_pitch_error_{0.0};
+  double filtered_pitch_error_{0.0};
   double last_depth_error_{0.0};
   bool point_goal_set_;
 };

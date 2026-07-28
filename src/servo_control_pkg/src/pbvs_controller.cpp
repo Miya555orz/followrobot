@@ -40,6 +40,8 @@ PBVSController::PBVSController(const rclcpp::NodeOptions& options)
   : ServoControllerBase("pbvs_controller", options),
     translational_gain_(0.6),
     rotational_gain_(0.6),
+    pitch_gain_(0.45),
+    pitch_filter_alpha_(0.25),
     lateral_gain_(0.25),
     yaw_deadband_rad_(0.034906585),
     pitch_deadband_rad_(0.034906585),
@@ -49,6 +51,8 @@ PBVSController::PBVSController(const rclcpp::NodeOptions& options)
 {
   declare_parameter("translational_gain", translational_gain_);
   declare_parameter("rotational_gain", rotational_gain_);
+  declare_parameter("pitch_gain", pitch_gain_);
+  declare_parameter("pitch_filter_alpha", pitch_filter_alpha_);
   declare_parameter("lateral_gain", lateral_gain_);
   declare_parameter("yaw_deadband_rad", yaw_deadband_rad_);
   declare_parameter("pitch_deadband_rad", pitch_deadband_rad_);
@@ -57,6 +61,8 @@ PBVSController::PBVSController(const rclcpp::NodeOptions& options)
 
   translational_gain_ = get_parameter("translational_gain").as_double();
   rotational_gain_ = get_parameter("rotational_gain").as_double();
+  pitch_gain_ = get_parameter("pitch_gain").as_double();
+  pitch_filter_alpha_ = get_parameter("pitch_filter_alpha").as_double();
   lateral_gain_ = get_parameter("lateral_gain").as_double();
   yaw_deadband_rad_ = get_parameter("yaw_deadband_rad").as_double();
   pitch_deadband_rad_ = get_parameter("pitch_deadband_rad").as_double();
@@ -88,6 +94,9 @@ void PBVSController::configureFromNode(const rclcpp::Node& node)
     std::max(0.0, get_double("translational_gain", translational_gain_));
   rotational_gain_ =
     std::max(0.0, get_double("rotational_gain", rotational_gain_));
+  pitch_gain_ = std::max(0.0, get_double("pitch_gain", pitch_gain_));
+  pitch_filter_alpha_ = std::clamp(
+    get_double("pitch_filter_alpha", pitch_filter_alpha_), 0.0, 1.0);
   lateral_gain_ = std::max(0.0, get_double("lateral_gain", lateral_gain_));
   yaw_deadband_rad_ =
     std::max(0.0, get_double("yaw_deadband_rad", yaw_deadband_rad_));
@@ -130,6 +139,7 @@ bool PBVSController::setGoalFromTarget(
   goal_.desired_depth = desired_depth;
   last_yaw_error_ = std::atan2(x, z);
   last_pitch_error_ = std::atan2(y, std::hypot(x, z));
+  filtered_pitch_error_ = last_pitch_error_;
   last_depth_error_ = z - desired_depth;
   feature_error_.setZero();
   feature_error_(0) = last_yaw_error_;
@@ -163,6 +173,8 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
 
   last_yaw_error_ = std::atan2(x, z);
   last_pitch_error_ = std::atan2(y, std::hypot(x, z));
+  filtered_pitch_error_ += pitch_filter_alpha_ *
+    (last_pitch_error_ - filtered_pitch_error_);
   last_depth_error_ = z - goal_.desired_depth;
 
   // PBVS-specific diagnostic vector.  Do not manufacture a target orientation:
@@ -180,7 +192,7 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
   const double yaw_control =
     apply_deadband(last_yaw_error_, yaw_deadband_rad_);
   const double pitch_control =
-    apply_deadband(last_pitch_error_, pitch_deadband_rad_);
+    apply_deadband(filtered_pitch_error_, pitch_deadband_rad_);
   const double depth_control =
     apply_deadband(last_depth_error_, depth_deadband_m_);
 
@@ -190,7 +202,7 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
   // bearing: a target on image-right (positive optical X) needs positive
   // physical yaw.  RS2 positive pitch is upward, so a target below centre
   // (positive optical Y) needs negative physical pitch.
-  velocity(3) = rotational_gain_ * pitch_control;
+  velocity(3) = pitch_gain_ * pitch_control;
   velocity(4) = -rotational_gain_ * yaw_control;
   velocity(2) = translational_gain_ * depth_control;
   if (enable_lateral_translation_) {

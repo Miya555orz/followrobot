@@ -8,12 +8,14 @@
 servo_manager:
   ros__parameters:
     translational_gain: 0.55      # 深度P增益
-    rotational_gain: 0.85         # 目标方位P增益
+    rotational_gain: 0.85         # yaw 方位P增益
+    pitch_gain: 0.45              # pitch 单独降低增益，抑制上下抖动
+    pitch_filter_alpha: 0.25      # pitch 误差一阶低通；越小越平滑
     lateral_gain: 0.20            # 横移增益（首版默认禁用）
     enable_lateral_translation: false
 
     yaw_deadband_rad: 0.0349066   # 2 deg
-    pitch_deadband_rad: 0.0349066 # 2 deg
+    pitch_deadband_rad: 0.0523599 # 3 deg，避免中心附近反复修正
     depth_deadband_m: 0.20
 
     max_linear_velocity: 0.25     # 首版实机安全上限 (m/s)
