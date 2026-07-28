@@ -13,4 +13,10 @@ install(DIRECTORY launch config rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
+# Jetson real-hardware convenience entrypoints.
+install(PROGRAMS
+  scripts/start_fcr_ibvs.sh
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()
