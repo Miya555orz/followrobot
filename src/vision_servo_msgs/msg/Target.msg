@@ -31,3 +31,19 @@ float32[3] velocity                # [vx, vy, vz] in m/s
 
 # A value of 0 means position/velocity must not be used as valid metric data.
 float32 depth_confidence           # Reliability of metric 3D data [0.0, 1.0]
+
+# 3D fusion lifecycle. Consumers must never use INVALID metric data. PREDICTED
+# is intended for short, reduced-authority angular control only; it must not
+# drive chassis translation.
+uint8 FUSION_STATE_INVALID=0
+uint8 FUSION_STATE_VALID=1
+uint8 FUSION_STATE_DEGRADED=2
+uint8 FUSION_STATE_PREDICTED=3
+uint8 fusion_state
+
+# Fusion observability. raw_position is the current accepted measurement before
+# temporal filtering. For PREDICTED/INVALID samples it is all zeros.
+float32[3] raw_position
+float32 depth_valid_ratio          # Inlier samples / projected samples in torso ROI
+float32 depth_spread               # Robust median absolute deviation of depth (m)
+float32 fusion_age                 # Seconds since the last accepted real measurement

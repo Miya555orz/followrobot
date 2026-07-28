@@ -164,6 +164,9 @@ void PerceptionPipeline::image_callback(
       }
 
       target.depth_confidence = confidence;
+      target.fusion_state = confidence > 0.0F
+        ? vision_servo_msgs::msg::Target::FUSION_STATE_DEGRADED
+        : vision_servo_msgs::msg::Target::FUSION_STATE_INVALID;
       if (depth > 0.0f) {
         compute_3d_position_target(target, depth);
       }

@@ -29,7 +29,11 @@ inline bool metric_depth_valid(
   double max_depth)
 {
   const double depth = target.position[2];
-  return std::isfinite(depth) && depth >= min_depth && depth <= max_depth &&
+  const bool fusion_allows_translation =
+    target.fusion_state == vision_servo_msgs::msg::Target::FUSION_STATE_VALID ||
+    target.fusion_state == vision_servo_msgs::msg::Target::FUSION_STATE_DEGRADED;
+  return fusion_allows_translation &&
+    std::isfinite(depth) && depth >= min_depth && depth <= max_depth &&
     std::isfinite(target.depth_confidence) &&
     target.depth_confidence >= min_confidence;
 }

@@ -1,7 +1,8 @@
 # perception_pkg
 
-当前阶段只实现 Sony 主 RGB 图像的目标检测和跟踪。奥比中光深度融合、避障、
-建图和 Nav2 暂不进入本轮代码范围。
+当前生产链路实现 Sony 主 RGB 图像目标检测与跟踪，并将 Gemini 335 深度
+重投影到 Sony 图像完成锁定目标的稳健 3D 定位。避障、建图和 Nav2 不属于
+本包当前范围。
 
 ## 当前数据流
 
@@ -11,16 +12,30 @@ Sony image
   -> /perception/detections
   -> tracking_node (ByteTrack V2: XYAH Kalman + state-specific Hungarian association)
   -> /perception/tracks
+  + Gemini depth + calibrated TF
+  -> depth_fusion_node
+  -> /perception/targets_3d
 ```
 
 `Target.bbox` 和 `Target.center` 始终使用 Sony 输入图像的像素坐标。检测和跟踪
 结果保留 Sony 原始时间戳及 `frame_id`。
 
-仓库原有 `depth_estimator_node` 和 `PerceptionPipeline` 目前仅为历史仿真兼容
+仓库原有 `depth_estimator_node` 和 `PerceptionPipeline` 仅为历史仿真兼容
 代码，默认既不构建也不启动。只有显式设置
 `-DPERCEPTION_BUILD_LEGACY_FUSION=ON` 才会生成它们；生产环境不得使用该选项。
-双相机融合阶段开始时应单独重新设计，不能直接把 Sony bbox 像素用于索引
-奥比中光深度图。
+
+## depth_fusion_node
+
+- 使用已标定的 Gemini depth → Sony optical TF 重投影深度点，不直接混用两台
+  相机的像素坐标。
+- 通过有界双队列按最近时间戳配对，过期数据直接丢弃，防止延迟累积。
+- 仅从人体框中央上半身 ROI 取深度，使用分位数种子、MAD 离群剔除和中位统计。
+- 每个 tracking ID 独立维护 XYZ/速度滤波；XY 保持响应，Z 使用更强平滑。
+- 通过位置跳变、横向速度和深度速度门控拒绝异常测量，异常值不会重置滤波器。
+- 当前锁定 ID 可在 0.45 秒内发布明确标记的 `PREDICTED` 结果；其他 ID 不预测。
+- 融合状态为 `VALID / DEGRADED / PREDICTED / INVALID`。只有真实的 VALID 或
+  DEGRADED 深度可以进入底盘平移，DEGRADED 平移速度减半。
+- `/diagnostics` 提供拒绝测量数、预测目标数、同步误差、队列长度和输出数据年龄。
 
 ## detection_node
 

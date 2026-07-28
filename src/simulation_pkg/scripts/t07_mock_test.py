@@ -161,6 +161,7 @@ class T07MockTest(Node):
         t.position = [0.0, 0.0, 3.0]
         t.velocity = [0.0, 0.0, 0.0]
         t.depth_confidence = 1.0
+        t.fusion_state = Target.FUSION_STATE_VALID
 
         arr = TargetArray()
         arr.header.stamp = stamp

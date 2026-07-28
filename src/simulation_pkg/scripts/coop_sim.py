@@ -327,6 +327,7 @@ class CoopSim(Node):
             t.visible = True
             t.confidence = 0.95
             t.depth_confidence = 1.0
+            t.fusion_state = Target.FUSION_STATE_VALID
             t.position = [float(optical_x), 0.0, float(optical_z)]
             t.velocity = [0.0, 0.0, 0.0]
             t.center = projection["center"]

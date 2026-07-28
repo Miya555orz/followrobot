@@ -754,6 +754,9 @@ private:
       if (tracked != msg.targets.end()) {
         return *tracked;
       }
+      // Never switch to a different person merely because the locked ID is
+      // temporarily absent. Target replacement belongs to the selector/tracker.
+      return std::nullopt;
     }
 
     return *std::max_element(
@@ -1038,6 +1041,11 @@ private:
     double base_vx = enable_base_translation_
       ? std::clamp(k_base_z_ * ez, -max_base_vx_, max_base_vx_)
       : 0.0;
+    if (active_target_.fusion_state == Target::FUSION_STATE_DEGRADED) {
+      // A degraded real measurement may keep following at reduced authority.
+      // Predicted and invalid depth are rejected by translation_depth_valid().
+      base_vx *= 0.5;
+    }
     if (!enable_base_translation_ || !depth_valid) {
       // Metric depth is a hard safety gate, not a signal to low-pass. A stale
       // residual command must never survive loss of depth confidence.

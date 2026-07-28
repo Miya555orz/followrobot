@@ -79,10 +79,20 @@ DepthFusionNode::DepthFusionNode(const rclcpp::NodeOptions & options)
   max_depth_m_ = declare_parameter("depth.max_meters", 10.0);
   min_valid_depth_ratio_ = declare_parameter("depth.min_valid_ratio", 0.10);
   depth_percentile_ = declare_parameter("depth.percentile", 0.40);
-  depth_temporal_alpha_ = declare_parameter("filter.position_alpha", 0.35);
+  torso_x_min_ratio_ = declare_parameter("depth.torso_x_min_ratio", 0.30);
+  torso_x_max_ratio_ = declare_parameter("depth.torso_x_max_ratio", 0.70);
+  torso_y_min_ratio_ = declare_parameter("depth.torso_y_min_ratio", 0.22);
+  torso_y_max_ratio_ = declare_parameter("depth.torso_y_max_ratio", 0.68);
+  xy_temporal_alpha_ = declare_parameter("filter.xy_position_alpha", 0.45);
+  z_temporal_alpha_ = declare_parameter("filter.z_position_alpha", 0.28);
   velocity_temporal_alpha_ = declare_parameter("filter.velocity_alpha", 0.25);
-  max_position_jump_m_ = declare_parameter("filter.max_position_jump_meters", 1.25);
+  max_position_jump_m_ = declare_parameter("filter.max_position_jump_meters", 0.75);
+  max_xy_speed_mps_ = declare_parameter("filter.max_xy_speed_mps", 3.0);
+  max_z_speed_mps_ = declare_parameter("filter.max_z_speed_mps", 4.0);
+  prediction_hold_s_ = declare_parameter("filter.prediction_hold_seconds", 0.45);
   filter_retention_s_ = declare_parameter("filter.retention_seconds", 3.0);
+  degraded_confidence_ = declare_parameter("quality.degraded_confidence", 0.40);
+  valid_confidence_ = declare_parameter("quality.valid_confidence", 0.65);
   max_sync_skew_s_ = declare_parameter("timing.max_sync_skew_seconds", 0.080);
   max_pair_wait_s_ = declare_parameter("timing.max_pair_wait_seconds", 0.120);
   max_data_age_s_ = declare_parameter("timing.max_data_age_seconds", 0.250);
@@ -95,8 +105,17 @@ DepthFusionNode::DepthFusionNode(const rclcpp::NodeOptions & options)
   if (depth_pixel_stride_ < 1 || min_target_samples_ < 1 ||
     min_depth_m_ <= 0.0 || max_depth_m_ <= min_depth_m_ ||
     depth_percentile_ < 0.0 || depth_percentile_ > 1.0 ||
-    depth_temporal_alpha_ <= 0.0 || depth_temporal_alpha_ > 1.0 ||
+    xy_temporal_alpha_ <= 0.0 || xy_temporal_alpha_ > 1.0 ||
+    z_temporal_alpha_ <= 0.0 || z_temporal_alpha_ > 1.0 ||
     velocity_temporal_alpha_ <= 0.0 || velocity_temporal_alpha_ > 1.0 ||
+    torso_x_min_ratio_ < 0.0 || torso_x_max_ratio_ > 1.0 ||
+    torso_y_min_ratio_ < 0.0 || torso_y_max_ratio_ > 1.0 ||
+    torso_x_max_ratio_ <= torso_x_min_ratio_ ||
+    torso_y_max_ratio_ <= torso_y_min_ratio_ ||
+    max_position_jump_m_ <= 0.0 || max_xy_speed_mps_ <= 0.0 ||
+    max_z_speed_mps_ <= 0.0 || prediction_hold_s_ < 0.0 ||
+    degraded_confidence_ < 0.0 || valid_confidence_ > 1.0 ||
+    valid_confidence_ < degraded_confidence_ ||
     max_sync_skew_s_ < 0.0 || max_pair_wait_s_ < 0.0 || max_data_age_s_ <= 0.0 ||
     depth_timeout_s_ <= 0.0 || tracks_timeout_s_ <= 0.0 ||
     depth_queue_capacity_ < 2 || track_queue_capacity_ < 2)
@@ -439,32 +458,37 @@ std::vector<DepthFusionNode::DepthSample> DepthFusionNode::reproject_depth_point
 bool DepthFusionNode::estimate_target_position(
   const vision_servo_msgs::msg::Target & target,
   const std::vector<DepthSample> & points,
-  cv::Vec3f & position,
-  float & confidence,
-  int & sample_count) const
+  PositionEstimate & estimate) const
 {
   const float x_min = target.bbox[0];
   const float y_min = target.bbox[1];
   const float x_max = target.bbox[2];
   const float y_max = target.bbox[3];
-  const float area = std::max(1.0F, (x_max - x_min) * (y_max - y_min));
   if (x_max <= x_min || y_max <= y_min) {
     return false;
   }
+  const float width = x_max - x_min;
+  const float height = y_max - y_min;
+  const float roi_x_min = x_min + width * static_cast<float>(torso_x_min_ratio_);
+  const float roi_x_max = x_min + width * static_cast<float>(torso_x_max_ratio_);
+  const float roi_y_min = y_min + height * static_cast<float>(torso_y_min_ratio_);
+  const float roi_y_max = y_min + height * static_cast<float>(torso_y_max_ratio_);
+  const float roi_area =
+    std::max(1.0F, (roi_x_max - roi_x_min) * (roi_y_max - roi_y_min));
 
   std::vector<const DepthSample *> candidates;
   candidates.reserve(256);
   std::vector<float> sony_depths;
   for (const auto & point : points) {
-    if (point.pixel_sony.x >= x_min && point.pixel_sony.x < x_max &&
-      point.pixel_sony.y >= y_min && point.pixel_sony.y < y_max)
+    if (point.pixel_sony.x >= roi_x_min && point.pixel_sony.x < roi_x_max &&
+      point.pixel_sony.y >= roi_y_min && point.pixel_sony.y < roi_y_max)
     {
       candidates.push_back(&point);
       sony_depths.push_back(point.point_sony[2]);
     }
   }
-  sample_count = static_cast<int>(candidates.size());
-  if (sample_count < min_target_samples_) {
+  estimate.sample_count = static_cast<int>(candidates.size());
+  if (estimate.sample_count < min_target_samples_) {
     return false;
   }
 
@@ -493,22 +517,24 @@ bool DepthFusionNode::estimate_target_position(
     return false;
   }
 
-  position = cv::Vec3f(
+  estimate.position = cv::Vec3f(
     static_cast<float>(sum[0] / foreground_count),
     static_cast<float>(sum[1] / foreground_count),
     static_cast<float>(sum[2] / foreground_count));
 
   const float sampling_area =
-    area / static_cast<float>(depth_pixel_stride_ * depth_pixel_stride_);
+    roi_area / static_cast<float>(depth_pixel_stride_ * depth_pixel_stride_);
   const float coverage = static_cast<float>(foreground_count) / std::max(1.0F, sampling_area);
   const float consistency = std::exp(-mad / 0.15F);
-  confidence = clamp01(
+  estimate.valid_ratio = clamp01(coverage);
+  estimate.depth_spread = mad;
+  estimate.confidence = clamp01(
     0.55F * std::min(1.0F, coverage / static_cast<float>(min_valid_depth_ratio_)) +
     0.45F * consistency);
   return true;
 }
 
-void DepthFusionNode::update_filter(
+bool DepthFusionNode::update_filter(
   int target_id,
   const rclcpp::Time & stamp,
   const cv::Vec3f & measured_position,
@@ -520,28 +546,86 @@ void DepthFusionNode::update_filter(
     state.position = measured_position;
     state.velocity = cv::Vec3f::all(0.0F);
     state.stamp = stamp;
+    state.last_measurement_stamp = stamp;
+    state.consecutive_rejections = 0;
     state.initialized = true;
   } else {
     const double dt = (stamp - state.stamp).seconds();
-    const float jump = cv::norm(measured_position - state.position);
-    if (dt <= 0.0 || dt > filter_retention_s_ || jump > max_position_jump_m_) {
+    if (dt <= 0.0) {
+      return false;
+    }
+    if (dt > filter_retention_s_) {
       state.position = measured_position;
       state.velocity = cv::Vec3f::all(0.0F);
+      state.consecutive_rejections = 0;
     } else {
+      const cv::Vec3f predicted =
+        state.position + state.velocity * static_cast<float>(dt);
+      const cv::Vec3f residual = measured_position - predicted;
+      const float jump = cv::norm(residual);
+      const float xy_speed =
+        std::hypot(residual[0], residual[1]) / static_cast<float>(dt);
+      const float z_speed = std::abs(residual[2]) / static_cast<float>(dt);
+      if (jump > max_position_jump_m_ ||
+        xy_speed > max_xy_speed_mps_ || z_speed > max_z_speed_mps_)
+      {
+        ++state.consecutive_rejections;
+        ++rejected_measurement_count_;
+        return false;
+      }
       const cv::Vec3f previous = state.position;
-      state.position =
-        static_cast<float>(depth_temporal_alpha_) * measured_position +
-        static_cast<float>(1.0 - depth_temporal_alpha_) * state.position;
+      state.position[0] =
+        static_cast<float>(xy_temporal_alpha_) * measured_position[0] +
+        static_cast<float>(1.0 - xy_temporal_alpha_) * predicted[0];
+      state.position[1] =
+        static_cast<float>(xy_temporal_alpha_) * measured_position[1] +
+        static_cast<float>(1.0 - xy_temporal_alpha_) * predicted[1];
+      state.position[2] =
+        static_cast<float>(z_temporal_alpha_) * measured_position[2] +
+        static_cast<float>(1.0 - z_temporal_alpha_) * predicted[2];
       const cv::Vec3f measured_velocity =
         (state.position - previous) / static_cast<float>(dt);
       state.velocity =
         static_cast<float>(velocity_temporal_alpha_) * measured_velocity +
         static_cast<float>(1.0 - velocity_temporal_alpha_) * state.velocity;
+      state.consecutive_rejections = 0;
     }
     state.stamp = stamp;
+    state.last_measurement_stamp = stamp;
   }
   filtered_position = state.position;
   filtered_velocity = state.velocity;
+  return true;
+}
+
+bool DepthFusionNode::predict_filter(
+  int target_id,
+  const rclcpp::Time & stamp,
+  cv::Vec3f & predicted_position,
+  cv::Vec3f & predicted_velocity,
+  float & prediction_age)
+{
+  const auto found = target_filters_.find(target_id);
+  if (found == target_filters_.end() || !found->second.initialized) {
+    return false;
+  }
+  auto & state = found->second;
+  const double age = (stamp - state.last_measurement_stamp).seconds();
+  if (age < 0.0 || age > prediction_hold_s_) {
+    return false;
+  }
+  const double dt = std::max(0.0, (stamp - state.stamp).seconds());
+  predicted_position =
+    state.position + state.velocity * static_cast<float>(std::min(dt, prediction_hold_s_));
+  predicted_velocity = state.velocity;
+  prediction_age = static_cast<float>(age);
+  state.position = predicted_position;
+  state.stamp = stamp;
+  return std::isfinite(predicted_position[0]) &&
+         std::isfinite(predicted_position[1]) &&
+         std::isfinite(predicted_position[2]) &&
+         predicted_position[2] >= min_depth_m_ &&
+         predicted_position[2] <= max_depth_m_;
 }
 
 void DepthFusionNode::prune_filters(const rclcpp::Time & stamp)
@@ -576,6 +660,7 @@ void DepthFusionNode::process_frame(
   output.tracking_id = tracks.tracking_id;
   const rclcpp::Time track_stamp(tracks.header.stamp, get_clock()->get_clock_type());
   int fused_count = 0;
+  int predicted_count = 0;
 
   for (const auto & target : tracks.targets) {
     auto fused = target;
@@ -583,29 +668,84 @@ void DepthFusionNode::process_frame(
     fused.position = {{0.0F, 0.0F, 0.0F}};
     fused.velocity = {{0.0F, 0.0F, 0.0F}};
     fused.depth_confidence = 0.0F;
+    fused.fusion_state = vision_servo_msgs::msg::Target::FUSION_STATE_INVALID;
+    fused.raw_position = {{0.0F, 0.0F, 0.0F}};
+    fused.depth_valid_ratio = 0.0F;
+    fused.depth_spread = 0.0F;
+    fused.fusion_age = 0.0F;
 
     if (target.tracking_state == vision_servo_msgs::msg::Target::TRACKING_STATE_CONFIRMED &&
       target.visible)
     {
-      cv::Vec3f measured_position;
-      float confidence = 0.0F;
-      int sample_count = 0;
-      if (estimate_target_position(
-          target, points, measured_position, confidence, sample_count))
+      PositionEstimate estimate;
+      if (estimate_target_position(target, points, estimate))
       {
         cv::Vec3f filtered_position;
         cv::Vec3f filtered_velocity;
-        update_filter(
-          target.id, track_stamp, measured_position, filtered_position, filtered_velocity);
+        if (update_filter(
+            target.id, track_stamp, estimate.position,
+            filtered_position, filtered_velocity))
+        {
+          fused.position = {{
+            filtered_position[0], filtered_position[1], filtered_position[2]}};
+          fused.velocity = {{
+            filtered_velocity[0], filtered_velocity[1], filtered_velocity[2]}};
+          fused.raw_position = {{
+            estimate.position[0], estimate.position[1], estimate.position[2]}};
+          fused.depth_valid_ratio = estimate.valid_ratio;
+          fused.depth_spread = estimate.depth_spread;
+          const float sync_confidence = clamp01(
+            1.0F - static_cast<float>(
+              seconds_between(track_stamp, depth_stamp) /
+              std::max(max_sync_skew_s_, 1e-6)));
+          const float detection_quality = clamp01(target.confidence);
+          fused.depth_confidence = estimate.confidence *
+            (0.75F + 0.25F * sync_confidence) *
+            (0.80F + 0.20F * detection_quality);
+          if (fused.depth_confidence >= valid_confidence_) {
+            fused.fusion_state =
+              vision_servo_msgs::msg::Target::FUSION_STATE_VALID;
+          } else if (fused.depth_confidence >= degraded_confidence_) {
+            fused.fusion_state =
+              vision_servo_msgs::msg::Target::FUSION_STATE_DEGRADED;
+          } else {
+            fused.depth_confidence = 0.0F;
+          }
+          if (fused.fusion_state !=
+            vision_servo_msgs::msg::Target::FUSION_STATE_INVALID)
+          {
+            ++fused_count;
+          }
+        }
+      }
+    }
+
+    // Only the explicitly locked target may retain a short predicted 3D pose.
+    // Prediction never masquerades as a real measurement and must not drive
+    // chassis translation.
+    if (fused.fusion_state ==
+      vision_servo_msgs::msg::Target::FUSION_STATE_INVALID &&
+      target.id == tracks.tracking_id)
+    {
+      cv::Vec3f predicted_position;
+      cv::Vec3f predicted_velocity;
+      float prediction_age = 0.0F;
+      if (predict_filter(
+          target.id, track_stamp, predicted_position,
+          predicted_velocity, prediction_age))
+      {
         fused.position = {{
-          filtered_position[0], filtered_position[1], filtered_position[2]}};
+          predicted_position[0], predicted_position[1], predicted_position[2]}};
         fused.velocity = {{
-          filtered_velocity[0], filtered_velocity[1], filtered_velocity[2]}};
-        const float sync_confidence = clamp01(
-          1.0F - static_cast<float>(
-            seconds_between(track_stamp, depth_stamp) / std::max(max_sync_skew_s_, 1e-6)));
-        fused.depth_confidence = confidence * (0.75F + 0.25F * sync_confidence);
-        ++fused_count;
+          predicted_velocity[0], predicted_velocity[1], predicted_velocity[2]}};
+        fused.fusion_age = prediction_age;
+        fused.depth_confidence = clamp01(
+          static_cast<float>(degraded_confidence_) *
+          (1.0F - prediction_age /
+          static_cast<float>(std::max(prediction_hold_s_, 1e-6))));
+        fused.fusion_state =
+          vision_servo_msgs::msg::Target::FUSION_STATE_PREDICTED;
+        ++predicted_count;
       }
     }
     output.targets.push_back(std::move(fused));
@@ -614,7 +754,10 @@ void DepthFusionNode::process_frame(
   prune_filters(track_stamp);
   targets_3d_pub_->publish(output);
   last_fused_count_ = fused_count;
-  health_state_ = points.empty() ? "NO_VALID_DEPTH" : "READY";
+  predicted_target_count_ = static_cast<std::size_t>(predicted_count);
+  health_state_ = points.empty() ? "NO_VALID_DEPTH" :
+    (fused_count > 0 ? "READY" :
+    (predicted_count > 0 ? "PREDICTING" : "NO_VALID_TARGET"));
   diagnostics_.force_update();
   if (publish_debug_ && debug_pub_) {
     publish_debug_image(output, points, output.header);
@@ -626,7 +769,10 @@ void DepthFusionNode::produce_diagnostics(
 {
   if (health_state_ == "READY") {
     status.summary(diagnostic_msgs::msg::DiagnosticStatus::OK, health_state_);
-  } else if (health_state_ == "WAITING_INPUTS" || health_state_ == "WAITING_SYNC") {
+  } else if (
+    health_state_ == "WAITING_INPUTS" || health_state_ == "WAITING_SYNC" ||
+    health_state_ == "PREDICTING" || health_state_ == "NO_VALID_TARGET")
+  {
     status.summary(diagnostic_msgs::msg::DiagnosticStatus::WARN, health_state_);
   } else {
     status.summary(diagnostic_msgs::msg::DiagnosticStatus::ERROR, health_state_);
@@ -639,6 +785,8 @@ void DepthFusionNode::produce_diagnostics(
   status.add("matched_pair_count", matched_pair_count_);
   status.add("dropped_track_count", dropped_track_count_);
   status.add("dropped_depth_count", dropped_depth_count_);
+  status.add("rejected_measurement_count", rejected_measurement_count_);
+  status.add("predicted_target_count", predicted_target_count_);
   status.add("output_age_ms", last_output_age_ms_);
   status.add("direct_depth_tf_loaded", depth_to_sony_tf_available_);
   status.add("sony_frame", sony_frame_);

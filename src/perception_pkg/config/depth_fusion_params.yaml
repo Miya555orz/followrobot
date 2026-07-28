@@ -26,13 +26,26 @@ depth_fusion_node:
       min_valid_ratio: 0.10
       # 0.40 favours the person's foreground over background inside a bbox.
       percentile: 0.40
+      # Use the central upper-body region instead of the entire person bbox.
+      torso_x_min_ratio: 0.30
+      torso_x_max_ratio: 0.70
+      torso_y_min_ratio: 0.22
+      torso_y_max_ratio: 0.68
 
     filter:
-      # alpha=1 uses the new measurement directly; lower values smooth more.
-      position_alpha: 0.35
+      # Lateral control should remain responsive; depth is smoothed more.
+      xy_position_alpha: 0.45
+      z_position_alpha: 0.28
       velocity_alpha: 0.25
-      max_position_jump_meters: 1.25
+      max_position_jump_meters: 0.75
+      max_xy_speed_mps: 3.0
+      max_z_speed_mps: 4.0
+      prediction_hold_seconds: 0.45
       retention_seconds: 3.0
+
+    quality:
+      degraded_confidence: 0.40
+      valid_confidence: 0.65
 
     timing:
       # Tracks wait briefly for the next depth frame, then pair with the

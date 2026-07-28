@@ -125,6 +125,7 @@ class AimMockSource(Node):
         target.position = [0.0, 0.0, 3.0]
         target.velocity = [0.0, 0.0, 0.0]
         target.depth_confidence = 1.0
+        target.fusion_state = Target.FUSION_STATE_VALID
 
         tracks = TargetArray()
         tracks.header.stamp = now

@@ -43,6 +43,7 @@ TEST(MvpSafety, TranslationRequiresConfidenceAndBoundedMetricDepth)
   auto target = confirmed_target();
   target.position[2] = 2.0F;
   target.depth_confidence = 0.8F;
+  target.fusion_state = Target::FUSION_STATE_VALID;
   EXPECT_TRUE(servo_control_pkg::mvp_safety::metric_depth_valid(
     target, 0.6, 0.3, 10.0));
 
@@ -56,6 +57,12 @@ TEST(MvpSafety, TranslationRequiresConfidenceAndBoundedMetricDepth)
     target, 0.6, 0.3, 10.0));
 
   target.position[2] = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_FALSE(servo_control_pkg::mvp_safety::metric_depth_valid(
+    target, 0.6, 0.3, 10.0));
+
+  target.position[2] = 2.0F;
+  target.depth_confidence = 0.8F;
+  target.fusion_state = Target::FUSION_STATE_PREDICTED;
   EXPECT_FALSE(servo_control_pkg::mvp_safety::metric_depth_valid(
     target, 0.6, 0.3, 10.0));
 }

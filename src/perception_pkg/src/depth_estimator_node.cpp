@@ -116,6 +116,9 @@ void DepthEstimatorNode::estimate_and_publish() {
     }
 
     target.depth_confidence = confidence;
+    target.fusion_state = confidence > 0.0F
+      ? vision_servo_msgs::msg::Target::FUSION_STATE_DEGRADED
+      : vision_servo_msgs::msg::Target::FUSION_STATE_INVALID;
     compute_3d_position(target, depth);
   }
 

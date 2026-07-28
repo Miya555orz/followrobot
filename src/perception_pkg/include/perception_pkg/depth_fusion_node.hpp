@@ -39,7 +39,18 @@ private:
     cv::Vec3f position{0.0F, 0.0F, 0.0F};
     cv::Vec3f velocity{0.0F, 0.0F, 0.0F};
     rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+    rclcpp::Time last_measurement_stamp{0, 0, RCL_ROS_TIME};
+    int consecutive_rejections{0};
     bool initialized{false};
+  };
+
+  struct PositionEstimate
+  {
+    cv::Vec3f position{0.0F, 0.0F, 0.0F};
+    float confidence{0.0F};
+    float valid_ratio{0.0F};
+    float depth_spread{0.0F};
+    int sample_count{0};
   };
 
   struct DepthFrame
@@ -89,16 +100,20 @@ private:
   bool estimate_target_position(
     const vision_servo_msgs::msg::Target & target,
     const std::vector<DepthSample> & points,
-    cv::Vec3f & position,
-    float & confidence,
-    int & sample_count) const;
+    PositionEstimate & estimate) const;
 
-  void update_filter(
+  bool update_filter(
     int target_id,
     const rclcpp::Time & stamp,
     const cv::Vec3f & measured_position,
     cv::Vec3f & filtered_position,
     cv::Vec3f & filtered_velocity);
+  bool predict_filter(
+    int target_id,
+    const rclcpp::Time & stamp,
+    cv::Vec3f & predicted_position,
+    cv::Vec3f & predicted_velocity,
+    float & prediction_age);
 
   void prune_filters(const rclcpp::Time & stamp);
 
@@ -146,7 +161,8 @@ private:
   double max_depth_m_;
   double min_valid_depth_ratio_;
   double depth_percentile_;
-  double depth_temporal_alpha_;
+  double xy_temporal_alpha_;
+  double z_temporal_alpha_;
   double velocity_temporal_alpha_;
   double max_sync_skew_s_;
   double max_pair_wait_s_;
@@ -157,6 +173,15 @@ private:
   int track_queue_capacity_;
   double filter_retention_s_;
   double max_position_jump_m_;
+  double max_xy_speed_mps_;
+  double max_z_speed_mps_;
+  double prediction_hold_s_;
+  double degraded_confidence_;
+  double valid_confidence_;
+  double torso_x_min_ratio_;
+  double torso_x_max_ratio_;
+  double torso_y_min_ratio_;
+  double torso_y_max_ratio_;
   bool use_distortion_;
   bool publish_debug_;
 
@@ -168,6 +193,8 @@ private:
   std::size_t matched_pair_count_{0};
   std::size_t dropped_track_count_{0};
   std::size_t dropped_depth_count_{0};
+  std::size_t rejected_measurement_count_{0};
+  std::size_t predicted_target_count_{0};
   std::size_t last_depth_queue_size_{0};
   std::size_t last_track_queue_size_{0};
   double last_output_age_ms_{-1.0};

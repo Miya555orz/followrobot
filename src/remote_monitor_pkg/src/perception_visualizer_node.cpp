@@ -120,6 +120,36 @@ std::string tracking_state_name(uint8_t state)
   }
 }
 
+std::string fusion_state_name(uint8_t state)
+{
+  switch (state) {
+    case Target::FUSION_STATE_INVALID:
+      return "INVALID";
+    case Target::FUSION_STATE_VALID:
+      return "VALID";
+    case Target::FUSION_STATE_DEGRADED:
+      return "DEGRADED";
+    case Target::FUSION_STATE_PREDICTED:
+      return "PREDICTED";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+cv::Scalar fusion_color(uint8_t state)
+{
+  switch (state) {
+    case Target::FUSION_STATE_VALID:
+      return cv::Scalar(0, 255, 0);
+    case Target::FUSION_STATE_DEGRADED:
+      return cv::Scalar(0, 200, 255);
+    case Target::FUSION_STATE_PREDICTED:
+      return cv::Scalar(255, 180, 0);
+    default:
+      return cv::Scalar(0, 0, 255);
+  }
+}
+
 std::string health_name(uint8_t health)
 {
   switch (health) {
@@ -601,21 +631,40 @@ private:
     latest_targets_3d_ = *message;
     target_3d_message_last_update_ = SteadyClock::now();
     const Target* selected = nullptr;
-    for (const auto& target : message->targets) {
-      if (target.depth_confidence <= 0.0F) {
-        continue;
+    if (message->tracking_id >= 0) {
+      for (const auto& target : message->targets) {
+        if (target.id == message->tracking_id &&
+            target.fusion_state != Target::FUSION_STATE_INVALID) {
+          selected = &target;
+          break;
+        }
       }
-      if (target.id == message->tracking_id) {
-        selected = &target;
-        break;
-      }
-      if (selected == nullptr || target.depth_confidence > selected->depth_confidence) {
-        selected = &target;
+    } else {
+      for (const auto& target : message->targets) {
+        if (target.fusion_state == Target::FUSION_STATE_INVALID) {
+          continue;
+        }
+        if (selected == nullptr || target.depth_confidence > selected->depth_confidence) {
+          selected = &target;
+        }
       }
     }
     if (selected != nullptr) {
       target_3d_position_ = selected->position;
+      target_3d_state_ = selected->fusion_state;
+      target_3d_confidence_ = selected->depth_confidence;
+      target_3d_valid_ratio_ = selected->depth_valid_ratio;
+      target_3d_spread_ = selected->depth_spread;
+      target_3d_age_ = selected->fusion_age;
       target_3d_last_update_ = SteadyClock::now();
+    } else {
+      target_3d_position_ = {};
+      target_3d_state_ = Target::FUSION_STATE_INVALID;
+      target_3d_confidence_ = 0.0F;
+      target_3d_valid_ratio_ = 0.0F;
+      target_3d_spread_ = 0.0F;
+      target_3d_age_ = 0.0F;
+      target_3d_last_update_ = {};
     }
   }
 
@@ -788,7 +837,7 @@ private:
                 targets_3d->targets.begin(), targets_3d->targets.end(),
                 [&track](const Target& candidate) {
                   return candidate.id == track.id &&
-                      candidate.depth_confidence > 0.0F;
+                      candidate.fusion_state != Target::FUSION_STATE_INVALID;
                 });
             if (fused != targets_3d->targets.end()) {
               const float distance = std::sqrt(
@@ -797,15 +846,18 @@ private:
                   fused->position[2] * fused->position[2]);
               std::ostringstream depth_label;
               depth_label << std::fixed << std::setprecision(2)
-                          << "3D X:" << fused->position[0]
+                          << "3D " << fusion_state_name(fused->fusion_state)
+                          << " X:" << fused->position[0]
                           << " Y:" << fused->position[1]
                           << " Z:" << fused->position[2]
                           << " D:" << distance << "m"
-                          << " C:" << fused->depth_confidence;
+                          << " C:" << fused->depth_confidence
+                          << " R:" << fused->depth_valid_ratio
+                          << " S:" << fused->depth_spread;
               draw_label(
                   canvas, depth_label.str(),
                   {box.x, std::min(canvas.rows - 4, box.y + box.height + 18)},
-                  cv::Scalar(0, 255, 255), 0.48);
+                  fusion_color(fused->fusion_state), 0.48);
             }
           }
         }
@@ -962,11 +1014,15 @@ private:
             status.target_3d_position[1] * status.target_3d_position[1] +
             status.target_3d_position[2] * status.target_3d_position[2]);
         line << std::fixed << std::setprecision(2)
-             << "Target3D X/Y/Z: "
+             << "Target3D " << fusion_state_name(target_3d_state_) << " X/Y/Z: "
              << status.target_3d_position[0] << '/'
              << status.target_3d_position[1] << '/'
              << status.target_3d_position[2]
-             << " m  D:" << distance << " m";
+             << " m D:" << distance
+             << " C:" << target_3d_confidence_
+             << " R:" << target_3d_valid_ratio_
+             << " S:" << target_3d_spread_
+             << " A:" << target_3d_age_;
       } else {
         line << "Target3D: unavailable";
       }
@@ -1084,6 +1140,11 @@ private:
   uint64_t published_remote_frame_count_ = 0;
 
   std::array<float, 3> target_3d_position_{};
+  uint8_t target_3d_state_ = Target::FUSION_STATE_INVALID;
+  float target_3d_confidence_ = 0.0F;
+  float target_3d_valid_ratio_ = 0.0F;
+  float target_3d_spread_ = 0.0F;
+  float target_3d_age_ = 0.0F;
   std::array<float, 3> cmd_vel_{};
   float gimbal_yaw_ = 0.0F;
   float gimbal_pitch_ = 0.0F;

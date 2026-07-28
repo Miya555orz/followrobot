@@ -126,6 +126,10 @@ class ServoChainMockSource(Node):
             else [0.35, 0.0, 3.0])
         target.velocity = [0.0, 0.0, 0.0]
         target.depth_confidence = 0.0 if self.target_mode == "2d" else 1.0
+        target.fusion_state = (
+            Target.FUSION_STATE_INVALID
+            if self.target_mode == "2d"
+            else Target.FUSION_STATE_VALID)
         targets.targets = [target]
         self.target_pub.publish(targets)
         self.was_active = True
@@ -150,6 +154,7 @@ class ServoChainMockSource(Node):
         target.position = [0.0, 0.0, 0.0]
         target.velocity = [0.0, 0.0, 0.0]
         target.depth_confidence = 0.0
+        target.fusion_state = Target.FUSION_STATE_INVALID
         targets.targets = [target]
         self.target_pub.publish(targets)
 
