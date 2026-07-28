@@ -1,4 +1,4 @@
-"""Sony RGB detection/tracking launch with optional calibrated depth fusion."""
+"""Sony RGB detection/tracking launch."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -63,20 +63,6 @@ def generate_launch_description():
             description="Enable face_aim_node (aim target from tracks)",
         ),
         DeclareLaunchArgument("aim_target_topic", default_value="/perception/aim_target_2d"),
-        DeclareLaunchArgument(
-            "enable_depth_fusion",
-            default_value="false",
-            description=(
-                "Enable only when Gemini depth and the calibrated Sony-Gemini TF "
-                "are already available; depth_fusion.launch.py is the safer entry point"
-            ),
-        ),
-        DeclareLaunchArgument(
-            "depth_fusion_params",
-            default_value=PathJoinSubstitution(
-                [package_share, "config", "depth_fusion_params.yaml"]
-            ),
-        ),
     ]
 
     detection_node = Node(
@@ -141,18 +127,6 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration("enable_face_aim")),
     )
 
-    depth_fusion_node = Node(
-        package="perception_pkg",
-        executable="depth_fusion_node",
-        name="depth_fusion_node",
-        output="screen",
-        parameters=[
-            LaunchConfiguration("depth_fusion_params"),
-            {"use_sim_time": ParameterValue(use_sim_time, value_type=bool)},
-        ],
-        condition=IfCondition(LaunchConfiguration("enable_depth_fusion")),
-    )
-
     return LaunchDescription(
-        arguments + [detection_node, tracking_node, face_aim_node, depth_fusion_node]
+        arguments + [detection_node, tracking_node, face_aim_node]
     )

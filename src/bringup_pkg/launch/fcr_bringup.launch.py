@@ -98,11 +98,6 @@ def generate_launch_description():
             "enable_detection": effective_detection,
             "enable_tracking": LaunchConfiguration("enable_tracking"),
             "sony_image_topic": LaunchConfiguration("sony_image_topic"),
-            # The dedicated depth_fusion.launch.py below owns Gemini startup,
-            # calibrated TF publication, and the only depth_fusion_node.
-            # Set this explicitly because the top-level launch argument has the
-            # same name and otherwise leaks into perception.launch.py.
-            "enable_depth_fusion": "false",
         }.items(),
     )
 
