@@ -22,6 +22,6 @@
 <library path="pbvs_controller">
   <class type="servo_control_pkg::PBVSController"
          base_class_type="servo_control_pkg::ServoControllerBase">
-    <description>基于位置的视觉伺服（PBVS）控制器 — 重建 3D 位姿后在笛卡尔空间中计算控制律</description>
+    <description>基于位置的视觉伺服（PBVS）控制器 — 使用融合三维点控制视线角与目标距离</description>
   </class>
 </library>

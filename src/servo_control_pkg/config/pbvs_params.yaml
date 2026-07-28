@@ -1,19 +1,34 @@
 # servo_control_pkg/config/pbvs_params.yaml
-# PBVS（基于位置的视觉伺服）控制器参数
+# PBVS（基于三维点位置的视觉伺服）控制器参数
 #
-# 控制律（2026-06 修正）：
-#   平动: v_trans = +K_t * (P_target - P_desired)   — 正增益，运动学 dP/dt=-v 决定
-#   转动: ω = +K_r * angle * rotation_axis            — 从光轴对准目标方向的几何计算
-#
-# 调参历史：
-#   translational_gain: 0.5 → 0.7 → 0.6  (修正符号后重新标定)
-#   rotational_gain:    0.3 → 0.8 → 0.6  (修正旋转误差计算后重新标定)
-#   feature_tolerance:  0.02 → 0.05       (移动目标下放宽，避免震荡)
+# 控制量：
+#   云台角度快环：yaw=atan2(X,Z)，pitch=atan2(Y,hypot(X,Z))
+#   底盘距离慢环：depth_error=Z-desired_depth
+# PREDICTED 目标只能驱动角度环；只有新鲜、可信的 VALID 深度才能驱动平移。
 servo_manager:
   ros__parameters:
-    translational_gain: 0.6       # 平动控制增益（正增益，K_t ↑ → 深度收敛快但可能超调）
-    rotational_gain: 0.6          # 转动控制增益（正增益，K_r ↑ → 偏航/俯仰收敛快）
-    max_linear_velocity: 1.0     # 最大线速度 (m/s)
-    max_angular_velocity: 2.0    # 最大角速度 (rad/s)
-    feature_tolerance: 0.05      # 位姿误差收敛阈值
-    desired_depth: 2.0           # 期望目标深度 (m)
+    translational_gain: 0.55      # 深度P增益
+    rotational_gain: 0.85         # 目标方位P增益
+    lateral_gain: 0.20            # 横移增益（首版默认禁用）
+    enable_lateral_translation: false
+
+    yaw_deadband_rad: 0.0349066   # 2 deg
+    pitch_deadband_rad: 0.0349066 # 2 deg
+    depth_deadband_m: 0.20
+
+    max_linear_velocity: 0.25     # 首版实机安全上限 (m/s)
+    max_angular_velocity: 0.50    # 首版云台角速度上限 (rad/s)
+    feature_tolerance: 0.05       # 保留给公共Action接口
+    desired_depth: 2.0
+
+    # PBVS输入质量与时序门控由servo_manager执行。
+    pbvs_min_depth_confidence: 0.65
+    pbvs_min_degraded_confidence: 0.40
+    pbvs_max_fusion_age: 0.20
+    pbvs_max_prediction_age: 0.30
+    pbvs_max_source_age: 0.25
+    pbvs_expected_frame: "sony_camera_optical_frame"
+    pbvs_target_switch_confirmation: 0.60
+
+    use_aim_target: true
+    aim_target_timeout: 0.18

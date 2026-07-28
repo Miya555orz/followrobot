@@ -99,7 +99,7 @@ public:
 
   bool hasGoal() const { return goal_configured_; }
   double getCurrentErrorNorm() const { return feature_error_.norm(); }
-  bool isConverged() const;
+  virtual bool isConverged() const;
 
   /**
    * @brief 主控制迭代：根据当前目标观测计算相机速度。

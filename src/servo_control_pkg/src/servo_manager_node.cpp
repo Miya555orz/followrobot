@@ -81,6 +81,7 @@
 #include "servo_control_pkg/control_allocator.hpp"
 #include "servo_control_pkg/qos.hpp"
 #include "servo_control_pkg/target_input.hpp"
+#include <vision_servo_msgs/msg/aim_target2_d.hpp>
 #include <vision_servo_msgs/msg/target_array.hpp>
 #include <vision_servo_msgs/msg/servo_state.hpp>
 #include <vision_servo_msgs/msg/gimbal_cmd.hpp>
@@ -136,6 +137,7 @@ public:
     this->declare_parameter("unwind_gain", 0.3);             // 底盘回中增益 (追云台偏角)
     this->declare_parameter("smoothing_alpha", 0.7);         // 云台指令平滑 (0-1, ↑快)
     this->declare_parameter("auto_start", false);            // 是否自动开始伺服
+    this->declare_parameter("control_rate", 50.0);
     this->declare_parameter("target_timeout", 0.5);          // 目标丢失判定超时 (s)
     this->declare_parameter("allow_chassis_translation", false);  // 是否允许自动平移
     this->declare_parameter("publish_unstamped_cmd_vel", false);  // 仿真兼容：发布无时间戳 Twist
@@ -155,6 +157,22 @@ public:
     // PBVS 专属参数（IBVS 会忽略它们）
     this->declare_parameter("translational_gain", 0.5);      // PBVS 平移增益
     this->declare_parameter("rotational_gain", 0.3);         // PBVS 旋转增益
+    this->declare_parameter("lateral_gain", 0.2);
+    this->declare_parameter("enable_lateral_translation", false);
+    this->declare_parameter("yaw_deadband_rad", 0.034906585);
+    this->declare_parameter("pitch_deadband_rad", 0.034906585);
+    this->declare_parameter("depth_deadband_m", 0.20);
+    this->declare_parameter("pbvs_min_depth_confidence", 0.65);
+    this->declare_parameter("pbvs_min_degraded_confidence", 0.40);
+    this->declare_parameter("pbvs_max_fusion_age", 0.20);
+    this->declare_parameter("pbvs_max_prediction_age", 0.30);
+    this->declare_parameter("pbvs_max_source_age", 0.25);
+    this->declare_parameter(
+      "pbvs_expected_frame", "sony_camera_optical_frame");
+    this->declare_parameter("pbvs_target_switch_confirmation", 0.60);
+    this->declare_parameter("use_aim_target", true);
+    this->declare_parameter("aim_target_timeout", 0.18);
+    this->declare_parameter("platform_state_timeout", 0.25);
 
     std::string plugin_name = this->get_parameter("controller_plugin").as_string();
     auto_start_ = this->get_parameter("auto_start").as_bool();
@@ -163,6 +181,26 @@ public:
       this->get_parameter("allow_chassis_translation").as_bool();
     publish_unstamped_cmd_vel_ =
       this->get_parameter("publish_unstamped_cmd_vel").as_bool();
+    pbvs_min_depth_confidence_ = static_cast<float>(
+      this->get_parameter("pbvs_min_depth_confidence").as_double());
+    pbvs_min_degraded_confidence_ = static_cast<float>(
+      this->get_parameter("pbvs_min_degraded_confidence").as_double());
+    pbvs_max_fusion_age_ = static_cast<float>(
+      this->get_parameter("pbvs_max_fusion_age").as_double());
+    pbvs_max_prediction_age_ = static_cast<float>(
+      this->get_parameter("pbvs_max_prediction_age").as_double());
+    pbvs_max_source_age_ =
+      this->get_parameter("pbvs_max_source_age").as_double();
+    pbvs_expected_frame_ =
+      this->get_parameter("pbvs_expected_frame").as_string();
+    pbvs_target_switch_confirmation_ =
+      this->get_parameter("pbvs_target_switch_confirmation").as_double();
+    use_aim_target_ = this->get_parameter("use_aim_target").as_bool();
+    aim_target_timeout_ = this->get_parameter("aim_target_timeout").as_double();
+    platform_state_timeout_ =
+      this->get_parameter("platform_state_timeout").as_double();
+    control_rate_hz_ = std::clamp(
+      this->get_parameter("control_rate").as_double(), 5.0, 200.0);
 
     // ── 插件加载：通过 pluginlib::ClassLoader 发现并实例化控制器 ──
     //
@@ -204,10 +242,17 @@ public:
 
     // 感知管线输出的 3D 目标位姿及边界框。
     // 消息包含 targets 数组（多目标）和 tracking_id（跟踪器指定的当前目标）。
-    // QoS 使用 Best-effort：控制回路丢一帧比等一帧更重要。
+    // Reliable + KeepLast(1)：保留最新控制样本，同时不允许旧帧排队积压。
     target_sub_ = this->create_subscription<vision_servo_msgs::msg::TargetArray>(
-      "/perception/targets_3d", qos::control_cmd(),
+      "/perception/targets_3d", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
       std::bind(&ServoManagerNode::target_callback, this, std::placeholders::_1));
+
+    aim_target_sub_ =
+      this->create_subscription<vision_servo_msgs::msg::AimTarget2D>(
+      "/perception/aim_target_2d",
+      rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
+      std::bind(
+        &ServoManagerNode::aim_target_callback, this, std::placeholders::_1));
 
     // 平台状态（底盘线速度/角速度、云台当前 yaw/pitch 角度）。
     // ControlAllocator 需要这些信息来避免指令跳变和利用当前运动状态。
@@ -279,13 +324,14 @@ public:
     // 不受仿真时钟暂停/加速的影响。对于真实硬件的实时控制，应考虑
     // 改用硬件定时器或 RT 内核。
     control_timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(20),
+      std::chrono::duration<double>(1.0 / control_rate_hz_),
       std::bind(&ServoManagerNode::control_loop, this));
 
     RCLCPP_INFO(
       get_logger(),
-      "伺服管理器已启动 (controller=%s, 50Hz loop, chassis_translation=%s)",
-      plugin_name.c_str(), allow_chassis_translation_ ? "enabled" : "disabled");
+      "伺服管理器已启动 (controller=%s, loop=%.1fHz, chassis_translation=%s)",
+      plugin_name.c_str(), control_rate_hz_,
+      allow_chassis_translation_ ? "enabled" : "disabled");
   }
 
   /**
@@ -347,24 +393,123 @@ private:
   /**
    * @brief 感知目标回调 — 缓存最新目标数组并选择当前伺服目标。
    *
-   * 仅接受可见的 CONFIRMED/UNTRACKED 目标。tracking_id 已锁定时绝不
-   * 回退到另一个目标；LOST/不可见轨迹也不得刷新安全超时。
+   * IBVS 仅接受可见的 CONFIRMED/UNTRACKED 目标；PBVS 还允许当前锁定
+   * ID 的短时 PREDICTED 三维点用于低权限角度控制。任何无效或过期输入
+   * 都不得刷新安全超时。
    *
    * 此回调仅做缓存和选择，不执行控制。实际的伺服计算在 control_loop() 中
    * 以固定频率进行，实现感知与控制的解耦。
    *
    * @note 线程安全：修改 last_target_、active_target_、last_target_time_ 均受 state_mutex_ 保护。
-   */
+  */
   void target_callback(const vision_servo_msgs::msg::TargetArray::ConstSharedPtr& msg) {
-    const auto selected = select_actionable_target(*msg);
+    const auto now = this->now();
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    const bool pbvs_controller = controller_->getControllerType() == "PBVS";
+    const auto selected = pbvs_controller
+      ? select_pbvs_target(*msg)
+      : select_actionable_target(*msg);
     if (!selected) {
-      // 空数组、不可见轨迹或 LOST 轨迹均不得刷新安全超时。
+      // 空数组或找不到锁定目标时不得刷新安全超时。
       return;
     }
-    std::lock_guard<std::mutex> lock(state_mutex_);
+
+    if (pbvs_controller) {
+      if (!pbvs_expected_frame_.empty() &&
+          msg->header.frame_id != pbvs_expected_frame_) {
+        RCLCPP_ERROR_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "PBVS拒绝坐标系不匹配目标: got='%s' expected='%s'",
+          msg->header.frame_id.c_str(), pbvs_expected_frame_.c_str());
+        return;
+      }
+
+      const rclcpp::Time source_stamp(
+        msg->header.stamp, get_clock()->get_clock_type());
+      const double source_age = (now - source_stamp).seconds();
+      if (source_stamp.nanoseconds() <= 0 ||
+          !std::isfinite(source_age) ||
+          source_age < -0.05 ||
+          source_age > pbvs_max_source_age_) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "PBVS拒绝过期目标: source_age=%.1fms limit=%.1fms",
+          source_age * 1000.0, pbvs_max_source_age_ * 1000.0);
+        return;
+      }
+
+      if (!is_pbvs_angular_target(
+          *selected, pbvs_min_degraded_confidence_,
+          pbvs_max_prediction_age_)) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "PBVS拒绝低质量3D目标: id=%d fusion=%u confidence=%.2f age=%.3f",
+          selected->id, selected->fusion_state, selected->depth_confidence,
+          selected->fusion_age);
+        return;
+      }
+
+      if (locked_target_id_ < 0) {
+        locked_target_id_ = selected->id;
+        RCLCPP_INFO(get_logger(), "PBVS锁定目标ID: %d", locked_target_id_);
+      } else if (selected->id != locked_target_id_) {
+        if (pending_target_id_ != selected->id) {
+          pending_target_id_ = selected->id;
+          pending_target_since_ = now;
+          RCLCPP_WARN(
+            get_logger(),
+            "PBVS检测到目标ID变化 %d -> %d，进入切换确认窗口",
+            locked_target_id_, pending_target_id_);
+          return;
+        }
+        if ((now - pending_target_since_).seconds() <
+            pbvs_target_switch_confirmation_) {
+          return;
+        }
+        locked_target_id_ = pending_target_id_;
+        pending_target_id_ = -1;
+        RCLCPP_WARN(
+          get_logger(), "PBVS确认并切换锁定目标ID: %d", locked_target_id_);
+      } else {
+        pending_target_id_ = -1;
+      }
+      last_target_source_time_ = source_stamp;
+    }
+
     last_target_ = msg;
     active_target_ = *selected;
-    last_target_time_ = this->now();
+    last_target_time_ = now;
+  }
+
+  void aim_target_callback(
+      const vision_servo_msgs::msg::AimTarget2D::ConstSharedPtr& msg) {
+    if (!use_aim_target_ || !msg->valid ||
+        !std::isfinite(msg->pixel_x) || !std::isfinite(msg->pixel_y)) {
+      return;
+    }
+    if (!pbvs_expected_frame_.empty() &&
+        msg->header.frame_id != pbvs_expected_frame_) {
+      return;
+    }
+
+    const auto now = this->now();
+    const rclcpp::Time source_stamp(
+      msg->header.stamp, get_clock()->get_clock_type());
+    const double source_age = (now - source_stamp).seconds();
+    if (source_stamp.nanoseconds() <= 0 ||
+        !std::isfinite(source_age) ||
+        source_age < -0.05 ||
+        source_age > aim_target_timeout_) {
+      return;
+    }
+
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    if (locked_target_id_ >= 0 && msg->tracking_id != locked_target_id_) {
+      return;
+    }
+    latest_aim_target_ = *msg;
+    last_aim_receive_time_ = now;
+    last_aim_source_time_ = source_stamp;
   }
 
   /**
@@ -383,6 +528,7 @@ private:
   void platform_callback(const vision_servo_msgs::msg::PlatformState::ConstSharedPtr& msg) {
     std::lock_guard<std::mutex> lock(state_mutex_);
     last_platform_state_ = *msg;
+    last_platform_state_time_ = this->now();
   }
 
   /**
@@ -400,8 +546,8 @@ private:
    * 旧控制器实例保持不变，伺服任务不受影响。
    *
    * plugin_map 将 mode ID (0-4) 映射到插件类名：
-   *   mode 0 → IBVSController（唯一完整实现）
-   *   mode 1 → PBVSController
+   *   mode 0 → IBVSController
+   *   mode 1 → PBVSController（三维点位姿 + 二维瞄准快环）
    *   mode 2-4 → IBVSController（HYBRID/MPC/RL 占位，待实现）
    * 当前仅有 mode 0 和 mode 1 具备独立实现。
    */
@@ -720,11 +866,34 @@ private:
       ? (now - last_control_time_).seconds() : 0.02;
     last_control_time_ = now;
 
+    // PBVS uses the high-rate 2D aim point for bearing while retaining the
+    // independently measured metric Z for chassis distance control.
+    auto control_target = active_target_;
+    if (controller_->getControllerType() == "PBVS" &&
+        latest_aim_target_.has_value() &&
+        last_aim_receive_time_.nanoseconds() > 0 &&
+        (now - last_aim_receive_time_).seconds() <= aim_target_timeout_ &&
+        last_aim_source_time_.nanoseconds() > 0 &&
+        (now - last_aim_source_time_).seconds() <= aim_target_timeout_ &&
+        latest_aim_target_->tracking_id == locked_target_id_ &&
+        latest_aim_target_->pixel_x >= 0.0F &&
+        latest_aim_target_->pixel_x < static_cast<float>(camera_width_) &&
+        latest_aim_target_->pixel_y >= 0.0F &&
+        latest_aim_target_->pixel_y < static_cast<float>(camera_height_)) {
+      const double z = control_target.position[2];
+      control_target.center = {
+        latest_aim_target_->pixel_x, latest_aim_target_->pixel_y};
+      control_target.position[0] = static_cast<float>(
+        (latest_aim_target_->pixel_x - camera_cx_) / camera_fx_ * z);
+      control_target.position[1] = static_cast<float>(
+        (latest_aim_target_->pixel_y - camera_cy_) / camera_fy_ * z);
+    }
+
     // ═══ 步骤 1：计算相机期望速度 ═════════════════════════════════════
     // controller_->computeVelocity() 是策略模式的核心调用点。
     // 不同控制器（IBVS/PBVS）在此返回语义相同（6-DOF 相机速度），
     // 但内部算法完全不同（图像空间 vs 笛卡尔空间）。
-    auto cam_vel = controller_->computeVelocity(active_target_, dt);
+    auto cam_vel = controller_->computeVelocity(control_target, dt);
     if (!cam_vel) {
       // nullopt 含义：控制器未初始化、未设目标、或已收敛 → 零速度
       publish_zero_command(now);
@@ -735,9 +904,41 @@ private:
     // ControlAllocator 将单一的相机速度分解为两个执行器的协同指令。
     // 分配策略基于 allocation_ratio 参数和云台限位状态。
     auto allocation = allocator_.allocate(*cam_vel, last_platform_state_, dt);
-    if (!allow_chassis_translation_) {
+    const bool pbvs_controller = controller_->getControllerType() == "PBVS";
+    const bool metric_translation_allowed =
+      !pbvs_controller ||
+      is_pbvs_translation_target(
+        active_target_, pbvs_min_depth_confidence_, pbvs_max_fusion_age_);
+    if (!allow_chassis_translation_ || !metric_translation_allowed) {
       allocation.chassis_twist.linear.x = 0.0;
       allocation.chassis_twist.linear.y = 0.0;
+    }
+
+    const bool platform_fresh =
+      last_platform_state_time_.nanoseconds() > 0 &&
+      (now - last_platform_state_time_).seconds() <= platform_state_timeout_;
+    bool pbvs_motion_inhibited = false;
+    if (pbvs_controller) {
+      if (!platform_fresh || !last_platform_state_.gimbal_connected ||
+          last_platform_state_.emergency_stop) {
+        pbvs_motion_inhibited = true;
+        allocation.gimbal_yaw_rate = 0.0;
+        allocation.gimbal_pitch_rate = 0.0;
+        allocation.hold_yaw = true;
+        allocation.hold_pitch = true;
+        // Without a working gimbal the image bearing loop cannot keep the
+        // person centred, so chassis motion is unsafe as well.
+        allocation.chassis_twist = geometry_msgs::msg::Twist();
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "PBVS运动被抑制: platform_fresh=%d gimbal_connected=%d emergency=%d",
+          platform_fresh, last_platform_state_.gimbal_connected,
+          last_platform_state_.emergency_stop);
+      }
+      if (!platform_fresh || !last_platform_state_.chassis_connected ||
+          last_platform_state_.emergency_stop) {
+        allocation.chassis_twist = geometry_msgs::msg::Twist();
+      }
     }
 
     // ═══ 步骤 3：发布底盘速度指令 ═════════════════════════════════════
@@ -751,6 +952,7 @@ private:
     // ═══ 步骤 4：发布云台指令 ═════════════════════════════════════════
     vision_servo_msgs::msg::GimbalCmd gimbal_cmd;
     gimbal_cmd.header.stamp = now;
+    gimbal_cmd.header.frame_id = pbvs_expected_frame_;
     gimbal_cmd.yaw_rate = allocation.gimbal_yaw_rate;      // 偏航角速率 (rad/s)
     gimbal_cmd.pitch_rate = allocation.gimbal_pitch_rate;  // 俯仰角速率 (rad/s)
     gimbal_cmd.hold_yaw = allocation.hold_yaw;              // 保持偏航角（目标丢失时）
@@ -758,7 +960,7 @@ private:
     gimbal_cmd_pub_->publish(gimbal_cmd);
 
     // ═══ 步骤 5：发布伺服状态（监控 + 调试）═══════════════════════════
-    publish_control_state(now, *cam_vel, allocation);
+    publish_control_state(now, *cam_vel, allocation, pbvs_motion_inhibited);
 
     // ═══ 步骤 6：周期性调试打印 ═══════════════════════════════════════
     // 打印速率由 debug_print_rate 参数控制（Hz），0 表示关闭。
@@ -817,7 +1019,19 @@ private:
    */
   bool target_stale_locked(const rclcpp::Time& now) const {
     if (last_target_time_.nanoseconds() == 0) return true;  // 从未收到过目标
-    return (now - last_target_time_).seconds() > target_timeout_;
+    if ((now - last_target_time_).seconds() > target_timeout_) {
+      return true;
+    }
+    if (controller_->getControllerType() == "PBVS") {
+      if (last_target_source_time_.nanoseconds() == 0) {
+        return true;
+      }
+      const double source_age = (now - last_target_source_time_).seconds();
+      return !std::isfinite(source_age) ||
+             source_age < -0.05 ||
+             source_age > pbvs_max_source_age_;
+    }
+    return false;
   }
 
   /**
@@ -865,6 +1079,7 @@ private:
 
     vision_servo_msgs::msg::GimbalCmd gimbal_cmd;
     gimbal_cmd.header.stamp = stamp;
+    gimbal_cmd.header.frame_id = pbvs_expected_frame_;
     gimbal_cmd.hold_yaw = true;    // 保持偏航角当前位置
     gimbal_cmd.hold_pitch = true;  // 保持俯仰角当前位置
     gimbal_cmd_pub_->publish(gimbal_cmd);
@@ -902,10 +1117,14 @@ private:
   void publish_control_state(
       const rclcpp::Time& stamp,
       const Eigen::Matrix<double, 6, 1>& cam_vel,
-      const ControlAllocation& allocation) {
+      const ControlAllocation& allocation,
+      bool motion_inhibited = false) {
     auto servo_state = controller_->getServoState();
     servo_state.header.stamp = stamp;
     servo_state.last_update = time_to_msg(stamp);
+    if (motion_inhibited) {
+      servo_state.state = vision_servo_msgs::msg::ServoState::ERROR;
+    }
     // 覆盖相机速度（以实际输出为准，而非控制器缓存）
     for (size_t i = 0; i < 6; ++i) {
       servo_state.camera_velocity[i] = static_cast<float>(cam_vel(i));
@@ -1030,6 +1249,17 @@ private:
   double target_timeout_ = 0.5;           ///< 目标丢失判定超时 (s)
   bool allow_chassis_translation_ = false; ///< 是否允许底盘自动平移
   bool publish_unstamped_cmd_vel_ = false; ///< 仿真兼容：额外发布无时间戳 Twist
+  float pbvs_min_depth_confidence_ = 0.65F;
+  float pbvs_min_degraded_confidence_ = 0.40F;
+  float pbvs_max_fusion_age_ = 0.20F;
+  float pbvs_max_prediction_age_ = 0.30F;
+  double pbvs_max_source_age_ = 0.25;
+  std::string pbvs_expected_frame_{"sony_camera_optical_frame"};
+  double pbvs_target_switch_confirmation_ = 0.60;
+  bool use_aim_target_ = true;
+  double aim_target_timeout_ = 0.18;
+  double platform_state_timeout_ = 0.25;
+  double control_rate_hz_ = 50.0;
 
   // ── 线程同步 ────────────────────────────────────────────────────────
   //
@@ -1047,6 +1277,8 @@ private:
 
   // ── 订阅者（按对应话题排序）─────────────────────────────────────────
   rclcpp::Subscription<vision_servo_msgs::msg::TargetArray>::SharedPtr target_sub_;
+  rclcpp::Subscription<vision_servo_msgs::msg::AimTarget2D>::SharedPtr
+    aim_target_sub_;
   rclcpp::Subscription<vision_servo_msgs::msg::PlatformState>::SharedPtr platform_sub_;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
 
@@ -1071,11 +1303,19 @@ private:
   // last_platform_state_: 值拷贝（PlatformState 是轻量消息）。
   vision_servo_msgs::msg::TargetArray::ConstSharedPtr last_target_;
   vision_servo_msgs::msg::Target active_target_;
+  std::optional<vision_servo_msgs::msg::AimTarget2D> latest_aim_target_;
   vision_servo_msgs::msg::PlatformState last_platform_state_;
+  int32_t locked_target_id_ = -1;
+  int32_t pending_target_id_ = -1;
 
   // ── 时间戳缓存 ──────────────────────────────────────────────────────
   rclcpp::Time last_control_time_;      ///< 上一帧控制时间（用于计算 dt）
   rclcpp::Time last_target_time_;       ///< 最后一次收到目标的时间（用于超时判断）
+  rclcpp::Time last_target_source_time_;
+  rclcpp::Time pending_target_since_;
+  rclcpp::Time last_aim_receive_time_;
+  rclcpp::Time last_aim_source_time_;
+  rclcpp::Time last_platform_state_time_;
   rclcpp::Time last_debug_print_time_;  ///< 上次调试打印时间（用于 debug_print_rate 限速）
 
   // ── 相机内参缓存 ────────────────────────────────────────────────────

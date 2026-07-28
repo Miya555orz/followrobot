@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# One-command real-hardware bringup for the FCR IBVS follow stack.
+# One-command real-hardware bringup for the FCR visual follow stack.
 #
 # The script deliberately leaves command_mux in its configured default
 # "manual" mode. The perception and servo nodes may produce /auto commands,
@@ -16,6 +16,7 @@ FOXGLOVE_PORT="${FCR_FOXGLOVE_PORT:-8765}"
 START_GEMINI="${FCR_START_GEMINI:-true}"
 ENABLE_CHASSIS="${FCR_ENABLE_CHASSIS:-true}"
 SERVO_TRANSLATION="${FCR_SERVO_TRANSLATION:-true}"
+CONTROLLER="${FCR_CONTROLLER:-ibvs}"
 
 usage() {
   cat <<'EOF'
@@ -27,6 +28,7 @@ Options:
   --model PATH           TensorRT engine path.
   --workspace PATH       ROS 2 workspace (default: ~/ros2_ws).
   --foxglove-port PORT   Foxglove WebSocket port (default: 8765).
+  --controller MODE      Visual servo controller: ibvs or pbvs (default: ibvs).
   --no-gemini            Do not start Gemini/depth fusion.
   --no-chassis           Do not start the chassis driver.
   --no-translation       Disable automatic chassis translation.
@@ -35,7 +37,7 @@ Options:
 Environment equivalents:
   FCR_GIMBAL_CAN_INTERFACE, FCR_GIMBAL_CAN_BITRATE, FCR_MODEL_PATH,
   FCR_ROS2_WS, FCR_FOXGLOVE_PORT, FCR_START_GEMINI,
-  FCR_ENABLE_CHASSIS, FCR_SERVO_TRANSLATION.
+  FCR_ENABLE_CHASSIS, FCR_SERVO_TRANSLATION, FCR_CONTROLLER.
 EOF
 }
 
@@ -59,6 +61,10 @@ while (($# > 0)); do
       ;;
     --foxglove-port)
       FOXGLOVE_PORT="${2:?missing value for --foxglove-port}"
+      shift 2
+      ;;
+    --controller)
+      CONTROLLER="${2:?missing value for --controller}"
       shift 2
       ;;
     --no-gemini)
@@ -103,6 +109,24 @@ if [[ ! "$FOXGLOVE_PORT" =~ ^[0-9]+$ ]] ||
   echo "ERROR: invalid Foxglove port: $FOXGLOVE_PORT" >&2
   exit 2
 fi
+case "${CONTROLLER,,}" in
+  ibvs)
+    CONTROLLER=ibvs
+    CONTROLLER_PLUGIN="servo_control_pkg::IBVSController"
+    ALLOCATION_RATIO="0.5"
+    ;;
+  pbvs)
+    CONTROLLER=pbvs
+    CONTROLLER_PLUGIN="servo_control_pkg::PBVSController"
+    # PBVS uses a cascade: gimbal handles the fast bearing loop while the
+    # chassis yaw only recentres the gimbal through the allocator unwind term.
+    ALLOCATION_RATIO="0.0"
+    ;;
+  *)
+    echo "ERROR: --controller must be 'ibvs' or 'pbvs', got: $CONTROLLER" >&2
+    exit 2
+    ;;
+esac
 
 detect_can_interface() {
   local -a all_can=()
@@ -177,15 +201,20 @@ if [[ ! -f "$MODEL_PATH" ]]; then
   exit 1
 fi
 
+# ROS 2 generated setup files legitimately probe optional variables before
+# defining them, which is incompatible with Bash nounset. Keep strict mode for
+# this script, but suspend nounset only while the generated environments load.
+set +u
 # shellcheck disable=SC1090
 source "/opt/ros/$ROS_DISTRO_NAME/setup.bash"
 # shellcheck disable=SC1090
 source "$WORKSPACE/install/setup.bash"
+set -u
 require_command ros2
 
 echo
 echo "Starting FCR:"
-echo "  controller     : IBVS"
+echo "  controller     : ${CONTROLLER^^}"
 echo "  model          : $MODEL_PATH"
 echo "  gimbal CAN     : $CAN_INTERFACE"
 echo "  Gemini/fusion  : $START_GEMINI"
@@ -202,12 +231,16 @@ exec ros2 launch bringup_pkg fcr_bringup.launch.py \
   foxglove_port:="$FOXGLOVE_PORT" \
   enable_chassis:="$ENABLE_CHASSIS" \
   can_interface:="$CAN_INTERFACE" \
+  gimbal_control_mode:=speed \
   detection_device:=tensorrt \
   model_path:="$MODEL_PATH" \
   enable_depth_fusion:="$START_GEMINI" \
   start_gemini:="$START_GEMINI" \
+  enable_monitor_future_inputs:=true \
   enable_servo:=true \
-  controller_plugin:=servo_control_pkg::IBVSController \
+  controller_plugin:="$CONTROLLER_PLUGIN" \
   servo_auto_start:=true \
   servo_target_topic:=/perception/targets_3d \
+  servo_aim_target_topic:=/perception/aim_target_2d \
+  servo_allocation_ratio:="$ALLOCATION_RATIO" \
   servo_allow_chassis_translation:="$SERVO_TRANSLATION"

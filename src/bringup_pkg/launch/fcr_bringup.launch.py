@@ -134,6 +134,7 @@ def generate_launch_description():
             "target_timeout": LaunchConfiguration("servo_target_timeout"),
             "camera_info_input": LaunchConfiguration("servo_camera_info_topic"),
             "target_input": LaunchConfiguration("servo_target_topic"),
+            "aim_target_input": LaunchConfiguration("servo_aim_target_topic"),
             "allow_chassis_translation": LaunchConfiguration(
                 "servo_allow_chassis_translation"),
             "cmd_vel_output": "/auto/cmd_vel",
@@ -167,6 +168,7 @@ def generate_launch_description():
             "inference_backend": detection_device,
             "yolo_model": LaunchConfiguration("yolo_model_name"),
             "aim_target_topic": "/perception/aim_target_2d",
+            "servo_state_topic": "/servo/state",
             "enable_future_inputs": LaunchConfiguration(
                 "enable_monitor_future_inputs"
             ),
@@ -318,6 +320,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "servo_target_topic", default_value="/perception/tracks",
             description="伺服使用的TargetArray；第二阶段直接使用2D跟踪结果",
+        ),
+        DeclareLaunchArgument(
+            "servo_aim_target_topic", default_value="/perception/aim_target_2d",
+            description="PBVS云台快环使用的高频二维瞄准目标",
         ),
         DeclareLaunchArgument(
             "servo_allow_chassis_translation", default_value="false",

@@ -14,8 +14,8 @@
  *   camera_velocity = [vx, vy, vz, wx, wy, wz]，位于 ROS optical frame：
  *   x 右、y 下、z 前。底盘命令位于 base_link：x 前、y 左、z 上。
  *
- *   base_x   =  camera_z
- *   base_y   = -camera_x
+ *   先将相机平移映射到云台零偏航下的底盘坐标，再按实时云台偏航角
+ *   旋转到底盘坐标，避免云台转向后底盘沿错误方向平移。
  *   base_yaw = -camera_wy
  *   gimbal_pitch ≈ -camera_wx
  *   camera_wz 为光轴 roll，当前 MVP 暂不分配给执行器。
@@ -60,8 +60,18 @@ ControlAllocation ControlAllocator::allocate(
   // ── 坐标映射：camera_optical_link -> base_link ──────────────────
   // optical frame: x right, y down, z forward
   // base_link:     x forward, y left, z up
-  const double base_forward = camera_velocity(2);
-  const double base_lateral = -camera_velocity(0);
+  // 相机固定在云台上，因此相机平移指令需要用当前云台偏航角旋转到底盘系。
+  // 云台状态异常时退化为零偏航映射，最终仍会由 manager 的平台状态门控截断。
+  const double gimbal_yaw = std::isfinite(platform_state.gimbal_yaw)
+      ? platform_state.gimbal_yaw : 0.0;
+  const double cos_yaw = std::cos(gimbal_yaw);
+  const double sin_yaw = std::sin(gimbal_yaw);
+  const double neutral_forward = camera_velocity(2);
+  const double neutral_lateral = -camera_velocity(0);
+  const double base_forward =
+      cos_yaw * neutral_forward - sin_yaw * neutral_lateral;
+  const double base_lateral =
+      sin_yaw * neutral_forward + cos_yaw * neutral_lateral;
   const double yaw_rate = -camera_velocity(4);
   const double pitch_rate = -camera_velocity(3);
 
@@ -71,8 +81,8 @@ ControlAllocation ControlAllocator::allocate(
   const double yaw_margin = 0.15 * gimbal_yaw_limit_;
   const double pitch_margin = 0.15 * gimbal_pitch_limit_;
 
-  double gimbal_yaw = platform_state.gimbal_yaw;
-  double gimbal_pitch = platform_state.gimbal_pitch;
+  const double gimbal_pitch = std::isfinite(platform_state.gimbal_pitch)
+      ? platform_state.gimbal_pitch : 0.0;
 
   // 归一化限位饱和度 [0, 1]：0 = 居中，1 = 已到达限位
   double yaw_saturation = std::abs(gimbal_yaw) / (gimbal_yaw_limit_ - yaw_margin);

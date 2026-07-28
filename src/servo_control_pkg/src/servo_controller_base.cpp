@@ -310,7 +310,7 @@ vision_servo_msgs::msg::ServoState ServoControllerBase::getServoState() const {
     state.state = vision_servo_msgs::msg::ServoState::IDLE;
   } else if (!goal_configured_) {
     state.state = vision_servo_msgs::msg::ServoState::IDLE;
-  } else if (state.norm_error < goal_.feature_tolerance) {
+  } else if (isConverged()) {
     state.state = vision_servo_msgs::msg::ServoState::TRACKING;
   } else {
     state.state = vision_servo_msgs::msg::ServoState::CONVERGING;

@@ -36,6 +36,7 @@ def generate_launch_description():
     cmd_gimbal_output = LaunchConfiguration("cmd_gimbal_output")
     camera_info_input = LaunchConfiguration("camera_info_input")
     target_input = LaunchConfiguration("target_input")
+    aim_target_input = LaunchConfiguration("aim_target_input")
     target_timeout = LaunchConfiguration("target_timeout")
     allow_chassis_translation = LaunchConfiguration("allow_chassis_translation")
     enable_velocity_commander = LaunchConfiguration("enable_velocity_commander")
@@ -59,6 +60,7 @@ def generate_launch_description():
             PathJoinSubstitution([config_dir, "allocator_params.yaml"]),
             {"controller_plugin": controller_plugin,
              "allocation_ratio": allocation_ratio,
+             "control_rate": ParameterValue(control_rate, value_type=float),
              "auto_start": ParameterValue(auto_start, value_type=bool),
              "target_timeout": ParameterValue(target_timeout, value_type=float),
              "allow_chassis_translation": ParameterValue(
@@ -66,6 +68,7 @@ def generate_launch_description():
         ],
         remappings=[
             ("/perception/targets_3d", target_input),              # 输入：2D/3D目标
+            ("/perception/aim_target_2d", aim_target_input),
             ("/platform/state", "/platform/state"),                # 输入：平台状态
             ("/camera/camera_info", camera_info_input),             # 输入：相机内参
             ("/cmd_vel", cmd_vel_output),                          # 输出：底盘速度指令
@@ -114,6 +117,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "target_input", default_value="/perception/targets_3d",
             description="TargetArray输入话题，可接2D tracks或3D targets"),
+        DeclareLaunchArgument(
+            "aim_target_input", default_value="/perception/aim_target_2d",
+            description="PBVS云台快环的AimTarget2D输入话题"),
         DeclareLaunchArgument(
             "allow_chassis_translation", default_value="false",
             description="是否允许视觉伺服自动前后/横向移动底盘"),

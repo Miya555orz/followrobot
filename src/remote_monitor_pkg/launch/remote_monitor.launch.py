@@ -44,6 +44,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "aim_target_topic", default_value="/perception/aim_target_2d"
         ),
+        DeclareLaunchArgument("servo_state_topic", default_value="/servo/state"),
         DeclareLaunchArgument("enable_future_inputs", default_value="false"),
         DeclareLaunchArgument("remote_publish_rate_hz", default_value="10.0"),
         DeclareLaunchArgument("remote_max_width", default_value="960"),
@@ -101,6 +102,7 @@ def generate_launch_description():
             ("cmd_vel", LaunchConfiguration("cmd_vel_topic")),
             ("gimbal_state", LaunchConfiguration("gimbal_state_topic")),
             ("aim_target", LaunchConfiguration("aim_target_topic")),
+            ("servo_state", LaunchConfiguration("servo_state_topic")),
         ],
         condition=IfCondition(LaunchConfiguration("enable_visualizer")),
     )
