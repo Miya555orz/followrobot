@@ -134,7 +134,7 @@ public:
     this->declare_parameter("gimbal_pitch_limit", M_PI_2);   // 云台俯仰限位 (rad)
     this->declare_parameter("chassis_linear_limit", 1.0);    // 底盘线速度上限 (m/s)
     this->declare_parameter("chassis_angular_limit", 2.0);   // 底盘角速度上限 (rad/s)
-    this->declare_parameter("chassis_linear_sign", -1.0);    // 实机前后方向标定
+    this->declare_parameter("chassis_linear_sign", 1.0);     // 实机前后方向标定
     this->declare_parameter("chassis_angular_sign", -1.0);   // 实机偏航方向标定
     this->declare_parameter("unwind_gain", 0.4);             // 底盘回中增益 (追云台偏角)
     this->declare_parameter("unwind_deadband_rad", 0.0872665); // 回中死区 (5 deg)
