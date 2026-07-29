@@ -6,11 +6,11 @@ command_mux:
     heartbeat_timeout_ms: 250
     command_timeout_ms: 150
     zero_dwell_ms: 100
-    max_linear_x: 0.05
-    max_linear_y: 0.05
+    max_linear_x: 0.08
+    max_linear_y: 0.08
     max_angular_z: 0.25
-    max_accel_x: 0.15
-    max_accel_y: 0.15
+    max_accel_x: 0.20
+    max_accel_y: 0.20
     max_accel_yaw: 0.50
     max_gimbal_yaw_rate: 0.25
     max_gimbal_pitch_rate: 0.20
@@ -25,8 +25,8 @@ keyboard_platform_teleop:
     # promptly, while still allowing normal OS key repeat for continuous motion.
     publish_rate_hz: 50.0
     key_timeout_sec: 0.10
-    linear_x: 0.03
-    linear_y: 0.03
+    linear_x: 0.05
+    linear_y: 0.05
     angular_z: 0.15
     # At a 100 ms lease these produce about 1.4 deg yaw / 1.1 deg pitch per tap.
     gimbal_yaw_rate: 0.25

@@ -43,6 +43,8 @@ PBVSController::PBVSController(const rclcpp::NodeOptions& options)
     pitch_gain_(0.45),
     pitch_filter_alpha_(0.25),
     pitch_acceleration_limit_(0.6),
+    depth_filter_alpha_(0.20),
+    linear_acceleration_limit_(0.20),
     lateral_gain_(0.25),
     yaw_deadband_rad_(0.034906585),
     pitch_deadband_rad_(0.034906585),
@@ -55,6 +57,8 @@ PBVSController::PBVSController(const rclcpp::NodeOptions& options)
   declare_parameter("pitch_gain", pitch_gain_);
   declare_parameter("pitch_filter_alpha", pitch_filter_alpha_);
   declare_parameter("pitch_acceleration_limit", pitch_acceleration_limit_);
+  declare_parameter("depth_filter_alpha", depth_filter_alpha_);
+  declare_parameter("linear_acceleration_limit", linear_acceleration_limit_);
   declare_parameter("lateral_gain", lateral_gain_);
   declare_parameter("yaw_deadband_rad", yaw_deadband_rad_);
   declare_parameter("pitch_deadband_rad", pitch_deadband_rad_);
@@ -67,6 +71,9 @@ PBVSController::PBVSController(const rclcpp::NodeOptions& options)
   pitch_filter_alpha_ = get_parameter("pitch_filter_alpha").as_double();
   pitch_acceleration_limit_ =
     get_parameter("pitch_acceleration_limit").as_double();
+  depth_filter_alpha_ = get_parameter("depth_filter_alpha").as_double();
+  linear_acceleration_limit_ =
+    get_parameter("linear_acceleration_limit").as_double();
   lateral_gain_ = get_parameter("lateral_gain").as_double();
   yaw_deadband_rad_ = get_parameter("yaw_deadband_rad").as_double();
   pitch_deadband_rad_ = get_parameter("pitch_deadband_rad").as_double();
@@ -103,6 +110,10 @@ void PBVSController::configureFromNode(const rclcpp::Node& node)
     get_double("pitch_filter_alpha", pitch_filter_alpha_), 0.0, 1.0);
   pitch_acceleration_limit_ = std::max(
     0.0, get_double("pitch_acceleration_limit", pitch_acceleration_limit_));
+  depth_filter_alpha_ = std::clamp(
+    get_double("depth_filter_alpha", depth_filter_alpha_), 0.0, 1.0);
+  linear_acceleration_limit_ = std::max(
+    0.0, get_double("linear_acceleration_limit", linear_acceleration_limit_));
   lateral_gain_ = std::max(0.0, get_double("lateral_gain", lateral_gain_));
   yaw_deadband_rad_ =
     std::max(0.0, get_double("yaw_deadband_rad", yaw_deadband_rad_));
@@ -148,6 +159,8 @@ bool PBVSController::setGoalFromTarget(
   filtered_pitch_error_ = last_pitch_error_;
   last_pitch_velocity_ = 0.0;
   last_depth_error_ = z - desired_depth;
+  filtered_depth_error_ = last_depth_error_;
+  last_linear_velocity_ = 0.0;
   feature_error_.setZero();
   feature_error_(0) = last_yaw_error_;
   feature_error_(1) = last_pitch_error_;
@@ -164,6 +177,7 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
   if (!initialized_ || !goal_configured_ || !point_goal_set_) {
     last_camera_velocity_.setZero();
     last_pitch_velocity_ = 0.0;
+    last_linear_velocity_ = 0.0;
     return std::nullopt;
   }
 
@@ -173,6 +187,7 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
   if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || z <= 0.0) {
     last_camera_velocity_.setZero();
     last_pitch_velocity_ = 0.0;
+    last_linear_velocity_ = 0.0;
     return std::nullopt;
   }
 
@@ -184,6 +199,8 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
   filtered_pitch_error_ += pitch_filter_alpha_ *
     (last_pitch_error_ - filtered_pitch_error_);
   last_depth_error_ = z - goal_.desired_depth;
+  filtered_depth_error_ += depth_filter_alpha_ *
+    (last_depth_error_ - filtered_depth_error_);
 
   // PBVS-specific diagnostic vector.  Do not manufacture a target orientation:
   // a person detector observes a point/bearing and a range, not a rigid pose.
@@ -202,7 +219,7 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
   const double pitch_control =
     apply_deadband(filtered_pitch_error_, pitch_deadband_rad_);
   const double depth_control =
-    apply_deadband(last_depth_error_, depth_deadband_m_);
+    apply_deadband(filtered_depth_error_, depth_deadband_m_);
 
   // Camera optical twist.  At the neutral mount, +wy maps to negative
   // physical gimbal yaw and -wx maps to positive physical gimbal pitch.
@@ -236,6 +253,13 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
   // zero instead of repeatedly toggling hold/move around the deadband.
   const double safe_dt = std::clamp(
     std::isfinite(dt) ? dt : 0.02, 0.001, 0.10);
+  const double max_linear_delta = linear_acceleration_limit_ * safe_dt;
+  velocity(2) = std::clamp(
+    velocity(2),
+    last_linear_velocity_ - max_linear_delta,
+    last_linear_velocity_ + max_linear_delta);
+  last_linear_velocity_ = velocity(2);
+
   const double max_pitch_delta = pitch_acceleration_limit_ * safe_dt;
   velocity(3) = std::clamp(
     velocity(3),

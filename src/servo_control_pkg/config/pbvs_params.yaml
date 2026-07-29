@@ -12,6 +12,8 @@ servo_manager:
     pitch_gain: 0.45              # pitch 单独降低增益，抑制上下抖动
     pitch_filter_alpha: 0.25      # pitch 误差一阶低通；越小越平滑
     pitch_acceleration_limit: 0.60 # pitch 速度斜坡上限 (rad/s^2)
+    depth_filter_alpha: 0.20      # 深度误差一阶低通；抑制深度跳变造成的顿挫
+    linear_acceleration_limit: 0.20 # 前后速度斜坡上限 (m/s^2)
     lateral_gain: 0.20            # 横移增益（首版默认禁用）
     enable_lateral_translation: false
 
@@ -19,7 +21,7 @@ servo_manager:
     pitch_deadband_rad: 0.0523599 # 3 deg，避免中心附近反复修正
     depth_deadband_m: 0.20
 
-    max_linear_velocity: 0.25     # 首版实机安全上限 (m/s)
+    max_linear_velocity: 0.08     # 实机跟随线速度上限 (m/s)
     max_angular_velocity: 0.50    # 首版云台角速度上限 (rad/s)
     feature_tolerance: 0.05       # 保留给公共Action接口
     desired_depth: 2.0
