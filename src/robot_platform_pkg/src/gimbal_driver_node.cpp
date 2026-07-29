@@ -48,6 +48,7 @@ public:
     declare_parameter("command_timeout_sec", 0.5);
     declare_parameter("max_yaw_rate", 1.0);
     declare_parameter("max_pitch_rate", 1.0);
+    declare_parameter("speed_command_rate_hz", 20.0);
     declare_parameter("status_publish_rate_hz", 10.0);
     declare_parameter("stop_command_burst_count", 3);
     declare_parameter("control_mode", "incremental_position");
@@ -146,6 +147,7 @@ public:
     last_status_pub_time_ = now();
     last_incremental_cmd_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
     last_incremental_send_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+    last_speed_send_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
     has_active_cmd_ = false;
 
     state_timer_ = create_wall_timer(
@@ -239,6 +241,9 @@ private:
     const double status_rate =
       std::max(1.0, get_parameter("status_publish_rate_hz").as_double());
     status_publish_period_sec_ = 1.0 / status_rate;
+    const double speed_command_rate =
+      std::clamp(get_parameter("speed_command_rate_hz").as_double(), 1.0, 50.0);
+    speed_command_period_sec_ = 1.0 / speed_command_rate;
 
     stop_command_burst_count_ =
       std::max(1, static_cast<int>(get_parameter("stop_command_burst_count").as_int()));
@@ -357,7 +362,18 @@ private:
     const bool next_active_cmd = !safe_cmd.hold_yaw || !safe_cmd.hold_pitch;
 
     if (control_mode_ == ControlMode::Speed) {
-      gimbal_->sendCommand(safe_cmd);
+      const auto now_time = now();
+      const bool command_edge = next_active_cmd != has_active_cmd_;
+      const bool rate_due =
+        last_speed_send_time_.nanoseconds() == 0 ||
+        (now_time - last_speed_send_time_).seconds() >= speed_command_period_sec_;
+      // The servo loop may publish at 50 Hz, while one DJI command expands to
+      // several classic CAN frames. Send the newest command at a bounded rate;
+      // start/stop edges bypass the limiter for responsiveness and safety.
+      if (command_edge || rate_due) {
+        gimbal_->sendCommand(safe_cmd);
+        last_speed_send_time_ = now_time;
+      }
       has_active_cmd_ = next_active_cmd;
     } else {
       if (next_active_cmd) {
@@ -652,6 +668,7 @@ private:
   rclcpp::Time last_status_pub_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_incremental_cmd_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_incremental_send_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_speed_send_time_{0, 0, RCL_ROS_TIME};
   std::string can_interface_{"can0"};
   std::string control_mode_name_{"incremental_position"};
   int speed_control_byte_{0x80};
@@ -668,6 +685,7 @@ private:
   double incremental_position_default_dt_sec_ = 0.1;
   double incremental_position_max_dt_sec_ = 0.1;
   double incremental_position_send_period_sec_ = 0.1;
+  double speed_command_period_sec_ = 0.05;
   int stop_command_burst_count_ = 3;
   ControlMode control_mode_ = ControlMode::IncrementalPosition;
   bool use_sim_ = false;

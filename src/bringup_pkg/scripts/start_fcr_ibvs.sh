@@ -178,17 +178,42 @@ if [[ ! "$CAN_INTERFACE" =~ ^[A-Za-z0-9_.:-]+$ ]] ||
 fi
 
 echo "Configuring gimbal CAN: interface=$CAN_INTERFACE bitrate=$CAN_BITRATE"
-# ── CAN 接口配置 ───────────────────────────────────────────────────
-# 1) 先 down 再设置参数，避免 "Device or resource busy"
-#    restart-ms 100: CAN 控制器自动重发间隔，RS2 协议需要可靠传输
-sudo ip link set dev "$CAN_INTERFACE" down 2>/dev/null || true
-sudo ip link set dev "$CAN_INTERFACE" type can bitrate "$CAN_BITRATE" restart-ms 100
-# 2) txqueuelen 1000: DJI RS2 应用帧拆分后可能一次控制周期产生多个 CAN 帧，
-#    默认的 10 个包队列太小，USB-CAN 短暂调度延迟就会丢帧。
-#    配合 gimbal_interface SO_SNDBUF 1 MiB 使用。
-sudo ip link set dev "$CAN_INTERFACE" txqueuelen 1000
-# 3) 启动接口，确认 UP 后才继续
-sudo ip link set dev "$CAN_INTERFACE" up
+
+configure_can_once() {
+  local iface="$1"
+  # 先 down 再设置参数，避免 Device or resource busy。
+  sudo ip link set dev "$iface" down 2>/dev/null || true
+  sudo ip link set dev "$iface" type can \
+    bitrate "$CAN_BITRATE" restart-ms 100 &&
+    sudo ip link set dev "$iface" txqueuelen 1000 &&
+    sudo ip link set dev "$iface" up
+}
+
+# gs_usb 偶尔会保留一个仍可枚举但无法重新配置的故障接口，此时 ip 会报
+# Broken pipe/No such device。首次失败后自动重载驱动并重新探测接口。
+if ! configure_can_once "$CAN_INTERFACE"; then
+  can_driver="$(
+    basename "$(
+      readlink -f "/sys/class/net/$CAN_INTERFACE/device/driver" 2>/dev/null || true
+    )"
+  )"
+  if [[ "$can_driver" != "gs_usb" ]]; then
+    echo "ERROR: failed to configure $CAN_INTERFACE (driver=$can_driver)." >&2
+    exit 1
+  fi
+
+  echo "WARN: $CAN_INTERFACE configuration failed; recovering gs_usb adapter." >&2
+  sudo modprobe -r gs_usb
+  sudo modprobe gs_usb
+  sleep 2
+
+  CAN_INTERFACE="$(detect_can_interface)"
+  echo "Retrying gimbal CAN: interface=$CAN_INTERFACE bitrate=$CAN_BITRATE"
+  if ! configure_can_once "$CAN_INTERFACE"; then
+    echo "ERROR: CAN recovery failed; unplug/replug the USB-CAN adapter and retry." >&2
+    exit 1
+  fi
+fi
 
 if ! ip link show dev "$CAN_INTERFACE" | grep -q "UP"; then
   echo "ERROR: failed to bring $CAN_INTERFACE UP." >&2
@@ -232,6 +257,9 @@ echo "  Foxglove       : ws://0.0.0.0:$FOXGLOVE_PORT"
 echo "  command mux    : starts in MANUAL; switch to AUTO explicitly"
 echo
 
+# PBVS uses the fused 3D target for distance control and the 2D aim target for
+# the fast angular loop. Keep comments outside the continued launch command:
+# a shell comment inside a backslash continuation truncates all later args.
 exec ros2 launch bringup_pkg fcr_bringup.launch.py \
   use_sim:=false \
   use_rviz:=false \
@@ -248,9 +276,7 @@ exec ros2 launch bringup_pkg fcr_bringup.launch.py \
   enable_servo:=true \
   controller_plugin:="$CONTROLLER_PLUGIN" \
   servo_auto_start:=true \
-  # 3D 融合目标：PBVS 拿 Z 做距离控制，角度快环用 aim_target
   servo_target_topic:=/perception/targets_3d \
   servo_aim_target_topic:=/perception/aim_target_2d \
-  # IBVS: 0.5=云台底盘各半；PBVS: 0.0=云台独担偏航，底盘只回中
   servo_allocation_ratio:="$ALLOCATION_RATIO" \
   servo_allow_chassis_translation:="$SERVO_TRANSLATION"

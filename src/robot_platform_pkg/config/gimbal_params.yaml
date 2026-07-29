@@ -13,6 +13,7 @@ gimbal_driver:
     command_timeout_sec: 0.5
     max_yaw_rate: 1.0        # 驱动层最终限幅，单位 rad/s
     max_pitch_rate: 1.0      # 驱动层最终限幅，单位 rad/s
+    speed_command_rate_hz: 20.0  # 只发送最新速度，避免50Hz协议分片灌满USB-CAN
     status_publish_rate_hz: 10.0
     stop_command_burst_count: 3
     control_mode: "incremental_position"  # 将 rate 积分为绝对目标，使用 RS2 已验证的绝对位置帧执行
