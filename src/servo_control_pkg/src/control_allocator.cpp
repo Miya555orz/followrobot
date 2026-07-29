@@ -34,6 +34,7 @@ ControlAllocator::ControlAllocator()
     chassis_linear_sign_(1.0), chassis_angular_sign_(1.0),
     unwind_deadband_rad_(0.0872665), chassis_yaw_filter_alpha_(0.25),
     chassis_angular_acceleration_limit_(0.6), prev_chassis_yaw_(0.0),
+    camera_mount_yaw_offset_rad_(0.0),
     prev_gimbal_yaw_(0), prev_gimbal_pitch_(0),
     smoothing_alpha_(0.3)
 {}
@@ -45,7 +46,8 @@ void ControlAllocator::configure(
     double smoothing_alpha, double chassis_linear_sign,
     double chassis_angular_sign, double unwind_deadband_rad,
     double chassis_yaw_filter_alpha,
-    double chassis_angular_acceleration_limit) {
+    double chassis_angular_acceleration_limit,
+    double camera_mount_yaw_offset_rad) {
   gimbal_yaw_limit_ = gimbal_yaw_limit;
   gimbal_pitch_limit_ = gimbal_pitch_limit;
   chassis_linear_limit_ = chassis_linear_limit;
@@ -60,6 +62,8 @@ void ControlAllocator::configure(
     std::clamp(chassis_yaw_filter_alpha, 0.0, 1.0);
   chassis_angular_acceleration_limit_ =
     std::max(0.0, chassis_angular_acceleration_limit);
+  camera_mount_yaw_offset_rad_ = std::isfinite(camera_mount_yaw_offset_rad) ?
+    camera_mount_yaw_offset_rad : 0.0;
   prev_chassis_yaw_ = 0.0;
 }
 
@@ -76,8 +80,10 @@ ControlAllocation ControlAllocator::allocate(
   // 云台状态异常时退化为零偏航映射，最终仍会由 manager 的平台状态门控截断。
   const double gimbal_yaw = std::isfinite(platform_state.gimbal_yaw)
       ? platform_state.gimbal_yaw : 0.0;
-  const double cos_yaw = std::cos(gimbal_yaw);
-  const double sin_yaw = std::sin(gimbal_yaw);
+  const double camera_yaw_in_base =
+    gimbal_yaw + camera_mount_yaw_offset_rad_;
+  const double cos_yaw = std::cos(camera_yaw_in_base);
+  const double sin_yaw = std::sin(camera_yaw_in_base);
   const double neutral_forward = camera_velocity(2);
   const double neutral_lateral = -camera_velocity(0);
   const double base_forward =

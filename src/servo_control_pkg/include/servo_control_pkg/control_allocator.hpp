@@ -69,7 +69,8 @@ public:
                  double chassis_angular_sign = 1.0,
                  double unwind_deadband_rad = 0.0872665,
                  double chassis_yaw_filter_alpha = 0.25,
-                 double chassis_angular_acceleration_limit = 0.6);
+                 double chassis_angular_acceleration_limit = 0.6,
+                 double camera_mount_yaw_offset_rad = 0.0);
 
   /**
    * @brief 执行控制分配。
@@ -96,6 +97,7 @@ private:
   double chassis_yaw_filter_alpha_;  ///< 底盘偏航指令一阶低通系数
   double chassis_angular_acceleration_limit_; ///< 底盘偏航角加速度上限
   double prev_chassis_yaw_;          ///< 上一帧底盘偏航指令
+  double camera_mount_yaw_offset_rad_; ///< 云台零位相机相对 base_link 的偏航
 
   // ── 平滑滤波器 ──────────────────────────────────────────────────
   double prev_gimbal_yaw_, prev_gimbal_pitch_;  ///< 上一帧云台指令（用于平滑）

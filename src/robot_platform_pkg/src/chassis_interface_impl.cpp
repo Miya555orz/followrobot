@@ -5,6 +5,7 @@
 
 #include "robot_platform_pkg/hardware_interfaces/chassis_interface.hpp"
 #include "robot_platform_pkg/hardware_interfaces/feetech_sts3215_bus.hpp"
+#include "robot_platform_pkg/kinematics/planar_frame_rotation.hpp"
 
 #include <Eigen/Core>
 #include <Eigen/QR>
@@ -66,8 +67,12 @@ public:
   void sendCommand(const geometry_msgs::msg::Twist& cmd) override {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!connected_) return;
-    const Eigen::Vector3d body(cmd.linear.x, cmd.linear.y, cmd.angular.z);
-    Eigen::Vector3d wheel_rad_s = inverse_kinematics_ * body;
+    const Eigen::Vector2d native_linear = base_to_wheel_native(
+      Eigen::Vector2d{cmd.linear.x, cmd.linear.y},
+      config_.base_heading_offset_rad);
+    const Eigen::Vector3d native_body(
+      native_linear.x(), native_linear.y(), cmd.angular.z);
+    Eigen::Vector3d wheel_rad_s = inverse_kinematics_ * native_body;
 
     // STS3215 velocity units used by LeRobot: 4096 raw steps per revolution/second.
     Eigen::Vector3d raw = wheel_rad_s * (kSts3215StepsPerRevolution / (2.0 * M_PI));
@@ -101,10 +106,13 @@ public:
     const Eigen::Vector3d wheel(raw[0] * raw_to_rad_s,
                                 raw[1] * raw_to_rad_s,
                                 raw[2] * raw_to_rad_s);
-    const Eigen::Vector3d body = forward_kinematics_ * wheel;
-    odom.twist.twist.linear.x = body[0];
-    odom.twist.twist.linear.y = body[1];
-    odom.twist.twist.angular.z = body[2];
+    const Eigen::Vector3d native_body = forward_kinematics_ * wheel;
+    const Eigen::Vector2d base_linear = wheel_native_to_base(
+      Eigen::Vector2d{native_body[0], native_body[1]},
+      config_.base_heading_offset_rad);
+    odom.twist.twist.linear.x = base_linear.x();
+    odom.twist.twist.linear.y = base_linear.y();
+    odom.twist.twist.angular.z = native_body[2];
     return odom;
   }
 
@@ -145,6 +153,8 @@ private:
            config_.left_wheel_id != config_.right_wheel_id &&
            config_.back_wheel_id != config_.right_wheel_id &&
            config_.wheel_radius > 0.0 && config_.base_radius > 0.0 &&
+           std::isfinite(config_.base_heading_offset_rad) &&
+           std::abs(config_.base_heading_offset_rad) <= M_PI &&
            config_.max_raw_velocity > 0 && config_.max_raw_velocity <= 32767;
   }
 

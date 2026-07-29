@@ -118,6 +118,12 @@ if(BUILD_TESTING)
     src/feetech_sts3215_bus.cpp
   )
   target_include_directories(test_feetech_sts3215_bus PRIVATE include)
+
+  ament_add_gtest(test_planar_frame_rotation
+    test/test_planar_frame_rotation.cpp
+  )
+  target_include_directories(test_planar_frame_rotation PRIVATE include)
+  target_link_libraries(test_planar_frame_rotation Eigen3::Eigen)
 endif()
 
 ament_package()

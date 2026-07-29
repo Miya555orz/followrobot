@@ -26,6 +26,7 @@ struct LekiwiChassisConfig {
   int right_wheel_id{9};
   double wheel_radius{0.05};
   double base_radius{0.125};
+  double base_heading_offset_rad{0.0};
   int max_raw_velocity{3000};
 };
 

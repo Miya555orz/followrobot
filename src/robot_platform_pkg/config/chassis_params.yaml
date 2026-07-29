@@ -12,6 +12,8 @@ chassis_driver:
     left_wheel_id: 7
     back_wheel_id: 8
     right_wheel_id: 9
+    # 新 base_link +X 从底盘中心指向 right_wheel_id=9；相对原生轮组坐标为 -60°。
+    base_heading_offset_deg: -60.0
     max_raw_wheel_velocity: 500      # 已完成实车低速验收的安全上限
     command_timeout_ms: 250          # 丢失 /cmd_vel 后自动停车
     enable_emergency_stop: true      # 启用急停检测（丢失控制信号时自动停车）

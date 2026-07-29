@@ -24,6 +24,7 @@
 #include <memory>
 #include <stdexcept>
 #include <chrono>
+#include <cmath>
 
 namespace robot_platform_pkg {
 
@@ -43,6 +44,7 @@ public:
     this->declare_parameter("left_wheel_id", 7);
     this->declare_parameter("back_wheel_id", 8);
     this->declare_parameter("right_wheel_id", 9);
+    this->declare_parameter("base_heading_offset_deg", 0.0);
     this->declare_parameter("max_raw_wheel_velocity", 3000);
     this->declare_parameter("command_timeout_ms", 250);
     this->declare_parameter("enable_emergency_stop", true);
@@ -69,6 +71,14 @@ public:
       config.right_wheel_id = this->get_parameter("right_wheel_id").as_int();
       config.wheel_radius = this->get_parameter("wheel_radius").as_double();
       config.base_radius = this->get_parameter("base_radius").as_double();
+      const double heading_offset_deg =
+        this->get_parameter("base_heading_offset_deg").as_double();
+      if (!std::isfinite(heading_offset_deg) ||
+          std::abs(heading_offset_deg) > 180.0) {
+        throw std::invalid_argument(
+          "base_heading_offset_deg must be finite and within [-180, 180]");
+      }
+      config.base_heading_offset_rad = heading_offset_deg * M_PI / 180.0;
       config.max_raw_velocity = this->get_parameter("max_raw_wheel_velocity").as_int();
       chassis_ = make_lekiwi_chassis(config);     // 真实 LEKIWI 底盘
     }
@@ -98,8 +108,11 @@ public:
       std::bind(&ChassisDriverNode::publish_state, this));
     last_command_time_ = std::chrono::steady_clock::now();
 
-    RCLCPP_INFO(get_logger(), "底盘驱动已启动 (sim=%d, limits: v=%.1f, ω=%.1f)",
-                use_sim, max_linear_vel_, max_angular_vel_);
+    RCLCPP_INFO(
+      get_logger(),
+      "底盘驱动已启动 (sim=%d, limits: v=%.1f, ω=%.1f, base_heading=%.1f deg)",
+      use_sim, max_linear_vel_, max_angular_vel_,
+      this->get_parameter("base_heading_offset_deg").as_double());
   }
 
   ~ChassisDriverNode() override {
