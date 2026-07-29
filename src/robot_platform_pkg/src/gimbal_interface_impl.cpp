@@ -24,6 +24,7 @@
 #include <linux/can.h>
 #include <linux/can/raw.h>
 #include <net/if.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -49,6 +50,17 @@ public:
     if (sock_ < 0) {
       std::cerr << "[DJIRS2Gimbal] 创建 SocketCAN 套接字失败: " << strerror(errno) << std::endl;
       return false;
+    }
+
+    // A DJI protocol message spans several classic CAN frames. Give SocketCAN
+    // enough room for short USB-CAN scheduling stalls; bounded retry in
+    // sendFrame() still prevents an unbounded stale-command backlog.
+    const int send_buffer_bytes = 1 << 20;
+    if (setsockopt(
+        sock_, SOL_SOCKET, SO_SNDBUF,
+        &send_buffer_bytes, sizeof(send_buffer_bytes)) < 0) {
+      std::cerr << "[DJIRS2Gimbal] 设置CAN发送缓冲区失败: "
+                << strerror(errno) << std::endl;
     }
 
     struct ifreq ifr;
@@ -132,7 +144,8 @@ public:
     // 周期性查询云台位置（10 Hz），响应由接收线程异步缓存
     auto now = std::chrono::steady_clock::now();
     if (std::chrono::duration_cast<std::chrono::milliseconds>(
-            now - last_query_time_).count() >= 100) {
+            now - last_query_time_).count() >= 100 &&
+        !hasRecentPendingQuery(now)) {
       last_query_time_ = now;
       auto query_frame = dji_rs2::build_query_position_command();
       recordPendingQuery(query_frame);
@@ -272,7 +285,15 @@ private:
     std::lock_guard<std::mutex> lock(state_mutex_);
     pending_query_seq_hi_ = frame[8];
     pending_query_seq_lo_ = frame[9];
+    pending_query_time_ = std::chrono::steady_clock::now();
     has_pending_query_seq_ = true;
+  }
+
+  bool hasRecentPendingQuery(
+      std::chrono::steady_clock::time_point now) const {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return has_pending_query_seq_ &&
+      now - pending_query_time_ < std::chrono::milliseconds(300);
   }
 
   bool matchesPendingQuery(const std::vector<uint8_t>& frame) const {
@@ -290,6 +311,11 @@ private:
   void sendFrame(const std::vector<uint8_t>& data) {
     if (sock_ < 0) return;
 
+    // Position commands and state queries may originate from different
+    // callbacks/threads. A DJI application frame must never be interleaved
+    // with another frame while being split into 8-byte CAN packets.
+    std::lock_guard<std::mutex> send_lock(send_mutex_);
+
     size_t offset = 0;
     while (offset < data.size()) {
       struct can_frame frame;
@@ -298,11 +324,48 @@ private:
       frame.can_dlc = static_cast<uint8_t>(std::min(data.size() - offset, size_t(8)));
       std::memcpy(frame.data, data.data() + offset, frame.can_dlc);
 
-      ssize_t n = write(sock_, &frame, sizeof(frame));
-      if (n != static_cast<ssize_t>(sizeof(frame))) {
+      bool sent = false;
+      int last_error = 0;
+      for (int attempt = 0; attempt < 4 && !sent; ++attempt) {
+        struct pollfd pfd;
+        pfd.fd = sock_;
+        pfd.events = POLLOUT;
+        pfd.revents = 0;
+        const int poll_result = poll(&pfd, 1, 10);
+        if (poll_result < 0 && errno == EINTR) {
+          --attempt;
+          continue;
+        }
+        if (poll_result <= 0 || !(pfd.revents & POLLOUT)) {
+          last_error = poll_result == 0 ? ENOBUFS : errno;
+        } else {
+          const ssize_t n = write(sock_, &frame, sizeof(frame));
+          if (n == static_cast<ssize_t>(sizeof(frame))) {
+            sent = true;
+            break;
+          }
+          last_error = errno;
+          if (last_error != ENOBUFS &&
+              last_error != EAGAIN &&
+              last_error != EWOULDBLOCK &&
+              last_error != EINTR) {
+            break;
+          }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      }
+
+      if (!sent) {
         can_error_count_++;
-        std::cerr << "[DJIRS2Gimbal] CAN 发送失败: " << strerror(errno) << std::endl;
-        break;
+        const auto now = std::chrono::steady_clock::now();
+        if (now - last_can_error_log_time_ >= std::chrono::seconds(1)) {
+          last_can_error_log_time_ = now;
+          std::cerr
+            << "[DJIRS2Gimbal] CAN发送队列持续拥塞，已丢弃本条过期指令: "
+            << strerror(last_error != 0 ? last_error : ENOBUFS)
+            << std::endl;
+        }
+        return;
       }
       tx_count_++;
       offset += frame.can_dlc;
@@ -474,6 +537,8 @@ private:
   uint8_t speed_ctrl_byte_;       ///< 速度控制标志
   std::chrono::steady_clock::time_point last_query_time_{};
   std::chrono::steady_clock::time_point last_position_log_time_{};
+  std::chrono::steady_clock::time_point last_can_error_log_time_{};
+  std::mutex send_mutex_;
 
   // 缓存的云台状态 (0.1° 单位)
   mutable std::mutex state_mutex_;
@@ -486,6 +551,7 @@ private:
   bool has_state_sample_ = false;
   uint8_t pending_query_seq_hi_ = 0;
   uint8_t pending_query_seq_lo_ = 0;
+  std::chrono::steady_clock::time_point pending_query_time_{};
   bool has_pending_query_seq_ = false;
 };
 

@@ -173,6 +173,7 @@ public:
     this->declare_parameter("pbvs_max_fusion_age", 0.20);
     this->declare_parameter("pbvs_max_prediction_age", 0.30);
     this->declare_parameter("pbvs_max_source_age", 0.25);
+    this->declare_parameter("pbvs_translation_hold_timeout", 0.35);
     this->declare_parameter(
       "pbvs_expected_frame", "sony_camera_optical_frame");
     this->declare_parameter("pbvs_target_switch_confirmation", 0.60);
@@ -197,6 +198,9 @@ public:
       this->get_parameter("pbvs_max_prediction_age").as_double());
     pbvs_max_source_age_ =
       this->get_parameter("pbvs_max_source_age").as_double();
+    pbvs_translation_hold_timeout_ = std::max(
+      0.0,
+      this->get_parameter("pbvs_translation_hold_timeout").as_double());
     pbvs_expected_frame_ =
       this->get_parameter("pbvs_expected_frame").as_string();
     pbvs_target_switch_confirmation_ =
@@ -480,12 +484,24 @@ private:
         }
         locked_target_id_ = pending_target_id_;
         pending_target_id_ = -1;
+        last_valid_depth_target_id_ = -1;
+        last_valid_depth_time_ = rclcpp::Time(0, 0, get_clock()->get_clock_type());
         RCLCPP_WARN(
           get_logger(), "PBVS确认并切换锁定目标ID: %d", locked_target_id_);
       } else {
         pending_target_id_ = -1;
       }
       last_target_source_time_ = source_stamp;
+
+      // 深度融合通常低于跟踪发布频率。在两个有效深度样本之间，融合节点
+      // 可能发布 PREDICTED/DEGRADED 目标。缓存最近一次可信深度，避免底盘
+      // 在每个深度帧间隙被反复清零；缓存不会被预测目标刷新。
+      if (is_pbvs_translation_target(
+          *selected, pbvs_min_depth_confidence_, pbvs_max_fusion_age_)) {
+        last_valid_depth_ = selected->position[2];
+        last_valid_depth_target_id_ = selected->id;
+        last_valid_depth_time_ = source_stamp;
+      }
     }
 
     last_target_ = msg;
@@ -881,6 +897,25 @@ private:
     // PBVS uses the high-rate 2D aim point for bearing while retaining the
     // independently measured metric Z for chassis distance control.
     auto control_target = active_target_;
+    const bool pbvs_controller = controller_->getControllerType() == "PBVS";
+    const bool current_metric_translation =
+      !pbvs_controller ||
+      is_pbvs_translation_target(
+        active_target_, pbvs_min_depth_confidence_, pbvs_max_fusion_age_);
+    bool held_metric_translation = false;
+    if (pbvs_controller && !current_metric_translation &&
+        last_valid_depth_target_id_ == locked_target_id_ &&
+        last_valid_depth_time_.nanoseconds() > 0) {
+      const double held_depth_age = (now - last_valid_depth_time_).seconds();
+      if (std::isfinite(held_depth_age) &&
+          held_depth_age >= -0.05 &&
+          held_depth_age <= pbvs_translation_hold_timeout_ &&
+          std::isfinite(last_valid_depth_) &&
+          last_valid_depth_ > 0.0) {
+        control_target.position[2] = static_cast<float>(last_valid_depth_);
+        held_metric_translation = true;
+      }
+    }
     if (controller_->getControllerType() == "PBVS" &&
         latest_aim_target_.has_value() &&
         last_aim_receive_time_.nanoseconds() > 0 &&
@@ -916,11 +951,8 @@ private:
     // ControlAllocator 将单一的相机速度分解为两个执行器的协同指令。
     // 分配策略基于 allocation_ratio 参数和云台限位状态。
     auto allocation = allocator_.allocate(*cam_vel, last_platform_state_, dt);
-    const bool pbvs_controller = controller_->getControllerType() == "PBVS";
     const bool metric_translation_allowed =
-      !pbvs_controller ||
-      is_pbvs_translation_target(
-        active_target_, pbvs_min_depth_confidence_, pbvs_max_fusion_age_);
+      current_metric_translation || held_metric_translation;
     if (!allow_chassis_translation_ || !metric_translation_allowed) {
       allocation.chassis_twist.linear.x = 0.0;
       allocation.chassis_twist.linear.y = 0.0;
@@ -1266,6 +1298,7 @@ private:
   float pbvs_max_fusion_age_ = 0.20F;
   float pbvs_max_prediction_age_ = 0.30F;
   double pbvs_max_source_age_ = 0.25;
+  double pbvs_translation_hold_timeout_ = 0.35;
   std::string pbvs_expected_frame_{"sony_camera_optical_frame"};
   double pbvs_target_switch_confirmation_ = 0.60;
   bool use_aim_target_ = true;
@@ -1317,6 +1350,9 @@ private:
   vision_servo_msgs::msg::Target active_target_;
   std::optional<vision_servo_msgs::msg::AimTarget2D> latest_aim_target_;
   vision_servo_msgs::msg::PlatformState last_platform_state_;
+  double last_valid_depth_ = 0.0;
+  int32_t last_valid_depth_target_id_ = -1;
+  rclcpp::Time last_valid_depth_time_{0, 0, RCL_ROS_TIME};
   int32_t locked_target_id_ = -1;
   int32_t pending_target_id_ = -1;
 

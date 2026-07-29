@@ -32,6 +32,7 @@ servo_manager:
     pbvs_max_fusion_age: 0.20
     pbvs_max_prediction_age: 0.30
     pbvs_max_source_age: 0.25
+    pbvs_translation_hold_timeout: 0.35 # 深度帧间保持最近可信Z，禁止预测值刷新
     pbvs_expected_frame: "sony_camera_optical_frame"
     pbvs_target_switch_confirmation: 0.60
 

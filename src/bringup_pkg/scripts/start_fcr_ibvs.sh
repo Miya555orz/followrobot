@@ -180,6 +180,7 @@ fi
 echo "Configuring gimbal CAN: interface=$CAN_INTERFACE bitrate=$CAN_BITRATE"
 sudo ip link set dev "$CAN_INTERFACE" down 2>/dev/null || true
 sudo ip link set dev "$CAN_INTERFACE" type can bitrate "$CAN_BITRATE" restart-ms 100
+sudo ip link set dev "$CAN_INTERFACE" txqueuelen 1000
 sudo ip link set dev "$CAN_INTERFACE" up
 
 if ! ip link show dev "$CAN_INTERFACE" | grep -q "UP"; then
