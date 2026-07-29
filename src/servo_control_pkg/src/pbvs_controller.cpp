@@ -42,6 +42,7 @@ PBVSController::PBVSController(const rclcpp::NodeOptions& options)
     rotational_gain_(0.6),
     pitch_gain_(0.45),
     pitch_filter_alpha_(0.25),
+    pitch_acceleration_limit_(0.6),
     lateral_gain_(0.25),
     yaw_deadband_rad_(0.034906585),
     pitch_deadband_rad_(0.034906585),
@@ -53,6 +54,7 @@ PBVSController::PBVSController(const rclcpp::NodeOptions& options)
   declare_parameter("rotational_gain", rotational_gain_);
   declare_parameter("pitch_gain", pitch_gain_);
   declare_parameter("pitch_filter_alpha", pitch_filter_alpha_);
+  declare_parameter("pitch_acceleration_limit", pitch_acceleration_limit_);
   declare_parameter("lateral_gain", lateral_gain_);
   declare_parameter("yaw_deadband_rad", yaw_deadband_rad_);
   declare_parameter("pitch_deadband_rad", pitch_deadband_rad_);
@@ -63,6 +65,8 @@ PBVSController::PBVSController(const rclcpp::NodeOptions& options)
   rotational_gain_ = get_parameter("rotational_gain").as_double();
   pitch_gain_ = get_parameter("pitch_gain").as_double();
   pitch_filter_alpha_ = get_parameter("pitch_filter_alpha").as_double();
+  pitch_acceleration_limit_ =
+    get_parameter("pitch_acceleration_limit").as_double();
   lateral_gain_ = get_parameter("lateral_gain").as_double();
   yaw_deadband_rad_ = get_parameter("yaw_deadband_rad").as_double();
   pitch_deadband_rad_ = get_parameter("pitch_deadband_rad").as_double();
@@ -97,6 +101,8 @@ void PBVSController::configureFromNode(const rclcpp::Node& node)
   pitch_gain_ = std::max(0.0, get_double("pitch_gain", pitch_gain_));
   pitch_filter_alpha_ = std::clamp(
     get_double("pitch_filter_alpha", pitch_filter_alpha_), 0.0, 1.0);
+  pitch_acceleration_limit_ = std::max(
+    0.0, get_double("pitch_acceleration_limit", pitch_acceleration_limit_));
   lateral_gain_ = std::max(0.0, get_double("lateral_gain", lateral_gain_));
   yaw_deadband_rad_ =
     std::max(0.0, get_double("yaw_deadband_rad", yaw_deadband_rad_));
@@ -140,6 +146,7 @@ bool PBVSController::setGoalFromTarget(
   last_yaw_error_ = std::atan2(x, z);
   last_pitch_error_ = std::atan2(y, std::hypot(x, z));
   filtered_pitch_error_ = last_pitch_error_;
+  last_pitch_velocity_ = 0.0;
   last_depth_error_ = z - desired_depth;
   feature_error_.setZero();
   feature_error_(0) = last_yaw_error_;
@@ -154,9 +161,9 @@ bool PBVSController::setGoalFromTarget(
 std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
     const vision_servo_msgs::msg::Target& target, double dt)
 {
-  (void)dt;
   if (!initialized_ || !goal_configured_ || !point_goal_set_) {
     last_camera_velocity_.setZero();
+    last_pitch_velocity_ = 0.0;
     return std::nullopt;
   }
 
@@ -165,6 +172,7 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
   const double z = target.position[2];
   if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) || z <= 0.0) {
     last_camera_velocity_.setZero();
+    last_pitch_velocity_ = 0.0;
     return std::nullopt;
   }
 
@@ -221,6 +229,19 @@ std::optional<Eigen::Matrix<double, 6, 1>> PBVSController::computeVelocity(
   if (isConverged()) {
     velocity.setZero();
   }
+
+  // Camera observations arrive as discrete samples while the control loop runs
+  // faster. Limit the change of pitch velocity per iteration so each new
+  // observation cannot cause an RS2 speed step. This also ramps smoothly to
+  // zero instead of repeatedly toggling hold/move around the deadband.
+  const double safe_dt = std::clamp(
+    std::isfinite(dt) ? dt : 0.02, 0.001, 0.10);
+  const double max_pitch_delta = pitch_acceleration_limit_ * safe_dt;
+  velocity(3) = std::clamp(
+    velocity(3),
+    last_pitch_velocity_ - max_pitch_delta,
+    last_pitch_velocity_ + max_pitch_delta);
+  last_pitch_velocity_ = velocity(3);
 
   ++iteration_count_;
   last_camera_velocity_ = velocity;

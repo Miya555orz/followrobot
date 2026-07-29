@@ -11,6 +11,7 @@ servo_manager:
     rotational_gain: 0.85         # yaw 方位P增益
     pitch_gain: 0.45              # pitch 单独降低增益，抑制上下抖动
     pitch_filter_alpha: 0.25      # pitch 误差一阶低通；越小越平滑
+    pitch_acceleration_limit: 0.60 # pitch 速度斜坡上限 (rad/s^2)
     lateral_gain: 0.20            # 横移增益（首版默认禁用）
     enable_lateral_translation: false
 
