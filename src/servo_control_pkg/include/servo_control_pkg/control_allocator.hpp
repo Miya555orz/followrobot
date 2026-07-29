@@ -66,7 +66,10 @@ public:
                  double allocation_ratio, double unwind_gain = 0.3,
                  double smoothing_alpha = 0.7,
                  double chassis_linear_sign = 1.0,
-                 double chassis_angular_sign = 1.0);
+                 double chassis_angular_sign = 1.0,
+                 double unwind_deadband_rad = 0.0872665,
+                 double chassis_yaw_filter_alpha = 0.25,
+                 double chassis_angular_acceleration_limit = 0.6);
 
   /**
    * @brief 执行控制分配。
@@ -89,6 +92,10 @@ private:
   double unwind_gain_;               ///< 底盘回中增益（追云台偏角）
   double chassis_linear_sign_;       ///< 底盘前后方向标定（通常为 ±1）
   double chassis_angular_sign_;      ///< 底盘偏航方向标定（通常为 ±1）
+  double unwind_deadband_rad_;       ///< 云台回中死区，避免底盘在零点反复换向
+  double chassis_yaw_filter_alpha_;  ///< 底盘偏航指令一阶低通系数
+  double chassis_angular_acceleration_limit_; ///< 底盘偏航角加速度上限
+  double prev_chassis_yaw_;          ///< 上一帧底盘偏航指令
 
   // ── 平滑滤波器 ──────────────────────────────────────────────────
   double prev_gimbal_yaw_, prev_gimbal_pitch_;  ///< 上一帧云台指令（用于平滑）

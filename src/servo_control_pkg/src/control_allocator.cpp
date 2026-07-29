@@ -32,6 +32,8 @@ ControlAllocator::ControlAllocator()
     chassis_linear_limit_(1.0), chassis_angular_limit_(2.0),
     allocation_ratio_(0.5), unwind_gain_(0.3),
     chassis_linear_sign_(1.0), chassis_angular_sign_(1.0),
+    unwind_deadband_rad_(0.0872665), chassis_yaw_filter_alpha_(0.25),
+    chassis_angular_acceleration_limit_(0.6), prev_chassis_yaw_(0.0),
     prev_gimbal_yaw_(0), prev_gimbal_pitch_(0),
     smoothing_alpha_(0.3)
 {}
@@ -41,7 +43,9 @@ void ControlAllocator::configure(
     double chassis_linear_limit, double chassis_angular_limit,
     double allocation_ratio, double unwind_gain,
     double smoothing_alpha, double chassis_linear_sign,
-    double chassis_angular_sign) {
+    double chassis_angular_sign, double unwind_deadband_rad,
+    double chassis_yaw_filter_alpha,
+    double chassis_angular_acceleration_limit) {
   gimbal_yaw_limit_ = gimbal_yaw_limit;
   gimbal_pitch_limit_ = gimbal_pitch_limit;
   chassis_linear_limit_ = chassis_linear_limit;
@@ -51,14 +55,18 @@ void ControlAllocator::configure(
   smoothing_alpha_ = std::clamp(smoothing_alpha, 0.0, 1.0);
   chassis_linear_sign_ = chassis_linear_sign < 0.0 ? -1.0 : 1.0;
   chassis_angular_sign_ = chassis_angular_sign < 0.0 ? -1.0 : 1.0;
+  unwind_deadband_rad_ = std::max(0.0, unwind_deadband_rad);
+  chassis_yaw_filter_alpha_ =
+    std::clamp(chassis_yaw_filter_alpha, 0.0, 1.0);
+  chassis_angular_acceleration_limit_ =
+    std::max(0.0, chassis_angular_acceleration_limit);
+  prev_chassis_yaw_ = 0.0;
 }
 
 ControlAllocation ControlAllocator::allocate(
     const Eigen::Matrix<double, 6, 1>& camera_velocity,
     const vision_servo_msgs::msg::PlatformState& platform_state,
     double dt) {
-  (void)dt;
-
   ControlAllocation cmd;
 
   // ── 坐标映射：camera_optical_link -> base_link ──────────────────
@@ -124,12 +132,35 @@ ControlAllocation ControlAllocator::allocate(
                                      -gimbal_pitch_limit_, gimbal_pitch_limit_);
 
   // 底盘取剩余的偏航旋转分量（云台限位不足时由底盘转动补足）
-  // + unwind_gain_ × gimbal_yaw：收敛后底盘持续回中云台
+  // + unwind_gain_ × unwind_error：收敛后底盘持续回中云台。
+  // 回中误差使用中心死区，防止云台编码器噪声和闭环超调令底盘反复换向。
   double chassis_yaw_component = yaw_rate * (allocation_ratio_ + yaw_saturation * (1.0 - allocation_ratio_));
-  cmd.chassis_twist.angular.z = std::clamp(
+  double unwind_error = 0.0;
+  if (std::abs(gimbal_yaw) > unwind_deadband_rad_) {
+    unwind_error = std::copysign(
+      std::abs(gimbal_yaw) - unwind_deadband_rad_, gimbal_yaw);
+  }
+  const double raw_chassis_yaw = std::clamp(
       chassis_angular_sign_ *
-        (chassis_yaw_component + unwind_gain_ * gimbal_yaw),
+        (chassis_yaw_component + unwind_gain_ * unwind_error),
       -chassis_angular_limit_, chassis_angular_limit_);
+
+  // 先低通，再限制相邻控制周期的角速度变化，消除底盘顿挫和过零抖动。
+  double filtered_chassis_yaw =
+    chassis_yaw_filter_alpha_ * raw_chassis_yaw +
+    (1.0 - chassis_yaw_filter_alpha_) * prev_chassis_yaw_;
+  const double safe_dt = std::clamp(dt, 0.001, 0.1);
+  const double max_delta = chassis_angular_acceleration_limit_ * safe_dt;
+  filtered_chassis_yaw = std::clamp(
+    filtered_chassis_yaw,
+    prev_chassis_yaw_ - max_delta,
+    prev_chassis_yaw_ + max_delta);
+  if (std::abs(raw_chassis_yaw) < 1e-9 &&
+      std::abs(filtered_chassis_yaw) < 0.005) {
+    filtered_chassis_yaw = 0.0;
+  }
+  cmd.chassis_twist.angular.z = filtered_chassis_yaw;
+  prev_chassis_yaw_ = filtered_chassis_yaw;
 
   // ── 平移分配：全部由底盘执行 ────────────────────────────────────
   // camera_velocity(1) 是相机垂向平移，平面底盘无法执行，当前 MVP 忽略。

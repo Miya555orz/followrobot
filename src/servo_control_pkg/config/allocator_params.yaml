@@ -10,6 +10,9 @@ servo_manager:
     chassis_linear_sign: -1.0    # 实机方向标定：反转前后平移
     chassis_angular_sign: -1.0   # 实机方向标定：反转左右偏航
     unwind_gain: 0.3             # 底盘回中增益（追云台偏角，0=不回中）
+    unwind_deadband_rad: 0.0872665 # 云台中心 ±5° 内不驱动底盘回中
+    chassis_yaw_filter_alpha: 0.25 # 底盘偏航低通；越小越平滑
+    chassis_angular_acceleration_limit: 0.6 # 底盘偏航角加速度上限 (rad/s²)
     smoothing_alpha: 0.8         # 云台指令平滑（0-1, ↑快, 80%新+20%旧）
     controller_plugin: "servo_control_pkg::IBVSController"  # 默认控制器插件
     auto_start: false            # false = 通过 VisualServo Action 启动闭环；仿真可覆盖为 true

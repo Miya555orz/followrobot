@@ -137,6 +137,9 @@ public:
     this->declare_parameter("chassis_linear_sign", -1.0);    // 实机前后方向标定
     this->declare_parameter("chassis_angular_sign", -1.0);   // 实机偏航方向标定
     this->declare_parameter("unwind_gain", 0.3);             // 底盘回中增益 (追云台偏角)
+    this->declare_parameter("unwind_deadband_rad", 0.0872665); // 回中死区 (5 deg)
+    this->declare_parameter("chassis_yaw_filter_alpha", 0.25); // 底盘偏航低通
+    this->declare_parameter("chassis_angular_acceleration_limit", 0.6); // rad/s^2
     this->declare_parameter("smoothing_alpha", 0.7);         // 云台指令平滑 (0-1, ↑快)
     this->declare_parameter("auto_start", false);            // 是否自动开始伺服
     this->declare_parameter("control_rate", 50.0);
@@ -237,7 +240,10 @@ public:
       this->get_parameter("unwind_gain").as_double(),
       this->get_parameter("smoothing_alpha").as_double(),
       this->get_parameter("chassis_linear_sign").as_double(),
-      this->get_parameter("chassis_angular_sign").as_double()
+      this->get_parameter("chassis_angular_sign").as_double(),
+      this->get_parameter("unwind_deadband_rad").as_double(),
+      this->get_parameter("chassis_yaw_filter_alpha").as_double(),
+      this->get_parameter("chassis_angular_acceleration_limit").as_double()
     );
 
     // ═══════════════════════════════════════════════════════════════════════
