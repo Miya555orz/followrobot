@@ -16,13 +16,11 @@ FaceAimNode::FaceAimNode(const rclcpp::NodeOptions& options)
   : Node("face_aim_node", options)
 {
   declare_parameter("input_timeout_seconds", 2.0);
-  declare_parameter("max_tolerance_ns", 1'000'000);
   declare_parameter("publish_debug", true);
   declare_parameter("aim_offset_ratio", 0.20);
   declare_parameter("lpf_alpha", 0.40);
 
   input_timeout_seconds_ = get_parameter("input_timeout_seconds").as_double();
-  max_tolerance_ns_ = get_parameter("max_tolerance_ns").as_int();
   publish_debug_ = get_parameter("publish_debug").as_bool();
   aim_offset_ratio_ = get_parameter("aim_offset_ratio").as_double();
   lpf_alpha_ = get_parameter("lpf_alpha").as_double();
@@ -45,7 +43,7 @@ FaceAimNode::FaceAimNode(const rclcpp::NodeOptions& options)
       std::chrono::milliseconds(100),
       std::bind(&FaceAimNode::check_timeout, this));
 
-  last_input_time_ = std::chrono::steady_clock::now();
+  last_tracks_time_ = std::chrono::steady_clock::now();
 
   RCLCPP_INFO(get_logger(), "face_aim_node started");
 }
@@ -57,7 +55,8 @@ void FaceAimNode::image_callback(
       msg->header.stamp.sec, msg->header.stamp.nanosec);
   std::lock_guard<std::mutex> lock(mutex_);
   pending_image_ = msg;
-  last_input_time_ = std::chrono::steady_clock::now();
+  // Aim coordinates come from the tracker. The latest image is retained only
+  // for dimensions and optional debug rendering.
   try_match_and_process();
 }
 
@@ -68,19 +67,8 @@ void FaceAimNode::tracks_callback(
       msg->header.stamp.sec, msg->header.stamp.nanosec, msg->tracking_id);
   std::lock_guard<std::mutex> lock(mutex_);
   pending_tracks_ = msg;
-  last_input_time_ = std::chrono::steady_clock::now();
+  last_tracks_time_ = std::chrono::steady_clock::now();
   try_match_and_process();
-}
-
-bool FaceAimNode::stamps_match(
-    const builtin_interfaces::msg::Time& a,
-    const builtin_interfaces::msg::Time& b,
-    const int64_t tolerance_ns)
-{
-  const int64_t diff_ns =
-      (static_cast<int64_t>(a.sec) - static_cast<int64_t>(b.sec)) * 1'000'000'000LL +
-      (static_cast<int64_t>(a.nanosec) - static_cast<int64_t>(b.nanosec));
-  return std::abs(diff_ns) <= tolerance_ns;
 }
 
 void FaceAimNode::try_match_and_process()
@@ -94,23 +82,16 @@ void FaceAimNode::try_match_and_process()
     return;
   }
 
-  if (!stamps_match(
-          pending_image_->header.stamp,
-          pending_tracks_->header.stamp,
-          max_tolerance_ns_)) {
-    RCLCPP_DEBUG(get_logger(), "try_match: stamp mismatch image=%u.%u tracks=%u.%u",
-        pending_image_->header.stamp.sec, pending_image_->header.stamp.nanosec,
-        pending_tracks_->header.stamp.sec, pending_tracks_->header.stamp.nanosec);
-    return;
-  }
-  RCLCPP_INFO(get_logger(), "try_match: matched");
-
   const float image_width = static_cast<float>(pending_image_->width);
   const float image_height = static_cast<float>(pending_image_->height);
   const auto& tracks = *pending_tracks_;
 
   vision_servo_msgs::msg::AimTarget2D aim;
-  aim.header = pending_image_->header;
+  // Detection/tracking necessarily arrives after its source image. Requiring
+  // the tracker stamp to equal the newest camera frame caused a permanent
+  // mismatch at 30 Hz. The bbox already contains everything needed for aim;
+  // preserve its source stamp so downstream freshness checks remain correct.
+  aim.header = pending_tracks_->header;
   aim.tracking_id = -1;
   aim.valid = false;
   aim.confidence = 0.0f;
@@ -162,7 +143,7 @@ void FaceAimNode::try_match_and_process()
   }
 
   aim_pub_->publish(aim);
-  RCLCPP_INFO(get_logger(), "published valid=%s id=%d source=%d (%.1f, %.1f)",
+  RCLCPP_DEBUG(get_logger(), "published valid=%s id=%d source=%d (%.1f, %.1f)",
       aim.valid ? "true" : "false", aim.tracking_id, aim.source,
       aim.pixel_x, aim.pixel_y);
 
@@ -170,14 +151,16 @@ void FaceAimNode::try_match_and_process()
     publish_debug_image(pending_image_, aim.header, aim);
   }
 
-  pending_image_.reset();
+  // Keep the latest image for the next tracks message. Only tracks are
+  // consumed; otherwise a 30 Hz image can overwrite its matching delayed
+  // tracks message before processing.
   pending_tracks_.reset();
 }
 
 void FaceAimNode::check_timeout()
 {
   const double elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(
-      std::chrono::steady_clock::now() - last_input_time_).count();
+      std::chrono::steady_clock::now() - last_tracks_time_).count();
 
   const bool in_timeout = elapsed > input_timeout_seconds_;
 
