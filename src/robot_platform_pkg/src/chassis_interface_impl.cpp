@@ -37,6 +37,7 @@ public:
     }
     forward_kinematics_ =
       inverse_kinematics_.completeOrthogonalDecomposition().pseudoInverse();
+    last_odom_.pose.pose.orientation.w = 1.0;
   }
 
   ~LekiwiChassis() override { shutdown(); }
@@ -89,19 +90,27 @@ public:
 
   nav_msgs::msg::Odometry readOdometry() override {
     std::lock_guard<std::mutex> lock(mutex_);
-    nav_msgs::msg::Odometry odom;
-    odom.pose.pose.orientation.w = 1.0;
-    if (!connected_) return odom;
+    if (!connected_) return last_odom_;
 
     std::array<int16_t, 3> raw{};
     for (size_t i = 0; i < ids_.size(); ++i) {
       if (!bus_.readVelocity(ids_[i], raw[i])) {
-        connected_ = false;
-        std::cerr << "[LekiwiChassis] velocity read failed: " << bus_.lastError() << '\n';
-        bus_.stop(ids_);
-        return odom;
+        ++consecutive_telemetry_failures_;
+        if (consecutive_telemetry_failures_ == 1 ||
+            consecutive_telemetry_failures_ % 10 == 0) {
+          std::cerr
+            << "[LekiwiChassis] velocity telemetry read failed (count="
+            << consecutive_telemetry_failures_ << "): "
+            << bus_.lastError() << '\n';
+        }
+        // 轮速反馈属于遥测，不应因一次丢包切断连续的速度控制。
+        // 若总线本身失效，下一次 syncWriteVelocity 会走写失败的安全路径。
+        return last_odom_;
       }
     }
+    consecutive_telemetry_failures_ = 0;
+    nav_msgs::msg::Odometry odom;
+    odom.pose.pose.orientation.w = 1.0;
     const double raw_to_rad_s = 2.0 * M_PI / kSts3215StepsPerRevolution;
     const Eigen::Vector3d wheel(raw[0] * raw_to_rad_s,
                                 raw[1] * raw_to_rad_s,
@@ -113,7 +122,8 @@ public:
     odom.twist.twist.linear.x = base_linear.x();
     odom.twist.twist.linear.y = base_linear.y();
     odom.twist.twist.angular.z = native_body[2];
-    return odom;
+    last_odom_ = odom;
+    return last_odom_;
   }
 
   void emergencyStop() override {
@@ -171,6 +181,8 @@ private:
   mutable std::mutex mutex_;
   FeetechSts3215Bus bus_;
   bool connected_{false};
+  nav_msgs::msg::Odometry last_odom_;
+  size_t consecutive_telemetry_failures_{0};
 };
 
 class SimulatedChassis final : public IChassisInterface {

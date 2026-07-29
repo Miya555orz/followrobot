@@ -178,9 +178,16 @@ if [[ ! "$CAN_INTERFACE" =~ ^[A-Za-z0-9_.:-]+$ ]] ||
 fi
 
 echo "Configuring gimbal CAN: interface=$CAN_INTERFACE bitrate=$CAN_BITRATE"
+# ── CAN 接口配置 ───────────────────────────────────────────────────
+# 1) 先 down 再设置参数，避免 "Device or resource busy"
+#    restart-ms 100: CAN 控制器自动重发间隔，RS2 协议需要可靠传输
 sudo ip link set dev "$CAN_INTERFACE" down 2>/dev/null || true
 sudo ip link set dev "$CAN_INTERFACE" type can bitrate "$CAN_BITRATE" restart-ms 100
+# 2) txqueuelen 1000: DJI RS2 应用帧拆分后可能一次控制周期产生多个 CAN 帧，
+#    默认的 10 个包队列太小，USB-CAN 短暂调度延迟就会丢帧。
+#    配合 gimbal_interface SO_SNDBUF 1 MiB 使用。
 sudo ip link set dev "$CAN_INTERFACE" txqueuelen 1000
+# 3) 启动接口，确认 UP 后才继续
 sudo ip link set dev "$CAN_INTERFACE" up
 
 if ! ip link show dev "$CAN_INTERFACE" | grep -q "UP"; then
@@ -241,7 +248,9 @@ exec ros2 launch bringup_pkg fcr_bringup.launch.py \
   enable_servo:=true \
   controller_plugin:="$CONTROLLER_PLUGIN" \
   servo_auto_start:=true \
+  # 3D 融合目标：PBVS 拿 Z 做距离控制，角度快环用 aim_target
   servo_target_topic:=/perception/targets_3d \
   servo_aim_target_topic:=/perception/aim_target_2d \
+  # IBVS: 0.5=云台底盘各半；PBVS: 0.0=云台独担偏航，底盘只回中
   servo_allocation_ratio:="$ALLOCATION_RATIO" \
   servo_allow_chassis_translation:="$SERVO_TRANSLATION"

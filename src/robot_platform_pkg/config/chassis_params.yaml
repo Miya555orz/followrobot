@@ -16,4 +16,5 @@ chassis_driver:
     base_heading_offset_deg: -60.0
     max_raw_wheel_velocity: 1000     # 覆盖 0.08m/s 平移，仍保留硬件安全限幅
     command_timeout_ms: 250          # 丢失 /cmd_vel 后自动停车
+    state_publish_rate_hz: 10.0      # 三轮同步反馈较慢；避免阻塞 50Hz 控制指令
     enable_emergency_stop: true      # 启用急停检测（丢失控制信号时自动停车）

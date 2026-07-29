@@ -133,7 +133,9 @@ bool FeetechSts3215Bus::receiveStatus(uint8_t expected_id, uint8_t* data, size_t
 #else
   std::vector<uint8_t> packet;
   packet.reserve(size + 6);
-  const auto deadline_ms = 100;
+  // 1 Mbps 的本地舵机总线正常响应应在数毫秒内到达。长达 100 ms 的
+  // 同步等待会阻塞底盘速度写入，并可能触发上层 command watchdog。
+  constexpr int deadline_ms = 20;
   while (true) {
     pollfd pfd{fd_, POLLIN, 0};
     const int ready = ::poll(&pfd, 1, deadline_ms);

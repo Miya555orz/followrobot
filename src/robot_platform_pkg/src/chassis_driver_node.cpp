@@ -6,7 +6,7 @@
  *   1. 订阅 /cmd_vel (TwistStamped)，接收上层控制指令
  *   2. 对速度指令进行安全限幅（钳位到 max_linear/angular_velocity）
  *   3. 通过 IChassisInterface 将指令发送给底层硬件
- *   4. 以 50 Hz 频率发布底盘原始反馈（/chassis/odom_raw）
+ *   4. 以可配置频率发布底盘原始反馈（/chassis/odom_raw）
  *
  * 安全机制：
  *   - 速度钳位：防止超速飞车
@@ -47,6 +47,7 @@ public:
     this->declare_parameter("base_heading_offset_deg", 0.0);
     this->declare_parameter("max_raw_wheel_velocity", 3000);
     this->declare_parameter("command_timeout_ms", 250);
+    this->declare_parameter("state_publish_rate_hz", 10.0);
     this->declare_parameter("enable_emergency_stop", true);
 
     bool use_sim = this->get_parameter("use_sim").as_bool();
@@ -59,6 +60,14 @@ public:
       this->get_parameter("command_timeout_ms").as_int());
     if (command_timeout_.count() <= 0) {
       throw std::invalid_argument("command_timeout_ms must be greater than zero");
+    }
+    const double state_publish_rate_hz =
+      this->get_parameter("state_publish_rate_hz").as_double();
+    if (!std::isfinite(state_publish_rate_hz) ||
+        state_publish_rate_hz < 1.0 ||
+        state_publish_rate_hz > 50.0) {
+      throw std::invalid_argument(
+        "state_publish_rate_hz must be finite and within [1, 50]");
     }
 
     // ── 2. 创建底盘硬件接口（真实或仿真） ──────────────────────────
@@ -102,16 +111,23 @@ public:
     raw_odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>(
       "/chassis/odom_raw", rclcpp::QoS(10).reliable());
 
-    // ── 5. 状态发布定时器（50 Hz = 20ms 间隔） ────────────────────
+    // ── 5. 状态发布定时器 ─────────────────────────────────────────
+    // 真实底盘每次反馈需要顺序读取三个舵机。若与 50 Hz 控制指令同频，
+    // 同步串口读取会长期占用执行器线程，使 /cmd_vel 呈突发式下发。
+    // 状态默认降为 10 Hz，控制指令仍由订阅回调以 50 Hz 连续下发。
+    const auto state_period = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::duration<double>(1.0 / state_publish_rate_hz));
     state_timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(20),
+      state_period,
       std::bind(&ChassisDriverNode::publish_state, this));
     last_command_time_ = std::chrono::steady_clock::now();
 
     RCLCPP_INFO(
       get_logger(),
-      "底盘驱动已启动 (sim=%d, limits: v=%.1f, ω=%.1f, base_heading=%.1f deg)",
+      "底盘驱动已启动 (sim=%d, limits: v=%.2f, ω=%.2f, "
+      "state_rate=%.1f Hz, base_heading=%.1f deg)",
       use_sim, max_linear_vel_, max_angular_vel_,
+      state_publish_rate_hz,
       this->get_parameter("base_heading_offset_deg").as_double());
   }
 
@@ -147,7 +163,7 @@ private:
   }
 
   /**
-   * @brief 状态发布定时器回调（50 Hz）。
+   * @brief 状态发布定时器回调。
    *
    * 从底盘硬件读取原始里程计/速度反馈，填充时间戳和坐标系信息后发布。
    * 注意：该节点不发布 /odom 和 TF，避免与融合里程计节点产生双源冲突。
