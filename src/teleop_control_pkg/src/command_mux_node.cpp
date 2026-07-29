@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cctype>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -186,12 +187,18 @@ private:
     return output;
   }
 
-  vision_servo_msgs::msg::GimbalCmd selected_gimbal(
+  static bool is_gimbal_motion_command(
+    const vision_servo_msgs::msg::GimbalCmd & command)
+  {
+    return !command.hold_yaw || !command.hold_pitch ||
+           std::abs(command.yaw_rate) > 1e-6F ||
+           std::abs(command.pitch_rate) > 1e-6F;
+  }
+
+  std::optional<vision_servo_msgs::msg::GimbalCmd> selected_gimbal(
     CommandSource source, int64_t now_ms) const
   {
-    vision_servo_msgs::msg::GimbalCmd command;
-    command.hold_yaw = true;
-    command.hold_pitch = true;
+    std::optional<vision_servo_msgs::msg::GimbalCmd> command;
     if (source == CommandSource::kManual &&
       now_ms - manual_gimbal_time_ms_ <= command_timeout_ms_)
     {
@@ -201,7 +208,19 @@ private:
     {
       command = auto_gimbal_;
     }
+    if (!command || !is_gimbal_motion_command(*command)) {
+      return std::nullopt;
+    }
+    command->header.stamp = now();
+    return command;
+  }
+
+  vision_servo_msgs::msg::GimbalCmd stop_gimbal_command() const
+  {
+    vision_servo_msgs::msg::GimbalCmd command;
     command.header.stamp = now();
+    command.hold_yaw = true;
+    command.hold_pitch = true;
     return command;
   }
 
@@ -220,7 +239,18 @@ private:
     velocity.twist.linear.y = decision.velocity.y;
     velocity.twist.angular.z = decision.velocity.yaw;
     final_velocity_pub_->publish(velocity);
-    final_gimbal_pub_->publish(selected_gimbal(decision.source, now_ms));
+
+    const auto gimbal = selected_gimbal(decision.source, now_ms);
+    if (gimbal) {
+      final_gimbal_pub_->publish(*gimbal);
+      gimbal_command_active_ = true;
+    } else if (gimbal_command_active_) {
+      // Stop exactly once on the active-to-idle edge. Continuing to publish
+      // zero/hold frames would keep RS2 external CAN control active and make
+      // the gimbal's own joystick appear unresponsive.
+      final_gimbal_pub_->publish(stop_gimbal_command());
+      gimbal_command_active_ = false;
+    }
 
     if (has_pending_gimbal_nudge_) {
       const auto nudge_age_ms = now_ms - pending_gimbal_nudge_time_ms_;
@@ -278,6 +308,7 @@ private:
   vision_servo_msgs::msg::GimbalNudge pending_gimbal_nudge_;
   int64_t pending_gimbal_nudge_time_ms_{-1000000};
   bool has_pending_gimbal_nudge_{false};
+  bool gimbal_command_active_{false};
   std::chrono::steady_clock::time_point last_tick_;
 
   rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr final_velocity_pub_;
