@@ -12,6 +12,13 @@ WORKSPACE="${FCR_ROS2_WS:-$HOME/ros2_ws}"
 MODEL_PATH="${FCR_MODEL_PATH:-$HOME/fcr_models/yolov8n_fp16.engine}"
 CAN_BITRATE="${FCR_GIMBAL_CAN_BITRATE:-1000000}"
 CAN_INTERFACE="${FCR_GIMBAL_CAN_INTERFACE:-}"
+CAN_USB_PATH="${FCR_GIMBAL_CAN_USB_PATH:-}"
+CAN_WAIT_TIMEOUT="${FCR_GIMBAL_CAN_WAIT_TIMEOUT:-12}"
+CAN_CONFIG_RETRIES="${FCR_GIMBAL_CAN_CONFIG_RETRIES:-3}"
+CAN_RESTART_MS="${FCR_GIMBAL_CAN_RESTART_MS:-100}"
+# Keep the queue bounded. A very large queue hides missing CAN ACKs and turns
+# current gimbal commands into a long stale backlog.
+CAN_TX_QUEUE="${FCR_GIMBAL_CAN_TX_QUEUE:-128}"
 FOXGLOVE_PORT="${FCR_FOXGLOVE_PORT:-8765}"
 START_GEMINI="${FCR_START_GEMINI:-true}"
 ENABLE_CHASSIS="${FCR_ENABLE_CHASSIS:-true}"
@@ -24,6 +31,8 @@ Usage: ros2 run bringup_pkg start_fcr_ibvs.sh [options]
 
 Options:
   --can-interface IFACE  Use an explicit SocketCAN interface.
+  --can-usb-path PATH    Select the gs_usb device by USB interface path
+                        (example: 1-2.3:1.0; stable across can0/can1 renames).
   --can-bitrate RATE     Configure the gimbal CAN bitrate (default: 1000000).
   --model PATH           TensorRT engine path.
   --workspace PATH       ROS 2 workspace (default: ~/ros2_ws).
@@ -35,7 +44,10 @@ Options:
   -h, --help             Show this help.
 
 Environment equivalents:
-  FCR_GIMBAL_CAN_INTERFACE, FCR_GIMBAL_CAN_BITRATE, FCR_MODEL_PATH,
+  FCR_GIMBAL_CAN_INTERFACE, FCR_GIMBAL_CAN_USB_PATH,
+  FCR_GIMBAL_CAN_BITRATE, FCR_GIMBAL_CAN_WAIT_TIMEOUT,
+  FCR_GIMBAL_CAN_CONFIG_RETRIES, FCR_GIMBAL_CAN_RESTART_MS,
+  FCR_GIMBAL_CAN_TX_QUEUE, FCR_MODEL_PATH,
   FCR_ROS2_WS, FCR_FOXGLOVE_PORT, FCR_START_GEMINI,
   FCR_ENABLE_CHASSIS, FCR_SERVO_TRANSLATION, FCR_CONTROLLER.
 EOF
@@ -49,6 +61,10 @@ while (($# > 0)); do
       ;;
     --can-bitrate)
       CAN_BITRATE="${2:?missing value for --can-bitrate}"
+      shift 2
+      ;;
+    --can-usb-path)
+      CAN_USB_PATH="${2:?missing value for --can-usb-path}"
       shift 2
       ;;
     --model)
@@ -99,11 +115,18 @@ require_command() {
 }
 
 require_command ip
+require_command readlink
+require_command sudo
 
-if [[ ! "$CAN_BITRATE" =~ ^[0-9]+$ ]] || ((CAN_BITRATE <= 0)); then
-  echo "ERROR: invalid CAN bitrate: $CAN_BITRATE" >&2
-  exit 2
-fi
+for numeric_setting in \
+  CAN_BITRATE CAN_WAIT_TIMEOUT CAN_CONFIG_RETRIES CAN_RESTART_MS CAN_TX_QUEUE
+do
+  value="${!numeric_setting}"
+  if [[ ! "$value" =~ ^[0-9]+$ ]] || ((value <= 0)); then
+    echo "ERROR: invalid $numeric_setting: $value" >&2
+    exit 2
+  fi
+done
 if [[ ! "$FOXGLOVE_PORT" =~ ^[0-9]+$ ]] ||
    ((FOXGLOVE_PORT < 1 || FOXGLOVE_PORT > 65535)); then
   echo "ERROR: invalid Foxglove port: $FOXGLOVE_PORT" >&2
@@ -128,8 +151,21 @@ case "${CONTROLLER,,}" in
     ;;
 esac
 
-detect_can_interface() {
-  local -a all_can=()
+can_driver() {
+  local iface="$1"
+  basename "$(
+    readlink -f "/sys/class/net/$iface/device/driver" 2>/dev/null || true
+  )"
+}
+
+can_usb_path() {
+  local iface="$1"
+  basename "$(
+    readlink -f "/sys/class/net/$iface/device" 2>/dev/null || true
+  )"
+}
+
+list_gs_usb_interfaces() {
   local -a gs_usb_can=()
   local path iface driver
 
@@ -137,89 +173,174 @@ detect_can_interface() {
   for path in /sys/class/net/can*; do
     iface="${path##*/}"
     [[ "$iface" =~ ^can[0-9]+$ ]] || continue
-    all_can+=("$iface")
-    driver="$(basename "$(readlink -f "$path/device/driver" 2>/dev/null || true)")"
+    driver="$(can_driver "$iface")"
     if [[ "$driver" == "gs_usb" ]]; then
+      if [[ -n "$CAN_USB_PATH" ]] &&
+         [[ "$(can_usb_path "$iface")" != "$CAN_USB_PATH" ]]; then
+        continue
+      fi
       gs_usb_can+=("$iface")
     fi
   done
   shopt -u nullglob
-
-  if ((${#gs_usb_can[@]} == 1)); then
-    printf '%s\n' "${gs_usb_can[0]}"
-    return
+  if ((${#gs_usb_can[@]} > 0)); then
+    printf '%s\n' "${gs_usb_can[@]}"
   fi
-  if ((${#gs_usb_can[@]} > 1)); then
-    echo "ERROR: multiple gs_usb CAN interfaces found: ${gs_usb_can[*]}" >&2
-    echo "Specify the RS2 adapter with --can-interface or FCR_GIMBAL_CAN_INTERFACE." >&2
-    exit 1
-  fi
-  if ((${#all_can[@]} == 1)); then
-    echo "WARN: ${all_can[0]} is not identified as gs_usb; using the only CAN interface." >&2
-    printf '%s\n' "${all_can[0]}"
-    return
-  fi
-  if ((${#all_can[@]} == 0)); then
-    echo "ERROR: no SocketCAN interface found under /sys/class/net/can*." >&2
-  else
-    echo "ERROR: multiple CAN interfaces found: ${all_can[*]}" >&2
-    echo "Specify the RS2 adapter with --can-interface or FCR_GIMBAL_CAN_INTERFACE." >&2
-  fi
-  exit 1
 }
 
-if [[ -z "$CAN_INTERFACE" ]]; then
-  CAN_INTERFACE="$(detect_can_interface)"
-fi
-if [[ ! "$CAN_INTERFACE" =~ ^[A-Za-z0-9_.:-]+$ ]] ||
-   [[ ! -e "/sys/class/net/$CAN_INTERFACE" ]]; then
-  echo "ERROR: SocketCAN interface '$CAN_INTERFACE' does not exist." >&2
-  exit 1
+detect_can_interface_once() {
+  local -a candidates=()
+  mapfile -t candidates < <(list_gs_usb_interfaces)
+  if ((${#candidates[@]} == 1)); then
+    printf '%s\n' "${candidates[0]}"
+    return 0
+  fi
+  if ((${#candidates[@]} > 1)); then
+    echo "ERROR: multiple matching gs_usb CAN interfaces found: ${candidates[*]}" >&2
+    echo "Use --can-usb-path or FCR_GIMBAL_CAN_USB_PATH to select the RS2 adapter." >&2
+    return 2
+  fi
+  return 1
+}
+
+wait_for_can_interface() {
+  local deadline=$((SECONDS + CAN_WAIT_TIMEOUT))
+  local detected=""
+  local status=0
+  local path iface
+  while ((SECONDS <= deadline)); do
+    if detected="$(detect_can_interface_once)"; then
+      printf '%s\n' "$detected"
+      return 0
+    else
+      status=$?
+      ((status == 2)) && return 2
+    fi
+    sudo modprobe gs_usb >/dev/null 2>&1 || true
+    sleep 1
+  done
+  echo "ERROR: gs_usb RS2 adapter did not enumerate within ${CAN_WAIT_TIMEOUT}s." >&2
+  echo "Available CAN devices:" >&2
+  for path in /sys/class/net/can*; do
+    [[ -e "$path" ]] || continue
+    iface="${path##*/}"
+    echo "  $iface driver=$(can_driver "$iface") usb=$(can_usb_path "$iface")" >&2
+  done
+  echo "USB error -71/-110 cannot be repaired in software; check adapter power, cable and hub." >&2
+  return 1
+}
+
+validate_can_interface() {
+  local iface="$1"
+  if [[ ! "$iface" =~ ^[A-Za-z0-9_.:-]+$ ]] ||
+     [[ ! -e "/sys/class/net/$iface" ]]; then
+    echo "ERROR: SocketCAN interface '$iface' does not exist." >&2
+    return 1
+  fi
+  if [[ "$(can_driver "$iface")" != "gs_usb" ]]; then
+    echo "ERROR: '$iface' uses driver '$(can_driver "$iface")', not gs_usb." >&2
+    echo "The Jetson mttcan interface must never be used for the RS2 USB-CAN adapter." >&2
+    return 1
+  fi
+  if [[ -n "$CAN_USB_PATH" ]] &&
+     [[ "$(can_usb_path "$iface")" != "$CAN_USB_PATH" ]]; then
+    echo "ERROR: '$iface' belongs to USB path '$(can_usb_path "$iface")'," >&2
+    echo "       expected '$CAN_USB_PATH'." >&2
+    return 1
+  fi
+}
+
+# Prevent two bringup processes from reconfiguring the same CAN bus and starting
+# duplicate gimbal/servo nodes.
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"/tmp/fcr_gimbal_can.lock"
+  if ! flock -n 9; then
+    echo "ERROR: another FCR bringup process owns /tmp/fcr_gimbal_can.lock." >&2
+    exit 1
+  fi
 fi
 
-echo "Configuring gimbal CAN: interface=$CAN_INTERFACE bitrate=$CAN_BITRATE"
+# Ask for sudo once. Repeated prompts in the middle of hardware recovery can
+# leave the interface half-configured.
+sudo -v
+
+if [[ -z "$CAN_INTERFACE" ]]; then
+  CAN_INTERFACE="$(wait_for_can_interface)"
+else
+  validate_can_interface "$CAN_INTERFACE"
+  if [[ -z "$CAN_USB_PATH" ]]; then
+    CAN_USB_PATH="$(can_usb_path "$CAN_INTERFACE")"
+  fi
+fi
+
+validate_can_interface "$CAN_INTERFACE"
+CAN_USB_PATH="${CAN_USB_PATH:-$(can_usb_path "$CAN_INTERFACE")}"
+
+echo "Configuring gimbal CAN: interface=$CAN_INTERFACE usb=$CAN_USB_PATH bitrate=$CAN_BITRATE"
 
 configure_can_once() {
   local iface="$1"
-  # 先 down 再设置参数，避免 Device or resource busy。
-  sudo ip link set dev "$iface" down 2>/dev/null || true
+  validate_can_interface "$iface" || return 1
+  sudo ip link set dev "$iface" down >/dev/null 2>&1 || true
   sudo ip link set dev "$iface" type can \
-    bitrate "$CAN_BITRATE" restart-ms 100 &&
-    sudo ip link set dev "$iface" txqueuelen 1000 &&
-    sudo ip link set dev "$iface" up
+    bitrate "$CAN_BITRATE" restart-ms "$CAN_RESTART_MS" || return 1
+  sudo ip link set dev "$iface" txqueuelen "$CAN_TX_QUEUE" || return 1
+  sudo ip link set dev "$iface" up || return 1
+  sleep 0.2
+  can_is_healthy "$iface"
 }
 
-# gs_usb 偶尔会保留一个仍可枚举但无法重新配置的故障接口，此时 ip 会报
-# Broken pipe/No such device。首次失败后自动重载驱动并重新探测接口。
-if ! configure_can_once "$CAN_INTERFACE"; then
-  can_driver="$(
-    basename "$(
-      readlink -f "/sys/class/net/$CAN_INTERFACE/device/driver" 2>/dev/null || true
-    )"
-  )"
-  if [[ "$can_driver" != "gs_usb" ]]; then
-    echo "ERROR: failed to configure $CAN_INTERFACE (driver=$can_driver)." >&2
-    exit 1
-  fi
+can_is_healthy() {
+  local iface="$1"
+  local details
+  details="$(ip -details link show dev "$iface" 2>/dev/null)" || return 1
+  grep -qE '<[^>]*UP[^>]*>' <<<"$details" || return 1
+  grep -q "bitrate $CAN_BITRATE" <<<"$details" || return 1
+  # A freshly configured, correctly terminated bus must start ERROR-ACTIVE.
+  # ERROR-WARNING/PASSIVE/BUS-OFF usually means missing ACK, bad termination,
+  # wrong bitrate or damaged wiring; starting motion in that state is unsafe.
+  grep -q 'can state ERROR-ACTIVE' <<<"$details" || return 1
+}
 
-  echo "WARN: $CAN_INTERFACE configuration failed; recovering gs_usb adapter." >&2
-  sudo modprobe -r gs_usb
-  sudo modprobe gs_usb
+rebind_gs_usb_interface() {
+  local iface="$1"
+  local usb_interface
+  usb_interface="$(can_usb_path "$iface")"
+  [[ -n "$usb_interface" ]] || return 1
+  [[ -e "/sys/bus/usb/drivers/gs_usb/$usb_interface" ]] || return 1
+
+  echo "WARN: rebinding only gs_usb device $usb_interface (not the global driver)." >&2
+  printf '%s' "$usb_interface" |
+    sudo tee /sys/bus/usb/drivers/gs_usb/unbind >/dev/null || return 1
+  sleep 1
+  printf '%s' "$usb_interface" |
+    sudo tee /sys/bus/usb/drivers/gs_usb/bind >/dev/null || return 1
   sleep 2
+}
 
-  CAN_INTERFACE="$(detect_can_interface)"
-  echo "Retrying gimbal CAN: interface=$CAN_INTERFACE bitrate=$CAN_BITRATE"
-  if ! configure_can_once "$CAN_INTERFACE"; then
-    echo "ERROR: CAN recovery failed; unplug/replug the USB-CAN adapter and retry." >&2
-    exit 1
+configured=false
+for ((attempt = 1; attempt <= CAN_CONFIG_RETRIES; attempt++)); do
+  if configure_can_once "$CAN_INTERFACE"; then
+    configured=true
+    break
   fi
-fi
+  echo "WARN: CAN configuration attempt $attempt/$CAN_CONFIG_RETRIES failed." >&2
+  if ((attempt == 1)) && [[ -e "/sys/class/net/$CAN_INTERFACE" ]]; then
+    rebind_gs_usb_interface "$CAN_INTERFACE" || true
+  fi
+  CAN_INTERFACE="$(wait_for_can_interface)" || break
+done
 
-if ! ip link show dev "$CAN_INTERFACE" | grep -q "UP"; then
-  echo "ERROR: failed to bring $CAN_INTERFACE UP." >&2
+if [[ "$configured" != true ]]; then
+  echo "ERROR: CAN startup recovery exhausted; FCR will not start with an unhealthy bus." >&2
+  echo "Replug the USB-CAN adapter and inspect: sudo dmesg | tail -n 60" >&2
   exit 1
 fi
+
 ip -details link show dev "$CAN_INTERFACE"
+printf 'interface=%s\nusb_path=%s\nbitrate=%s\n' \
+  "$CAN_INTERFACE" "$CAN_USB_PATH" "$CAN_BITRATE" \
+  >"/tmp/fcr_gimbal_can.env"
 
 if [[ ! -f "/opt/ros/$ROS_DISTRO_NAME/setup.bash" ]]; then
   echo "ERROR: /opt/ros/$ROS_DISTRO_NAME/setup.bash does not exist." >&2
