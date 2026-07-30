@@ -112,7 +112,8 @@ MuxDecision CommandMuxCore::step(int64_t now_ms, double dt_sec)
       desired = CommandSource::kManual;
       target = manual_command_;
       reason = "manual_override";
-    } else if (fresh(auto_command_time_ms_, now_ms, config_.command_timeout_ms)) {
+    } else if (fresh(
+        auto_command_time_ms_, now_ms, config_.auto_command_timeout_ms)) {
       desired = CommandSource::kAuto;
       target = auto_command_;
       reason = "auto_active";
@@ -153,17 +154,31 @@ MuxDecision CommandMuxCore::step(int64_t now_ms, double dt_sec)
   }
   last_non_stop_source_ = active_source_;
 
-  // 上游明确发布零速代表停车请求。安全停车不能被正常运动使用的加速度
-  // 斜坡拖延；非零指令仍通过下方的 slew limiter 平滑启动和变速。
+  const double dt = std::max(0.0, std::min(dt_sec, 0.25));
+
+  // Manual zero retains immediate-stop semantics because it represents a
+  // released deadman/key lease. Autonomous controllers, however, routinely
+  // emit one or two zero samples around depth deadbands and quality gates.
+  // Decelerating those samples over a short bounded interval prevents the
+  // chassis from repeatedly stopping and restarting. Estop, mode stop and
+  // command timeout still take the immediate-stop paths above.
   if (is_zero(target)) {
-    output_ = {};
+    if (active_source_ == CommandSource::kAuto) {
+      output_.x = approach(
+        output_.x, 0.0, config_.max_auto_decel_x * dt);
+      output_.y = approach(
+        output_.y, 0.0, config_.max_auto_decel_y * dt);
+      output_.yaw = approach(
+        output_.yaw, 0.0, config_.max_auto_decel_yaw * dt);
+    } else {
+      output_ = {};
+    }
     decision.velocity = output_;
     decision.source = active_source_;
     decision.reason = reason;
     return decision;
   }
 
-  const double dt = std::max(0.0, std::min(dt_sec, 0.25));
   output_.x = approach(output_.x, target.x, config_.max_accel_x * dt);
   output_.y = approach(output_.y, target.y, config_.max_accel_y * dt);
   output_.yaw = approach(output_.yaw, target.yaw, config_.max_accel_yaw * dt);

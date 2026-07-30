@@ -5,6 +5,9 @@ command_mux:
     publish_rate_hz: 50.0
     heartbeat_timeout_ms: 250
     command_timeout_ms: 150
+    # Auto perception/control may occasionally miss several 20 ms cycles under
+    # Jetson load. Keep manual leases short, but tolerate a bounded auto gap.
+    auto_command_timeout_ms: 350
     zero_dwell_ms: 100
     max_linear_x: 0.08
     max_linear_y: 0.08
@@ -12,6 +15,11 @@ command_mux:
     max_accel_x: 0.20
     max_accel_y: 0.20
     max_accel_yaw: 0.50
+    # A zero sample from PBVS now ramps down instead of chopping velocity.
+    # At the 0.08 m/s limit, 0.60 m/s² stops in about 0.13 s.
+    max_auto_decel_x: 0.60
+    max_auto_decel_y: 0.60
+    max_auto_decel_yaw: 1.20
     max_gimbal_yaw_rate: 0.25
     max_gimbal_pitch_rate: 0.20
     # Fixed safety envelope; keyboard step parameters may be hot-tuned within 5°.

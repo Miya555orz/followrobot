@@ -28,6 +28,8 @@ public:
     CommandMuxConfig config;
     config.heartbeat_timeout_ms = declare_parameter<int>("heartbeat_timeout_ms", 250);
     config.command_timeout_ms = declare_parameter<int>("command_timeout_ms", 200);
+    config.auto_command_timeout_ms =
+      declare_parameter<int>("auto_command_timeout_ms", 350);
     config.zero_dwell_ms = declare_parameter<int>("zero_dwell_ms", 200);
     config.max_linear_x = declare_parameter<double>("max_linear_x", 0.05);
     config.max_linear_y = declare_parameter<double>("max_linear_y", 0.05);
@@ -35,6 +37,10 @@ public:
     config.max_accel_x = declare_parameter<double>("max_accel_x", 0.15);
     config.max_accel_y = declare_parameter<double>("max_accel_y", 0.15);
     config.max_accel_yaw = declare_parameter<double>("max_accel_yaw", 0.50);
+    config.max_auto_decel_x = declare_parameter<double>("max_auto_decel_x", 0.60);
+    config.max_auto_decel_y = declare_parameter<double>("max_auto_decel_y", 0.60);
+    config.max_auto_decel_yaw =
+      declare_parameter<double>("max_auto_decel_yaw", 1.20);
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 50.0);
     max_gimbal_yaw_rate_ = declare_parameter<double>("max_gimbal_yaw_rate", 0.25);
     max_gimbal_pitch_rate_ = declare_parameter<double>("max_gimbal_pitch_rate", 0.20);
@@ -53,6 +59,7 @@ public:
     core_ = std::make_unique<CommandMuxCore>(config);
     core_->set_mode(parse_mode(default_mode), steady_now_ms());
     command_timeout_ms_ = config.command_timeout_ms;
+    auto_command_timeout_ms_ = config.auto_command_timeout_ms;
 
     const auto command_qos = rclcpp::QoS(1).reliable().durability_volatile();
     final_velocity_pub_ = create_publisher<geometry_msgs::msg::TwistStamped>(
@@ -204,7 +211,7 @@ private:
     {
       command = manual_gimbal_;
     } else if (source == CommandSource::kAuto &&
-      now_ms - auto_gimbal_time_ms_ <= command_timeout_ms_)
+      now_ms - auto_gimbal_time_ms_ <= auto_command_timeout_ms_)
     {
       command = auto_gimbal_;
     }
@@ -300,6 +307,7 @@ private:
   double max_gimbal_yaw_nudge_rad_{0.0872664626};
   double max_gimbal_pitch_nudge_rad_{0.0872664626};
   int64_t command_timeout_ms_{200};
+  int64_t auto_command_timeout_ms_{350};
   std::string frame_id_{"base_link"};
   int64_t manual_gimbal_time_ms_{-1000000};
   int64_t auto_gimbal_time_ms_{-1000000};

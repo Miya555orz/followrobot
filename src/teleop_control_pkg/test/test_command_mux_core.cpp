@@ -107,19 +107,56 @@ TEST(CommandMuxCore, LimitsVelocityAndAcceleration)
   EXPECT_NEAR(decision.velocity.yaw, 0.05, 1e-9);
 }
 
-TEST(CommandMuxCore, ExplicitZeroCommandStopsImmediately)
+TEST(CommandMuxCore, AutoZeroCommandUsesBoundedDeceleration)
 {
   CommandMuxConfig config;
   config.zero_dwell_ms = 0;
+  config.max_accel_x = 1.0;
+  config.max_auto_decel_x = 0.5;
   CommandMuxCore core(config);
   core.set_mode(ControlMode::kAuto, 0);
   core.receive_auto_command({0.05, 0.0, 0.0}, 0);
-  EXPECT_GT(core.step(0, 0.1).velocity.x, 0.0);
+  EXPECT_NEAR(core.step(0, 0.1).velocity.x, 0.05, 1e-9);
 
   core.receive_auto_command({}, 1);
-  const auto stopped = core.step(1, 0.001);
-  EXPECT_EQ(stopped.source, CommandSource::kAuto);
-  EXPECT_DOUBLE_EQ(stopped.velocity.x, 0.0);
-  EXPECT_DOUBLE_EQ(stopped.velocity.y, 0.0);
-  EXPECT_DOUBLE_EQ(stopped.velocity.yaw, 0.0);
+  const auto slowing = core.step(1, 0.05);
+  EXPECT_EQ(slowing.source, CommandSource::kAuto);
+  EXPECT_NEAR(slowing.velocity.x, 0.025, 1e-9);
+
+  const auto stopped = core.step(2, 0.05);
+  EXPECT_NEAR(stopped.velocity.x, 0.0, 1e-9);
+}
+
+TEST(CommandMuxCore, ManualZeroAndEstopStillStopImmediately)
+{
+  CommandMuxConfig config;
+  config.zero_dwell_ms = 0;
+  config.max_accel_x = 1.0;
+  CommandMuxCore core(config);
+  core.receive_heartbeat(0);
+  core.receive_deadman(true, 0);
+  core.receive_manual_command({0.05, 0.0, 0.0}, 0);
+  EXPECT_GT(core.step(0, 0.1).velocity.x, 0.0);
+
+  core.receive_manual_command({}, 1);
+  EXPECT_DOUBLE_EQ(core.step(1, 0.001).velocity.x, 0.0);
+
+  core.receive_manual_command({0.05, 0.0, 0.0}, 2);
+  EXPECT_GT(core.step(2, 0.1).velocity.x, 0.0);
+  core.latch_estop();
+  EXPECT_DOUBLE_EQ(core.step(3, 0.001).velocity.x, 0.0);
+}
+
+TEST(CommandMuxCore, AutoTimeoutIsIndependentFromManualLease)
+{
+  CommandMuxConfig config;
+  config.command_timeout_ms = 100;
+  config.auto_command_timeout_ms = 350;
+  config.zero_dwell_ms = 0;
+  CommandMuxCore core(config);
+  core.set_mode(ControlMode::kAuto, 0);
+  core.receive_auto_command({0.02, 0.0, 0.0}, 0);
+
+  EXPECT_EQ(core.step(200, 0.05).source, CommandSource::kAuto);
+  EXPECT_EQ(core.step(351, 0.05).source, CommandSource::kStop);
 }

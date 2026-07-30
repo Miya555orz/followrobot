@@ -20,6 +20,7 @@ struct CommandMuxConfig
 {
   int64_t heartbeat_timeout_ms{250};
   int64_t command_timeout_ms{200};
+  int64_t auto_command_timeout_ms{350};
   int64_t zero_dwell_ms{200};
   double max_linear_x{0.05};
   double max_linear_y{0.05};
@@ -27,6 +28,9 @@ struct CommandMuxConfig
   double max_accel_x{0.15};
   double max_accel_y{0.15};
   double max_accel_yaw{0.50};
+  double max_auto_decel_x{0.60};
+  double max_auto_decel_y{0.60};
+  double max_auto_decel_yaw{1.20};
 };
 
 struct MuxDecision

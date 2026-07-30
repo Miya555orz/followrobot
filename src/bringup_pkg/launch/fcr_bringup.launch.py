@@ -310,7 +310,7 @@ def generate_launch_description():
             description="收到有效3D目标后是否自动进入伺服闭环；生产环境默认关闭",
         ),
         DeclareLaunchArgument(
-            "servo_target_timeout", default_value="0.25",
+            "servo_target_timeout", default_value="0.45",
             description="3D目标停止更新后伺服发布零速度的超时（秒）",
         ),
         DeclareLaunchArgument(
