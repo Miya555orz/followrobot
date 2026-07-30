@@ -38,6 +38,7 @@ pictures/*.png
 src/perception_pkg/video/
 
 bags/
+diagnostics/
 classifier/bert_intent_output/model.safetensors
 classifier/bert_intent_output/training_args.bin
 
