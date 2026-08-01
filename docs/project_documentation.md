@@ -2,6 +2,11 @@
 
 本文档结合当前仓库实现和任务划分表编写，重点说明系统要实现哪些功能、每类功能采用什么技术路线，以及这些功能如何落到当前 ROS 2 工作区的包、节点、接口和控制链路中。
 
+视觉感知、双相机融合、Foxglove、PBVS、CAN与底盘跟随的实机故障复盘及当前
+冻结参数见 [`visual_perception_fault_retrospective.md`](visual_perception_fault_retrospective.md)。
+当前PBVS伺服控制的结构、方程、状态机、控制分配和安全逻辑见
+[`pbvs_servo_control_technical_design.md`](pbvs_servo_control_technical_design.md)。
+
 ## 1. 项目定位
 
 FCR ROS2 项目面向“移动机器人 + 稳定云台 + 视觉感知”的智能跟拍场景。系统通过相机识别人物或目标，持续估计目标在图像和三维空间中的状态，再协同控制底盘与 DJI RS2 云台，使目标稳定处于画面中的期望位置，并支持后续 Vlog 运镜、任务 Action、MPC 协同优化和人机交互。
