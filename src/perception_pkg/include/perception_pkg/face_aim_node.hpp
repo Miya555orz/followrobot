@@ -8,6 +8,7 @@
 #include <string>
 
 #include <image_transport/image_transport.hpp>
+#include <builtin_interfaces/msg/time.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <vision_servo_msgs/msg/aim_target2_d.hpp>
@@ -46,11 +47,23 @@ private:
   bool was_in_timeout_ = false;
 
   double aim_offset_ratio_ = 0.20;
-  double lpf_alpha_ = 0.40;
+  double alpha_beta_alpha_ = 0.65;
+  double alpha_beta_beta_ = 0.08;
+  double covariance_alpha_ = 0.15;
+  double initial_covariance_px2_ = 16.0;
+  double lost_covariance_growth_px2_per_sec_ = 400.0;
+  double min_filter_dt_seconds_ = 0.005;
+  double max_filter_dt_seconds_ = 0.20;
   float filtered_x_ = 0.0f;
   float filtered_y_ = 0.0f;
+  float filtered_vx_ = 0.0f;
+  float filtered_vy_ = 0.0f;
+  float covariance_x_ = 16.0f;
+  float covariance_y_ = 16.0f;
   bool filter_initialized_ = false;
   int last_tracking_id_ = -1;
+  rclcpp::Time last_filter_stamp_{0, 0, RCL_ROS_TIME};
+  builtin_interfaces::msg::Time last_visible_source_stamp_;
 };
 
 }  // namespace perception_pkg

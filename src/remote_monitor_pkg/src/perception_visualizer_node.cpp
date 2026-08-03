@@ -193,6 +193,14 @@ std::string aim_source_name(uint8_t source)
       return "UPPER_BODY";
     case vision_servo_msgs::msg::AimTarget2D::LOST_PREDICTION:
       return "LOST_PRED";
+    case vision_servo_msgs::msg::AimTarget2D::HEAD:
+      return "HEAD";
+    case vision_servo_msgs::msg::AimTarget2D::SHOULDERS:
+      return "SHOULDERS";
+    case vision_servo_msgs::msg::AimTarget2D::BODY_BBOX:
+      return "BODY_BBOX";
+    case vision_servo_msgs::msg::AimTarget2D::PREDICTED:
+      return "PREDICTED";
     default:
       return "UNKNOWN";
   }
@@ -211,6 +219,14 @@ cv::Scalar aim_source_color(uint8_t source)
       return cv::Scalar(0, 165, 255);
     case vision_servo_msgs::msg::AimTarget2D::LOST_PREDICTION:
       return cv::Scalar(0, 0, 200);
+    case vision_servo_msgs::msg::AimTarget2D::HEAD:
+      return cv::Scalar(255, 255, 0);
+    case vision_servo_msgs::msg::AimTarget2D::SHOULDERS:
+      return cv::Scalar(0, 215, 255);
+    case vision_servo_msgs::msg::AimTarget2D::BODY_BBOX:
+      return cv::Scalar(255, 120, 0);
+    case vision_servo_msgs::msg::AimTarget2D::PREDICTED:
+      return cv::Scalar(0, 100, 255);
     default:
       return cv::Scalar(200, 200, 200);
   }

@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 
+#include <builtin_interfaces/msg/time.hpp>
 #include <lifecycle_msgs/msg/state.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
@@ -83,8 +84,10 @@ public:
       create_hardware_interface();
 
       auto reliable_qos = rclcpp::QoS(10).reliable();
+      auto latest_command_qos =
+        rclcpp::QoS(rclcpp::KeepLast(1)).reliable().durability_volatile();
       cmd_sub_ = create_subscription<vision_servo_msgs::msg::GimbalCmd>(
-        "/cmd_gimbal", reliable_qos,
+        "/cmd_gimbal", latest_command_qos,
         std::bind(&GimbalDriverNode::cmd_callback, this, std::placeholders::_1));
 
       nudge_sub_ = create_subscription<vision_servo_msgs::msg::GimbalNudge>(
@@ -148,11 +151,21 @@ public:
     last_incremental_cmd_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
     last_incremental_send_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
     last_speed_send_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+    has_latest_speed_cmd_ = false;
     has_active_cmd_ = false;
+    source_to_can_send_ms_ = -1.0F;
+    control_to_can_send_ms_ = -1.0F;
+    mux_to_can_send_ms_ = -1.0F;
 
     state_timer_ = create_wall_timer(
       std::chrono::milliseconds(10),
       std::bind(&GimbalDriverNode::publish_state, this));
+    if (control_mode_ == ControlMode::Speed) {
+      speed_send_timer_ = create_wall_timer(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::duration<double>(speed_command_period_sec_)),
+        std::bind(&GimbalDriverNode::send_latest_speed_command, this, false));
+    }
 
     RCLCPP_INFO(get_logger(), "云台驱动已激活");
     return CallbackReturn::SUCCESS;
@@ -165,6 +178,10 @@ public:
     if (state_timer_) {
       state_timer_->cancel();
       state_timer_.reset();
+    }
+    if (speed_send_timer_) {
+      speed_send_timer_->cancel();
+      speed_send_timer_.reset();
     }
     send_stop_command();
 
@@ -362,19 +379,14 @@ private:
     const bool next_active_cmd = !safe_cmd.hold_yaw || !safe_cmd.hold_pitch;
 
     if (control_mode_ == ControlMode::Speed) {
-      const auto now_time = now();
       const bool command_edge = next_active_cmd != has_active_cmd_;
-      const bool rate_due =
-        last_speed_send_time_.nanoseconds() == 0 ||
-        (now_time - last_speed_send_time_).seconds() >= speed_command_period_sec_;
-      // The servo loop may publish at 50 Hz, while one DJI command expands to
-      // several classic CAN frames. Send the newest command at a bounded rate;
-      // start/stop edges bypass the limiter for responsiveness and safety.
-      if (command_edge || rate_due) {
-        gimbal_->sendCommand(safe_cmd);
-        last_speed_send_time_ = now_time;
+      // 只覆盖单个 latest_cmd，不建立待发 FIFO。定时器以受控频率
+      // 发送最新值；启停边沿立即发送，不等待下一周期。
+      latest_speed_cmd_ = safe_cmd;
+      has_latest_speed_cmd_ = true;
+      if (command_edge) {
+        send_latest_speed_command(true);
       }
-      has_active_cmd_ = next_active_cmd;
     } else {
       if (next_active_cmd) {
         const bool starting_new_nudge = !has_active_cmd_;
@@ -391,6 +403,54 @@ private:
         sync_position_target_to_current();
       }
     }
+  }
+
+  void send_latest_speed_command(bool force_send)
+  {
+    if (!is_active_state() || !gimbal_ ||
+      control_mode_ != ControlMode::Speed || !has_latest_speed_cmd_)
+    {
+      return;
+    }
+
+    const bool next_active_cmd =
+      !latest_speed_cmd_.hold_yaw || !latest_speed_cmd_.hold_pitch;
+    // 停止边沿已经立即发送过，定时器不再反复灌入零速帧。
+    if (!next_active_cmd && !has_active_cmd_) {
+      return;
+    }
+
+    const auto send_time = now();
+    if (!force_send && last_speed_send_time_.nanoseconds() != 0 &&
+      (send_time - last_speed_send_time_).seconds() <
+      0.8 * speed_command_period_sec_)
+    {
+      return;
+    }
+    gimbal_->sendCommand(latest_speed_cmd_);
+    last_speed_send_time_ = send_time;
+    update_can_send_latency(latest_speed_cmd_, send_time);
+    has_active_cmd_ = next_active_cmd;
+  }
+
+  void update_can_send_latency(
+    const vision_servo_msgs::msg::GimbalCmd & command,
+    const rclcpp::Time & send_time)
+  {
+    const auto latency_ms = [&send_time](
+      const builtin_interfaces::msg::Time & stamp) -> float
+      {
+        if (stamp.sec == 0 && stamp.nanosec == 0) {
+          return -1.0F;
+        }
+        const double source_seconds = static_cast<double>(stamp.sec) +
+          static_cast<double>(stamp.nanosec) * 1e-9;
+        return static_cast<float>(std::max(
+          0.0, (send_time.seconds() - source_seconds) * 1000.0));
+      };
+    source_to_can_send_ms_ = latency_ms(command.source_stamp);
+    control_to_can_send_ms_ = latency_ms(command.control_stamp);
+    mux_to_can_send_ms_ = latency_ms(command.mux_stamp);
   }
 
   void nudge_callback(const vision_servo_msgs::msg::GimbalNudge::ConstSharedPtr& msg)
@@ -575,6 +635,9 @@ private:
     status.parse_error_count = snapshot.parse_error_count;
     status.command_watchdog_enabled = enable_command_timeout_;
     status.active_command = has_active_cmd_;
+    status.source_to_can_send_ms = source_to_can_send_ms_;
+    status.control_to_can_send_ms = control_to_can_send_ms_;
+    status.mux_to_can_send_ms = mux_to_can_send_ms_;
     gimbal_status_pub_->publish(status);
   }
 
@@ -601,6 +664,9 @@ private:
     if (!gimbal_) {
       return;
     }
+
+    // 撤销缓存的运动命令，防止超时/停用后发送定时器再次恢复旧速度。
+    has_latest_speed_cmd_ = false;
 
     if (control_mode_ == ControlMode::IncrementalPosition) {
       send_position_hold_command();
@@ -646,6 +712,10 @@ private:
       state_timer_->cancel();
       state_timer_.reset();
     }
+    if (speed_send_timer_) {
+      speed_send_timer_->cancel();
+      speed_send_timer_.reset();
+    }
     cmd_sub_.reset();
     nudge_sub_.reset();
     debug_position_srv_.reset();
@@ -663,6 +733,7 @@ private:
   rclcpp_lifecycle::LifecyclePublisher<vision_servo_msgs::msg::GimbalStatus>::SharedPtr
     gimbal_status_pub_;
   rclcpp::TimerBase::SharedPtr state_timer_;
+  rclcpp::TimerBase::SharedPtr speed_send_timer_;
 
   rclcpp::Time last_cmd_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_status_pub_time_{0, 0, RCL_ROS_TIME};
@@ -691,8 +762,13 @@ private:
   bool use_sim_ = false;
   bool enable_command_timeout_ = true;
   bool has_active_cmd_ = false;
+  bool has_latest_speed_cmd_ = false;
   bool has_latest_position_ = false;
   bool has_position_target_ = false;
+  vision_servo_msgs::msg::GimbalCmd latest_speed_cmd_;
+  float source_to_can_send_ms_ = -1.0F;
+  float control_to_can_send_ms_ = -1.0F;
+  float mux_to_can_send_ms_ = -1.0F;
   uint64_t last_nudge_command_id_ = 0;
 };
 

@@ -27,9 +27,11 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_lifecycle</depend>
   <depend>rclcpp_components</depend>
+  <depend>builtin_interfaces</depend>    <!-- 云台命令分阶段时间戳 -->
   <depend>vision_servo_msgs</depend>     <!-- GimbalCmd, PlatformState 消息 -->
   <depend>geometry_msgs</depend>         <!-- Twist, Pose, Transform -->
   <depend>sensor_msgs</depend>           <!-- Imu -->
+  <depend>std_msgs</depend>              <!-- 全局急停状态 -->
   <depend>std_srvs</depend>              <!-- Trigger 调试服务 -->
   <depend>nav_msgs</depend>              <!-- Odometry -->
   <depend>tf2_ros</depend>               <!-- TF 坐标变换广播 -->

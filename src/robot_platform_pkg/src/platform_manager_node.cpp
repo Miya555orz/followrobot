@@ -25,6 +25,7 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <std_msgs/msg/bool.hpp>
 
 namespace robot_platform_pkg {
 
@@ -57,6 +58,13 @@ public:
     gimbal_status_sub_ = this->create_subscription<vision_servo_msgs::msg::GimbalStatus>(
       "/gimbal/status", rclcpp::QoS(10).reliable(),
       std::bind(&PlatformManagerNode::gimbal_status_callback, this, std::placeholders::_1));
+
+    estop_state_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+      "/safety/estop_state",
+      rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local(),
+      [this](const std_msgs::msg::Bool::ConstSharedPtr msg) {
+        emergency_stop_ = msg->data;
+      });
 
     // ── 3. 发布 PlatformState（TRANSIENT_LOCAL = 迟加入者也能获取） ─
     state_pub_ = this->create_publisher<vision_servo_msgs::msg::PlatformState>(
@@ -161,6 +169,7 @@ private:
     state.chassis_connected = true;
     state.gimbal_connected = gimbal_connected_;
     state.imu_connected = true;
+    state.emergency_stop = emergency_stop_;
 
     state_pub_->publish(state);
   }
@@ -170,6 +179,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_sub_;
   rclcpp::Subscription<vision_servo_msgs::msg::GimbalStatus>::SharedPtr gimbal_status_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_state_sub_;
   rclcpp::Publisher<vision_servo_msgs::msg::PlatformState>::SharedPtr state_pub_;
   rclcpp::TimerBase::SharedPtr publish_timer_;
 
@@ -182,6 +192,7 @@ private:
   double gimbal_yaw_rate_ = 0.0;        ///< 云台偏航角速度 (rad/s)，来自 /joint_states
   double gimbal_pitch_rate_ = 0.0;      ///< 云台俯仰角速度 (rad/s)，来自 /joint_states
   bool gimbal_connected_ = false;       ///< 云台连接状态，来自 /gimbal/status
+  bool emergency_stop_ = false;         ///< command_mux 锁存的全局软件急停状态
 };
 
 }  // namespace robot_platform_pkg

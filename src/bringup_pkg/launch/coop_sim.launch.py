@@ -90,6 +90,11 @@ def generate_launch_description():
                 "use_sim_time": False,
             },
         ],
+        # 无 command_mux 的仿真：节点默认 /auto/*，显式回落到 /cmd_vel
+        remappings=[
+            ("/auto/cmd_vel", "/cmd_vel"),
+            ("/auto/cmd_gimbal", "/cmd_gimbal"),
+        ],
     )
 
     # ── 3. Foxglove WebSocket ────────────────────────────────────

@@ -18,12 +18,33 @@ FaceAimNode::FaceAimNode(const rclcpp::NodeOptions& options)
   declare_parameter("input_timeout_seconds", 2.0);
   declare_parameter("publish_debug", true);
   declare_parameter("aim_offset_ratio", 0.20);
-  declare_parameter("lpf_alpha", 0.40);
+  declare_parameter("alpha_beta_alpha", 0.65);
+  declare_parameter("alpha_beta_beta", 0.08);
+  declare_parameter("covariance_alpha", 0.15);
+  declare_parameter("initial_covariance_px2", 16.0);
+  declare_parameter("lost_covariance_growth_px2_per_sec", 400.0);
+  declare_parameter("min_filter_dt_seconds", 0.005);
+  declare_parameter("max_filter_dt_seconds", 0.20);
 
   input_timeout_seconds_ = get_parameter("input_timeout_seconds").as_double();
   publish_debug_ = get_parameter("publish_debug").as_bool();
   aim_offset_ratio_ = get_parameter("aim_offset_ratio").as_double();
-  lpf_alpha_ = get_parameter("lpf_alpha").as_double();
+  alpha_beta_alpha_ = get_parameter("alpha_beta_alpha").as_double();
+  alpha_beta_beta_ = get_parameter("alpha_beta_beta").as_double();
+  covariance_alpha_ = get_parameter("covariance_alpha").as_double();
+  initial_covariance_px2_ = get_parameter("initial_covariance_px2").as_double();
+  lost_covariance_growth_px2_per_sec_ =
+      get_parameter("lost_covariance_growth_px2_per_sec").as_double();
+  min_filter_dt_seconds_ = get_parameter("min_filter_dt_seconds").as_double();
+  max_filter_dt_seconds_ = get_parameter("max_filter_dt_seconds").as_double();
+
+  alpha_beta_alpha_ = std::clamp(alpha_beta_alpha_, 0.0, 1.0);
+  alpha_beta_beta_ = std::clamp(alpha_beta_beta_, 0.0, 1.0);
+  covariance_alpha_ = std::clamp(covariance_alpha_, 0.0, 1.0);
+  initial_covariance_px2_ = std::max(1.0, initial_covariance_px2_);
+  min_filter_dt_seconds_ = std::max(1e-4, min_filter_dt_seconds_);
+  max_filter_dt_seconds_ = std::max(
+      min_filter_dt_seconds_, max_filter_dt_seconds_);
 
   image_sub_ = image_transport::create_subscription(
       this, "/sony/image_raw",
@@ -97,7 +118,13 @@ void FaceAimNode::try_match_and_process()
   aim.confidence = 0.0f;
   aim.pixel_x = 0.0f;
   aim.pixel_y = 0.0f;
-  aim.source = vision_servo_msgs::msg::AimTarget2D::UPPER_BODY;
+  aim.pixel_velocity_x = 0.0f;
+  aim.pixel_velocity_y = 0.0f;
+  aim.covariance_x = static_cast<float>(initial_covariance_px2_);
+  aim.covariance_y = static_cast<float>(initial_covariance_px2_);
+  aim.estimate_stamp = this->now();
+  aim.source = vision_servo_msgs::msg::AimTarget2D::SHOULDERS;
+  aim.predicted = false;
 
   if (tracks.tracking_id >= 0) {
     const auto it = std::find_if(
@@ -110,30 +137,92 @@ void FaceAimNode::try_match_and_process()
 
       aim.tracking_id = it->id;
 
-      if (it->visible) {
-        aim.source = vision_servo_msgs::msg::AimTarget2D::UPPER_BODY;
-      } else {
-        aim.source = vision_servo_msgs::msg::AimTarget2D::LOST_PREDICTION;
-      }
-
       const float raw_x = it->center[0];
       const float raw_y = it->bbox[1] + aim_offset_ratio_ * it->height;
 
-      if (!filter_initialized_ || it->id != last_tracking_id_) {
+      const rclcpp::Time measurement_stamp(
+          tracks.header.stamp, RCL_ROS_TIME);
+      const bool same_track = filter_initialized_ && it->id == last_tracking_id_;
+      // LOST 轨迹只能延续已有真实观测，不能从一个纯预测框新建状态。
+      if (!it->visible && !same_track) {
+        filter_initialized_ = false;
+        last_tracking_id_ = -1;
+        aim_pub_->publish(aim);
+        pending_tracks_.reset();
+        return;
+      }
+      const double dt = same_track
+          ? (measurement_stamp - last_filter_stamp_).seconds()
+          : 0.0;
+      const bool valid_dt = std::isfinite(dt) &&
+          dt >= min_filter_dt_seconds_ && dt <= max_filter_dt_seconds_;
+
+      if (!same_track || !valid_dt) {
         filtered_x_ = raw_x;
         filtered_y_ = raw_y;
+        filtered_vx_ = 0.0f;
+        filtered_vy_ = 0.0f;
+        covariance_x_ = static_cast<float>(initial_covariance_px2_);
+        covariance_y_ = static_cast<float>(initial_covariance_px2_);
         filter_initialized_ = true;
       } else {
-        filtered_x_ = static_cast<float>(lpf_alpha_) * raw_x +
-            static_cast<float>(1.0 - lpf_alpha_) * filtered_x_;
-        filtered_y_ = static_cast<float>(lpf_alpha_) * raw_y +
-            static_cast<float>(1.0 - lpf_alpha_) * filtered_y_;
+        const float dt_f = static_cast<float>(dt);
+        const float predicted_x = filtered_x_ + filtered_vx_ * dt_f;
+        const float predicted_y = filtered_y_ + filtered_vy_ * dt_f;
+
+        if (it->visible) {
+          const float residual_x = raw_x - predicted_x;
+          const float residual_y = raw_y - predicted_y;
+          filtered_x_ = predicted_x +
+              static_cast<float>(alpha_beta_alpha_) * residual_x;
+          filtered_y_ = predicted_y +
+              static_cast<float>(alpha_beta_alpha_) * residual_y;
+          filtered_vx_ += static_cast<float>(alpha_beta_beta_) * residual_x / dt_f;
+          filtered_vy_ += static_cast<float>(alpha_beta_beta_) * residual_y / dt_f;
+          covariance_x_ = std::max(
+              1.0f,
+              static_cast<float>(1.0 - covariance_alpha_) * covariance_x_ +
+              static_cast<float>(covariance_alpha_) * residual_x * residual_x);
+          covariance_y_ = std::max(
+              1.0f,
+              static_cast<float>(1.0 - covariance_alpha_) * covariance_y_ +
+              static_cast<float>(covariance_alpha_) * residual_y * residual_y);
+        } else {
+          // LOST 轨迹没有新测量：只传播状态，不把 tracker 的预测框再次
+          // 当作测量更新，避免预测被重复计算而产生过冲。
+          filtered_x_ = predicted_x;
+          filtered_y_ = predicted_y;
+          const float covariance_growth = static_cast<float>(
+              lost_covariance_growth_px2_per_sec_ * dt);
+          covariance_x_ += covariance_growth;
+          covariance_y_ += covariance_growth;
+        }
+      }
+      if (it->visible) {
+        last_visible_source_stamp_ = tracks.header.stamp;
       }
       last_tracking_id_ = it->id;
+      last_filter_stamp_ = measurement_stamp;
 
       aim.pixel_x = std::clamp(filtered_x_, 0.0f, image_width);
       aim.pixel_y = std::clamp(filtered_y_, 0.0f, image_height);
+      aim.pixel_velocity_x = filtered_vx_;
+      aim.pixel_velocity_y = filtered_vy_;
+      aim.covariance_x = covariance_x_;
+      aim.covariance_y = covariance_y_;
+      // estimate_stamp 是当前滤波状态对应的时间坐标；LOST 时该状态已
+      // 传播到本轮 tracker 图像时刻，控制器只需补偿此后新增的延迟。
+      aim.estimate_stamp = tracks.header.stamp;
       aim.confidence = it->confidence;
+      aim.predicted = !it->visible;
+      aim.source = it->visible
+          ? vision_servo_msgs::msg::AimTarget2D::SHOULDERS
+          : vision_servo_msgs::msg::AimTarget2D::PREDICTED;
+      if (!it->visible) {
+        // header.stamp 表示最后一次真实 Sony 测量，而不是 tracker 本轮
+        // 传播时刻。下游据此在 0.18/0.30 s 正确降权和撤权。
+        aim.header.stamp = last_visible_source_stamp_;
+      }
       aim.valid = true;
 
     } else {
@@ -168,6 +257,11 @@ void FaceAimNode::check_timeout()
     was_in_timeout_ = true;
     filter_initialized_ = false;
     last_tracking_id_ = -1;
+    filtered_vx_ = 0.0f;
+    filtered_vy_ = 0.0f;
+    covariance_x_ = static_cast<float>(initial_covariance_px2_);
+    covariance_y_ = static_cast<float>(initial_covariance_px2_);
+    last_visible_source_stamp_ = builtin_interfaces::msg::Time();
     RCLCPP_INFO(get_logger(), "check_timeout: entering timeout");
     vision_servo_msgs::msg::AimTarget2D aim;
     aim.header.stamp = this->now();
@@ -177,7 +271,13 @@ void FaceAimNode::check_timeout()
     aim.confidence = 0.0f;
     aim.pixel_x = 0.0f;
     aim.pixel_y = 0.0f;
-    aim.source = vision_servo_msgs::msg::AimTarget2D::LOST_PREDICTION;
+    aim.pixel_velocity_x = 0.0f;
+    aim.pixel_velocity_y = 0.0f;
+    aim.covariance_x = static_cast<float>(initial_covariance_px2_);
+    aim.covariance_y = static_cast<float>(initial_covariance_px2_);
+    aim.estimate_stamp = this->now();
+    aim.source = vision_servo_msgs::msg::AimTarget2D::PREDICTED;
+    aim.predicted = true;
     aim_pub_->publish(aim);
   } else if (!in_timeout && was_in_timeout_) {
     was_in_timeout_ = false;
@@ -213,7 +313,7 @@ void FaceAimNode::publish_debug_image(
     const cv::Point aim_pt(
         static_cast<int>(aim.pixel_x),
         static_cast<int>(aim.pixel_y));
-    const cv::Scalar color = (aim.source == vision_servo_msgs::msg::AimTarget2D::LOST_PREDICTION)
+    const cv::Scalar color = aim.predicted
         ? cv::Scalar(0, 165, 255)
         : cv::Scalar(0, 255, 0);
     cv::circle(debug, aim_pt, 5, color, -1);

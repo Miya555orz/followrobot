@@ -19,3 +19,8 @@ uint32 parse_error_count
 # Command watchdog state
 bool command_watchdog_enabled
 bool active_command
+
+# 最近一次实际CAN下发尝试的分阶段时延；无有效时间戳时为-1。
+float32 source_to_can_send_ms
+float32 control_to_can_send_ms
+float32 mux_to_can_send_ms

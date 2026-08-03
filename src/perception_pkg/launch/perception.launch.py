@@ -63,6 +63,12 @@ def generate_launch_description():
             description="Enable face_aim_node (aim target from tracks)",
         ),
         DeclareLaunchArgument("aim_target_topic", default_value="/perception/aim_target_2d"),
+        DeclareLaunchArgument(
+            "face_aim_params",
+            default_value=PathJoinSubstitution(
+                [package_share, "config", "face_aim_params.yaml"]
+            ),
+        ),
     ]
 
     detection_node = Node(
@@ -118,7 +124,10 @@ def generate_launch_description():
         executable="face_aim_node",
         name="face_aim_node",
         output="screen",
-        parameters=[{"use_sim_time": ParameterValue(use_sim_time, value_type=bool)}],
+        parameters=[
+            LaunchConfiguration("face_aim_params"),
+            {"use_sim_time": ParameterValue(use_sim_time, value_type=bool)},
+        ],
         remappings=[
             ("/sony/image_raw", LaunchConfiguration("sony_image_topic")),
             ("/perception/tracks", LaunchConfiguration("tracks_topic")),

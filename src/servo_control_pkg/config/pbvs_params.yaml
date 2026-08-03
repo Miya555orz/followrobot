@@ -40,3 +40,7 @@ servo_manager:
 
     use_aim_target: true
     aim_target_timeout: 0.18
+    # V2 分层授权：3D 目标过期但 2D 关注点新鲜时，云台角度环继续跟踪
+    # （Z 回退为保持深度/期望深度，Z 在角度公式中约消），底盘平移不授权。
+    # false 保留 V1 一票否决语义（3D 过期 → 云台 hold + 底盘零速）。
+    pbvs_aim_only_bearing: true

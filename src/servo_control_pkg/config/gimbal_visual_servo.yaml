@@ -1,0 +1,53 @@
+gimbal_visual_servo:
+  ros__parameters:
+    # Sony观测约30Hz；快环在观测间隙只传播最新状态，不制造新测量。
+    control_rate_hz: 50.0
+    diagnostics_rate_hz: 5.0
+
+    # 人物头肩构图点。允许偏离光心，不能把期望点硬编码为主点。
+    desired_u_ratio: 0.50
+    desired_v_ratio: 0.38
+
+    # RS2实机方向标定：画面右侧目标需要正yaw；画面下侧目标需要负pitch。
+    yaw_direction: 1.0
+    pitch_direction: -1.0
+    yaw_kp: 2.2
+    pitch_kp: 1.5
+
+    # 连续增益调度：小误差降增益，大误差提高追赶能力。
+    gain_small_scale: 0.45
+    gain_large_scale: 1.25
+    gain_small_error_rad: 0.015
+    gain_large_error_rad: 0.18
+
+    max_yaw_rate: 0.35
+    max_pitch_rate: 0.22
+    max_yaw_acceleration: 1.8
+    max_pitch_acceleration: 1.2
+    min_effective_rate: 0.006
+
+    # 有限时域预测；置信度、协方差和年龄会继续缩短实际预测时域。
+    rs2_latency_seconds: 0.05
+    max_prediction_seconds: 0.15
+    covariance_reference_px: 20.0
+    min_confidence: 0.15
+
+    # 二维观测权限分层。
+    normal_age_seconds: 0.08
+    degraded_age_seconds: 0.18
+    prediction_age_seconds: 0.30
+    platform_timeout_seconds: 0.25
+
+    # 双轴同时满足进入条件5个控制周期后静稳；退出阈值更大以形成滞回。
+    static_enter_yaw_rad: 0.006
+    static_enter_pitch_rad: 0.007
+    static_exit_yaw_rad: 0.012
+    static_exit_pitch_rad: 0.014
+    static_enter_cycles: 5
+
+    # 软件软限位只禁止继续撞向边界的指令，不阻止离开边界。
+    yaw_soft_limit_rad: 1.40
+    yaw_limit_margin_rad: 0.08
+    pitch_min_rad: -0.75
+    pitch_max_rad: 0.55
+    pitch_limit_margin_rad: 0.06

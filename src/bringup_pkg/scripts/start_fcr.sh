@@ -23,7 +23,9 @@ FOXGLOVE_PORT="${FCR_FOXGLOVE_PORT:-8765}"
 START_GEMINI="${FCR_START_GEMINI:-true}"
 ENABLE_CHASSIS="${FCR_ENABLE_CHASSIS:-true}"
 SERVO_TRANSLATION="${FCR_SERVO_TRANSLATION:-true}"
-CONTROLLER="${FCR_CONTROLLER:-ibvs}"
+CONTROLLER="${FCR_CONTROLLER:-pbvs}"
+ENABLE_SERVO_MANAGER="${FCR_ENABLE_SERVO_MANAGER:-true}"
+ENABLE_GIMBAL_VISUAL_SERVO="${FCR_ENABLE_GIMBAL_VISUAL_SERVO:-true}"
 ENABLE_VOICE="${FCR_ENABLE_VOICE:-true}"
 RUNTIME_VENV="${FCR_RUNTIME_VENV:-$HOME/venvs/fcr_runtime}"
 VOICE_CLASSIFIER_MODEL_ROOT="${FCR_CLASSIFIER_MODEL_ROOT:-$WORKSPACE/models/classifier_v2}"
@@ -44,7 +46,9 @@ Options:
   --model PATH           TensorRT engine path.
   --workspace PATH       ROS 2 workspace (default: ~/ros2_ws).
   --foxglove-port PORT   Foxglove WebSocket port (default: 8765).
-  --controller MODE      Visual servo controller: ibvs or pbvs (default: ibvs).
+  --controller MODE      Chassis/depth controller: ibvs or pbvs (default: pbvs).
+  --gimbal-only          Start Sony 2D perception and the RS2 gimbal fast loop only.
+  --legacy-gimbal-loop   Disable the independent Sony 2D gimbal fast loop.
   --no-gemini            Do not start Gemini/depth fusion.
   --no-chassis           Do not start the chassis driver.
   --no-translation       Disable automatic chassis translation.
@@ -57,7 +61,9 @@ Environment equivalents:
   FCR_GIMBAL_CAN_CONFIG_RETRIES, FCR_GIMBAL_CAN_RESTART_MS,
   FCR_GIMBAL_CAN_TX_QUEUE, FCR_MODEL_PATH,
   FCR_ROS2_WS, FCR_FOXGLOVE_PORT, FCR_START_GEMINI,
-  FCR_ENABLE_CHASSIS, FCR_SERVO_TRANSLATION, FCR_CONTROLLER.
+  FCR_ENABLE_CHASSIS, FCR_SERVO_TRANSLATION, FCR_CONTROLLER,
+  FCR_ENABLE_SERVO_MANAGER,
+  FCR_ENABLE_GIMBAL_VISUAL_SERVO.
   FCR_ENABLE_VOICE, FCR_RUNTIME_VENV, FCR_CLASSIFIER_MODEL_ROOT,
   FCR_EMBEDDING_MODEL_DIR, FCR_VOICE_HTTP_BIND_ADDRESS,
   FCR_VOICE_HTTP_PORT, FCR_VOICE_HTTP_AUTH_TOKEN.
@@ -94,6 +100,15 @@ while (($# > 0)); do
       CONTROLLER="${2:?missing value for --controller}"
       shift 2
       ;;
+    --gimbal-only)
+      START_GEMINI=false
+      ENABLE_CHASSIS=false
+      SERVO_TRANSLATION=false
+      ENABLE_SERVO_MANAGER=false
+      ENABLE_GIMBAL_VISUAL_SERVO=true
+      ENABLE_VOICE=false
+      shift
+      ;;
     --no-gemini)
       START_GEMINI=false
       shift
@@ -104,6 +119,10 @@ while (($# > 0)); do
       ;;
     --no-translation)
       SERVO_TRANSLATION=false
+      shift
+      ;;
+    --legacy-gimbal-loop)
+      ENABLE_GIMBAL_VISUAL_SERVO=false
       shift
       ;;
     --no-voice)
@@ -416,6 +435,8 @@ require_command ros2
 echo
 echo "Starting FCR:"
 echo "  controller     : ${CONTROLLER^^}"
+echo "  servo manager  : $ENABLE_SERVO_MANAGER"
+echo "  2D gimbal loop : $ENABLE_GIMBAL_VISUAL_SERVO"
 echo "  model          : $MODEL_PATH"
 echo "  gimbal CAN     : $CAN_INTERFACE"
 echo "  Gemini/fusion  : $START_GEMINI"
@@ -460,6 +481,8 @@ exec ros2 launch bringup_pkg fcr_bringup.launch.py \
   servo_auto_start:=true \
   servo_target_topic:=/perception/targets_3d \
   servo_aim_target_topic:=/perception/aim_target_2d \
+  enable_servo_manager:="$ENABLE_SERVO_MANAGER" \
+  enable_gimbal_visual_servo:="$ENABLE_GIMBAL_VISUAL_SERVO" \
   servo_allocation_ratio:="$ALLOCATION_RATIO" \
   servo_allow_chassis_translation:="$SERVO_TRANSLATION" \
   enable_voice_control:="$ENABLE_VOICE" \

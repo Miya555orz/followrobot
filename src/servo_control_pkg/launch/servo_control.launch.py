@@ -39,7 +39,10 @@ def generate_launch_description():
     aim_target_input = LaunchConfiguration("aim_target_input")
     target_timeout = LaunchConfiguration("target_timeout")
     allow_chassis_translation = LaunchConfiguration("allow_chassis_translation")
+    enable_servo_manager = LaunchConfiguration("enable_servo_manager")
     enable_velocity_commander = LaunchConfiguration("enable_velocity_commander")
+    enable_gimbal_visual_servo = LaunchConfiguration(
+        "enable_gimbal_visual_servo")
 
     config_dir = PathJoinSubstitution([
         FindPackageShare("servo_control_pkg"), "config"
@@ -47,6 +50,11 @@ def generate_launch_description():
     controller_params_file = PythonExpression([
         "'pbvs_params.yaml' if '", controller_plugin,
         "'.endswith('PBVSController') else 'ibvs_params.yaml'"
+    ])
+    manager_gimbal_output = PythonExpression([
+        "'/servo/internal/legacy_cmd_gimbal' if '",
+        enable_gimbal_visual_servo,
+        "' == 'true' else '", cmd_gimbal_output, "'",
     ])
 
     # ── 伺服管理节点（主控制回路） ─────────────────────────────────
@@ -72,9 +80,30 @@ def generate_launch_description():
             ("/platform/state", "/platform/state"),                # 输入：平台状态
             ("/camera/camera_info", camera_info_input),             # 输入：相机内参
             ("/cmd_vel", cmd_vel_output),                          # 输出：底盘速度指令
-            ("/cmd_gimbal", cmd_gimbal_output),                    # 输出：云台指令
+            # 独立二维快环启用时，隔离旧统一PBVS/IBVS云台输出，避免两个
+            # 节点同时驱动同一候选话题。servo_manager仍只负责底盘链路。
+            ("/cmd_gimbal", manager_gimbal_output),
             ("/servo/state", "/servo/state"),                      # 输出：伺服状态
         ],
+        condition=IfCondition(enable_servo_manager),
+    )
+
+    # ── Sony→RS2 独立二维云台快环 ─────────────────────────────────
+    gimbal_visual_servo = Node(
+        package="servo_control_pkg",
+        executable="gimbal_visual_servo_node",
+        name="gimbal_visual_servo",
+        output="screen",
+        parameters=[PathJoinSubstitution([
+            config_dir, "gimbal_visual_servo.yaml"
+        ])],
+        remappings=[
+            ("/perception/aim_target_2d", aim_target_input),
+            ("/sony/camera_info", camera_info_input),
+            ("/platform/state", "/platform/state"),
+            ("/auto/cmd_gimbal", cmd_gimbal_output),
+        ],
+        condition=IfCondition(enable_gimbal_visual_servo),
     )
 
     # ── 速度指令节点（限幅 + 转发） ────────────────────────────────
@@ -124,14 +153,23 @@ def generate_launch_description():
             "allow_chassis_translation", default_value="false",
             description="是否允许视觉伺服自动前后/横向移动底盘"),
         DeclareLaunchArgument(
-            "cmd_vel_output", default_value="/cmd_vel",
-            description="底盘输出话题；使用安全仲裁时设为/auto/cmd_vel"),
+            "enable_servo_manager", default_value="true",
+            description="启用PBVS/IBVS统一伺服管理器；纯二维云台模式应关闭"),
         DeclareLaunchArgument(
-            "cmd_gimbal_output", default_value="/cmd_gimbal",
-            description="云台输出话题；使用安全仲裁时设为/auto/cmd_gimbal"),
+            "cmd_vel_output", default_value="/auto/cmd_vel",
+            description="底盘候选指令话题；command_mux 是 /cmd_vel 唯一最终发布者，"
+                        "无 mux 的仿真场景显式改为 /cmd_vel"),
+        DeclareLaunchArgument(
+            "cmd_gimbal_output", default_value="/auto/cmd_gimbal",
+            description="云台候选指令话题；command_mux 是 /cmd_gimbal 唯一最终发布者，"
+                        "无 mux 的仿真场景显式改为 /cmd_gimbal"),
         DeclareLaunchArgument(
             "enable_velocity_commander", default_value="false",
             description="启用备用相机速度转发器；默认关闭以避免重复控制源"),
+        DeclareLaunchArgument(
+            "enable_gimbal_visual_servo", default_value="false",
+            description="启用独立Sony二维云台快环；启用后隔离servo_manager云台输出"),
         servo_manager,
+        gimbal_visual_servo,
         velocity_commander,
     ])

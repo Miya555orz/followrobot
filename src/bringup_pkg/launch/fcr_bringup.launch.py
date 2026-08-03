@@ -184,6 +184,10 @@ def generate_launch_description():
             "camera_info_input": LaunchConfiguration("servo_camera_info_topic"),
             "target_input": LaunchConfiguration("servo_target_topic"),
             "aim_target_input": LaunchConfiguration("servo_aim_target_topic"),
+            "enable_servo_manager": LaunchConfiguration(
+                "enable_servo_manager"),
+            "enable_gimbal_visual_servo": LaunchConfiguration(
+                "enable_gimbal_visual_servo"),
             "allow_chassis_translation": LaunchConfiguration(
                 "servo_allow_chassis_translation"),
             # With voice enabled, its router owns /auto and PBVS publishes to
@@ -383,7 +387,15 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "servo_aim_target_topic", default_value="/perception/aim_target_2d",
-            description="PBVS云台快环使用的高频二维瞄准目标",
+            description="独立Sony二维云台快环使用的高频瞄准目标",
+        ),
+        DeclareLaunchArgument(
+            "enable_servo_manager", default_value="true",
+            description="启用PBVS/IBVS统一伺服管理器；纯二维云台模式应关闭",
+        ),
+        DeclareLaunchArgument(
+            "enable_gimbal_visual_servo", default_value="true",
+            description="启用独立二维云台快环；不依赖Gemini、3D融合或PBVS分配器",
         ),
         DeclareLaunchArgument(
             "servo_allow_chassis_translation", default_value="false",

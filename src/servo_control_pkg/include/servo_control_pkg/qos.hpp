@@ -15,9 +15,9 @@
 
 namespace servo_control_pkg::qos {
 
-/// 控制指令（速度/云台）：可靠传输，队列深度 10
+/// 控制指令（速度/云台）：可靠传输，只保留最新候选命令。
 inline rclcpp::QoS control_cmd() {
-  return rclcpp::QoS(10).reliable();
+  return rclcpp::QoS(rclcpp::KeepLast(1)).reliable().durability_volatile();
 }
 
 /// 伺服状态反馈：可靠传输，队列深度 5（监控用途，允许少量丢失）
@@ -27,7 +27,7 @@ inline rclcpp::QoS servo_state() {
 
 /// 平台状态：可靠 + TRANSIENT_LOCAL（迟加入节点可获取最新状态）
 inline rclcpp::QoS platform_state() {
-  return rclcpp::QoS(10).reliable().transient_local();
+  return rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
 }
 
 }  // namespace servo_control_pkg::qos

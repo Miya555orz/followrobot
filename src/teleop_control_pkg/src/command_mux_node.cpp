@@ -70,6 +70,9 @@ public:
       "cmd_gimbal_nudge", command_qos);
     status_pub_ = create_publisher<std_msgs::msg::String>(
       "remote_control/status", rclcpp::QoS(10).reliable());
+    estop_state_pub_ = create_publisher<std_msgs::msg::Bool>(
+      "safety/estop_state",
+      rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
 
     manual_velocity_sub_ = create_subscription<geometry_msgs::msg::TwistStamped>(
       "teleop/cmd_vel", command_qos,
@@ -218,7 +221,15 @@ private:
     if (!command || !is_gimbal_motion_command(*command)) {
       return std::nullopt;
     }
-    command->header.stamp = now();
+    const auto mux_stamp = now();
+    if (command->source_stamp.sec == 0 && command->source_stamp.nanosec == 0) {
+      command->source_stamp = command->header.stamp;
+    }
+    if (command->control_stamp.sec == 0 && command->control_stamp.nanosec == 0) {
+      command->control_stamp = command->header.stamp;
+    }
+    command->mux_stamp = mux_stamp;
+    command->header.stamp = mux_stamp;
     return command;
   }
 
@@ -226,6 +237,9 @@ private:
   {
     vision_servo_msgs::msg::GimbalCmd command;
     command.header.stamp = now();
+    command.source_stamp = command.header.stamp;
+    command.control_stamp = command.header.stamp;
+    command.mux_stamp = command.header.stamp;
     command.hold_yaw = true;
     command.hold_pitch = true;
     return command;
@@ -246,6 +260,10 @@ private:
     velocity.twist.linear.y = decision.velocity.y;
     velocity.twist.angular.z = decision.velocity.yaw;
     final_velocity_pub_->publish(velocity);
+
+    std_msgs::msg::Bool estop_state;
+    estop_state.data = decision.estop_latched;
+    estop_state_pub_->publish(estop_state);
 
     const auto gimbal = selected_gimbal(decision.source, now_ms);
     if (gimbal) {
@@ -292,6 +310,9 @@ private:
     velocity.header.frame_id = frame_id_;
     vision_servo_msgs::msg::GimbalCmd gimbal;
     gimbal.header.stamp = velocity.header.stamp;
+    gimbal.source_stamp = velocity.header.stamp;
+    gimbal.control_stamp = velocity.header.stamp;
+    gimbal.mux_stamp = velocity.header.stamp;
     gimbal.hold_yaw = true;
     gimbal.hold_pitch = true;
     for (int i = 0; i < 3; ++i) {
@@ -324,6 +345,7 @@ private:
   rclcpp::Publisher<vision_servo_msgs::msg::GimbalNudge>::SharedPtr
     final_gimbal_nudge_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr estop_state_pub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr manual_velocity_sub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr auto_velocity_sub_;
   rclcpp::Subscription<vision_servo_msgs::msg::GimbalCmd>::SharedPtr manual_gimbal_sub_;

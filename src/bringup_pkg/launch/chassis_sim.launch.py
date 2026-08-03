@@ -82,6 +82,11 @@ def generate_launch_description():
              "allow_chassis_translation": True,
              "publish_unstamped_cmd_vel": True},
         ],
+        # 无 command_mux 的仿真：节点默认 /auto/*，显式回落到 /cmd_vel
+        remappings=[
+            ("/auto/cmd_vel", "/cmd_vel"),
+            ("/auto/cmd_gimbal", "/cmd_gimbal"),
+        ],
     )
 
     # ── 4. 底盘驱动（仿真模式） ───────────────────────────────────

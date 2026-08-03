@@ -1,0 +1,14 @@
+face_aim_node:
+  ros__parameters:
+    input_timeout_seconds: 0.35
+    publish_debug: false
+    aim_offset_ratio: 0.20
+
+    # 单层alpha-beta滤波同时估计像素位置和速度；不再串联旧固定LPF。
+    alpha_beta_alpha: 0.65
+    alpha_beta_beta: 0.08
+    covariance_alpha: 0.15
+    initial_covariance_px2: 16.0
+    lost_covariance_growth_px2_per_sec: 400.0
+    min_filter_dt_seconds: 0.005
+    max_filter_dt_seconds: 0.20

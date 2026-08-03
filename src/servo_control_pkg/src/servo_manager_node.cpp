@@ -180,6 +180,9 @@ public:
     this->declare_parameter("use_aim_target", true);
     this->declare_parameter("aim_target_timeout", 0.18);
     this->declare_parameter("platform_state_timeout", 0.25);
+    // V2 分层授权：3D 目标过期但 2D 关注点新鲜时，云台角度环继续跟踪，
+    // 底盘平移不授权（平移质量门控不变）。false 保留 V1 一票否决语义。
+    this->declare_parameter("pbvs_aim_only_bearing", false);
 
     std::string plugin_name = this->get_parameter("controller_plugin").as_string();
     auto_start_ = this->get_parameter("auto_start").as_bool();
@@ -209,6 +212,8 @@ public:
     aim_target_timeout_ = this->get_parameter("aim_target_timeout").as_double();
     platform_state_timeout_ =
       this->get_parameter("platform_state_timeout").as_double();
+    pbvs_aim_only_bearing_ =
+      this->get_parameter("pbvs_aim_only_bearing").as_bool();
     control_rate_hz_ = std::clamp(
       this->get_parameter("control_rate").as_double(), 5.0, 200.0);
 
@@ -288,10 +293,12 @@ public:
     // 4. 发布者 — 向下游执行器发送指令和状态
     // ═══════════════════════════════════════════════════════════════════════
 
-    // 底盘速度指令：TwistStamped（带时间戳和 frame_id=base_link），
-    // 由底盘驱动节点（如 DiffDriveController）消费。
+    // 底盘速度指令：TwistStamped（带时间戳和 frame_id=base_link）。
+    // 默认发布到 /auto/*：本节点只产生"候选"自动指令，command_mux 是
+    // /cmd_vel 与 /cmd_gimbal 的唯一最终发布者（租约/急停/限幅语义所在）。
+    // 无 mux 的仿真场景通过 launch remap 回 /cmd_vel。
     chassis_cmd_pub_ = this->create_publisher<geometry_msgs::msg::TwistStamped>(
-      "/cmd_vel", qos::control_cmd());
+      "/auto/cmd_vel", qos::control_cmd());
 
     // 兼容发布：某些仿真插件（如 Gazebo Twist 插件）需要无时间戳的 Twist。
     // 仅当 publish_unstamped_cmd_vel=true 时启用，默认关闭以节省带宽。
@@ -303,7 +310,7 @@ public:
     // 云台速率指令：GimbalCmd 包含 yaw_rate/pitch_rate 和 hold 标志位，
     // 由云台驱动节点消费。hold 位用于在目标丢失时维持当前位置。
     gimbal_cmd_pub_ = this->create_publisher<vision_servo_msgs::msg::GimbalCmd>(
-      "/cmd_gimbal", qos::control_cmd());
+      "/auto/cmd_gimbal", qos::control_cmd());
 
     // 伺服状态监控：ServoState 包含误差范数、条件数、状态机阶段等。
     // QoS 使用 Reliable：监控信息不应丢帧，以便调试和性能分析。
@@ -554,9 +561,20 @@ private:
    * @note 采用值拷贝（*msg）而非 shared_ptr，因为 PlatformState 是轻量消息。
    */
   void platform_callback(const vision_servo_msgs::msg::PlatformState::ConstSharedPtr& msg) {
+    const auto now = this->now();
+    // 同时校验消息自身源时间戳：防止驱动重复发布旧状态被误判为新鲜
+    // （header.stamp 为零的旧驱动消息放行，保持兼容）
+    const rclcpp::Time source_stamp(
+      msg->header.stamp, get_clock()->get_clock_type());
+    const double source_age = (now - source_stamp).seconds();
+    if (source_stamp.nanoseconds() > 0 &&
+        (!std::isfinite(source_age) || source_age < -0.05 ||
+         source_age > platform_state_timeout_)) {
+      return;
+    }
     std::lock_guard<std::mutex> lock(state_mutex_);
     last_platform_state_ = *msg;
-    last_platform_state_time_ = this->now();
+    last_platform_state_time_ = now;
   }
 
   /**
@@ -766,8 +784,9 @@ private:
       {
         std::lock_guard<std::mutex> lock(state_mutex_);
         state = controller_->getServoState();
-        // 如果目标数据超时，覆盖状态为 LOST（控制回路也会检测并输出零速度）
-        if (!last_target_ || target_stale_locked(this->now())) {
+        // 3D 与 aim 两层均过期才覆盖为 LOST（控制回路同样检测并输出零速度）；
+        // PBVS aim-only 延续时角度环仍有效，不视为丢失
+        if (system_lost_locked(this->now())) {
           state.state = vision_servo_msgs::msg::ServoState::LOST;
         }
       }
@@ -801,7 +820,7 @@ private:
    *
    *   1. PREFLIGHT 检查
    *      - 相机未标定 → 跳过（等待 camera_info_callback）
-   *      - 无目标或目标超时 → 发布零速度 + LOST 状态 → 返回
+   *      - 3D 目标与 aim 关注点均过期 → 发布零速度 + LOST 状态 → 返回
    *      - servo_active_=false 且 auto_start_=false → 空闲等待 → 返回
    *
    *   2. AUTO-START（如启用）
@@ -837,15 +856,17 @@ private:
    *   避免了逐变量加锁的复杂性。控制回路的计算时间 (<1ms) 远小于帧间隙
    *   (20ms)，粗粒度锁不会造成显著的锁竞争。
    *
-   * ── 目标超时处理 ────────────────────────────────────────────────────
+   * ── 目标超时处理（V2 分层授权）──────────────────────────────────────
    *
-   *   若最后收到目标的时间超过 target_timeout_（默认 0.5s），判定为
-   *   目标丢失。此时：
-   *     - 发布零底盘速度（停止移动）
-   *     - 云台保持当前位置（hold_yaw/hold_pitch = true）
-   *     - 发布 LOST 伺服状态
-   *   短暂的目标丢失（如检测器漏检 1 帧）会被 target_timeout_ 容错窗口
-   *   吸收，避免不必要的零速度跳变。
+   *   3D 目标（targets_3d）与 2D 关注点（aim_target_2d）各自持有独立的
+   *   时间预算（target_timeout_ / aim_target_timeout_），分别授权：
+   *     - 角度层（aim 新鲜）→ 云台 yaw/pitch 继续跟踪
+   *     - 平移层（3D 新鲜且通过质量门控）→ 底盘平移
+   *   PBVS 且 pbvs_aim_only_bearing=true 时，3D 目标过期但 aim 新鲜，
+   *   角度环继续运行（Z 回退为保持深度或期望深度；Z 在角度公式中约消，
+   *   不影响 yaw/pitch），底盘平移不被授权。
+   *   两层均过期 → 发布零底盘速度 + 云台 hold + LOST 状态。
+   *   短暂的目标丢失（如检测器漏检 1 帧）会被各层容错窗口吸收。
    */
   void control_loop() {
     auto now = this->now();
@@ -854,9 +875,14 @@ private:
     // ── 前置检查 1：相机标定 ──────────────────────────────────────────
     if (!calibrated_) return;
 
-    // ── 前置检查 2：目标数据可用性 ────────────────────────────────────
-    // 目标丢失或超时 → 安全停止：底盘零速，云台保持当前位置
-    if (!last_target_ || target_stale_locked(now)) {
+    // ── 前置检查 2：目标数据可用性（分层授权）────────────────────────
+    // 3D 目标新鲜 → 平移层授权；aim 新鲜 → 角度层授权（仅 PBVS 启用时）。
+    // 两层均过期 → 安全停止：底盘零速，云台保持当前位置。
+    const bool pbvs_controller = controller_->getControllerType() == "PBVS";
+    const bool have_3d_target = last_target_ && !target_stale_locked(now);
+    const bool aim_only_bearing =
+      pbvs_controller && pbvs_aim_only_bearing_ && aim_target_fresh_locked(now);
+    if (!have_3d_target && !aim_only_bearing) {
       if (servo_active_.load()) {
         publish_zero_command(now);
         publish_lost_state(now);
@@ -869,6 +895,11 @@ private:
     // auto_start_=false 时，需通过 VisualServo action 显式启动。
     if (!servo_active_.load()) {
       if (!auto_start_) return;  // 非自动模式且无 action → 空闲
+      // 伺服目标只能从新鲜 3D 目标建立；aim-only 只能延续已建立的伺服
+      if (!have_3d_target) {
+        publish_zero_command(now);
+        return;
+      }
       if (!controller_->hasGoal()) {
         const double desired_depth = this->get_parameter("desired_depth").as_double();
         const double tolerance = this->get_parameter("feature_tolerance").as_double();
@@ -890,18 +921,22 @@ private:
     // ── 计算时间步长 dt ──────────────────────────────────────────────
     // 首帧（last_control_time_ 未初始化）：默认 20ms
     // 后续帧：实际时间差（用于分配器中的积分和平滑逻辑）
-    double dt = (last_control_time_.nanoseconds() > 0)
-      ? (now - last_control_time_).seconds() : 0.02;
+    // 钳位：wall timer 与 use_sim_time 时钟不同步（如仿真暂停）时 dt
+    // 可能为 0 或负，钳位避免分配器/控制器积分异常。
+    double dt = std::clamp(
+      (last_control_time_.nanoseconds() > 0)
+        ? (now - last_control_time_).seconds() : 0.02,
+      0.001, 0.10);
     last_control_time_ = now;
 
     // PBVS uses the high-rate 2D aim point for bearing while retaining the
     // independently measured metric Z for chassis distance control.
     auto control_target = active_target_;
-    const bool pbvs_controller = controller_->getControllerType() == "PBVS";
     const bool current_metric_translation =
       !pbvs_controller ||
-      is_pbvs_translation_target(
-        active_target_, pbvs_min_depth_confidence_, pbvs_max_fusion_age_);
+      (have_3d_target &&
+       is_pbvs_translation_target(
+         active_target_, pbvs_min_depth_confidence_, pbvs_max_fusion_age_));
     bool held_metric_translation = false;
     if (pbvs_controller && !current_metric_translation &&
         last_valid_depth_target_id_ == locked_target_id_ &&
@@ -916,18 +951,16 @@ private:
         held_metric_translation = true;
       }
     }
-    if (controller_->getControllerType() == "PBVS" &&
-        latest_aim_target_.has_value() &&
-        last_aim_receive_time_.nanoseconds() > 0 &&
-        (now - last_aim_receive_time_).seconds() <= aim_target_timeout_ &&
-        last_aim_source_time_.nanoseconds() > 0 &&
-        (now - last_aim_source_time_).seconds() <= aim_target_timeout_ &&
-        latest_aim_target_->tracking_id == locked_target_id_ &&
-        latest_aim_target_->pixel_x >= 0.0F &&
-        latest_aim_target_->pixel_x < static_cast<float>(camera_width_) &&
-        latest_aim_target_->pixel_y >= 0.0F &&
-        latest_aim_target_->pixel_y < static_cast<float>(camera_height_)) {
-      const double z = control_target.position[2];
+    if (aim_target_fresh_locked(now)) {
+      // Z 回退链：新鲜3D Z → 保持深度（上面已写回）→ 期望深度。
+      // Z 在 yaw/pitch 角度公式中约消（yaw=atan((u-cx)/fx)，pitch 同理），
+      // 回退深度不影响角度，只进入深度通道；平移授权由
+      // metric_translation_allowed 独立门控，回退时不授权。
+      double z = control_target.position[2];
+      if (!have_3d_target && !held_metric_translation) {
+        z = this->get_parameter("desired_depth").as_double();
+        control_target.position[2] = static_cast<float>(z);
+      }
       control_target.center = {
         latest_aim_target_->pixel_x, latest_aim_target_->pixel_y};
       control_target.position[0] = static_cast<float>(
@@ -1004,7 +1037,12 @@ private:
     gimbal_cmd_pub_->publish(gimbal_cmd);
 
     // ═══ 步骤 5：发布伺服状态（监控 + 调试）═══════════════════════════
-    publish_control_state(now, *cam_vel, allocation, pbvs_motion_inhibited);
+    // aim-only 且无保持深度时距离不可观测，不得宣称 TRACKING（收敛判定
+    // 需要深度）；状态降级为 CONVERGING，底盘平移保持零。
+    const bool depth_unobservable =
+      pbvs_controller && !have_3d_target && !held_metric_translation;
+    publish_control_state(now, *cam_vel, allocation, pbvs_motion_inhibited,
+                          depth_unobservable);
 
     // ═══ 步骤 6：周期性调试打印 ═══════════════════════════════════════
     // 打印速率由 debug_print_rate 参数控制（Hz），0 表示关闭。
@@ -1076,6 +1114,44 @@ private:
              source_age > pbvs_max_source_age_;
     }
     return false;
+  }
+
+  /**
+   * @brief aim 关注点角度层新鲜度（在锁内调用）。
+   *
+   * 判定条件与 V1 aim 快环路径一致：值存在、接收/源时间均在
+   * aim_target_timeout_ 内、ID 与锁定目标一致、像素位于图像范围内。
+   */
+  bool aim_target_fresh_locked(const rclcpp::Time& now) const {
+    if (!use_aim_target_ || !latest_aim_target_.has_value()) return false;
+    if (last_aim_receive_time_.nanoseconds() <= 0 ||
+        (now - last_aim_receive_time_).seconds() > aim_target_timeout_) {
+      return false;
+    }
+    if (last_aim_source_time_.nanoseconds() <= 0 ||
+        (now - last_aim_source_time_).seconds() > aim_target_timeout_) {
+      return false;
+    }
+    if (latest_aim_target_->tracking_id != locked_target_id_) return false;
+    const float px = latest_aim_target_->pixel_x;
+    const float py = latest_aim_target_->pixel_y;
+    return px >= 0.0F && px < static_cast<float>(camera_width_) &&
+           py >= 0.0F && py < static_cast<float>(camera_height_);
+  }
+
+  /**
+   * @brief 分层丢失判定：3D 平移层与 aim 角度层均过期才算 LOST。
+   *
+   * PBVS 且 pbvs_aim_only_bearing_=true 时，3D 过期但 aim 新鲜视为
+   * 角度环仍在有效跟踪，不判丢失（底盘平移由质量门控单独抑制）。
+   */
+  bool system_lost_locked(const rclcpp::Time& now) const {
+    if (last_target_ && !target_stale_locked(now)) return false;
+    if (controller_->getControllerType() == "PBVS" &&
+        pbvs_aim_only_bearing_ && aim_target_fresh_locked(now)) {
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -1162,12 +1238,18 @@ private:
       const rclcpp::Time& stamp,
       const Eigen::Matrix<double, 6, 1>& cam_vel,
       const ControlAllocation& allocation,
-      bool motion_inhibited = false) {
+      bool motion_inhibited = false,
+      bool depth_unobservable = false) {
     auto servo_state = controller_->getServoState();
     servo_state.header.stamp = stamp;
     servo_state.last_update = time_to_msg(stamp);
     if (motion_inhibited) {
       servo_state.state = vision_servo_msgs::msg::ServoState::ERROR;
+    } else if (depth_unobservable &&
+               servo_state.state == vision_servo_msgs::msg::ServoState::TRACKING) {
+      // aim-only 模式距离不可观测：TRACKING 的三误差收敛判定需要深度，
+      // 只宣称角度收敛（CONVERGING），避免误导监控端
+      servo_state.state = vision_servo_msgs::msg::ServoState::CONVERGING;
     }
     // 覆盖相机速度（以实际输出为准，而非控制器缓存）
     for (size_t i = 0; i < 6; ++i) {
@@ -1304,6 +1386,7 @@ private:
   bool use_aim_target_ = true;
   double aim_target_timeout_ = 0.18;
   double platform_state_timeout_ = 0.25;
+  bool pbvs_aim_only_bearing_ = false;
   double control_rate_hz_ = 50.0;
 
   // ── 线程同步 ────────────────────────────────────────────────────────

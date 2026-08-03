@@ -70,6 +70,11 @@ def generate_launch_description():
              "allocation_ratio": 0.0,
              "auto_start": True},
         ],
+        # 无 command_mux 的仿真：节点默认 /auto/*，显式回落到 /cmd_vel
+        remappings=[
+            ("/auto/cmd_vel", "/cmd_vel"),
+            ("/auto/cmd_gimbal", "/cmd_gimbal"),
+        ],
     )
 
     # ── 3. 云台驱动（仿真模式） ───────────────────────────────────

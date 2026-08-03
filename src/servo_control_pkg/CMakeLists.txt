@@ -35,6 +35,8 @@ find_package(rcl_interfaces REQUIRED)
 find_package(vision_servo_msgs REQUIRED)   # TargetArray, ServoState, PlatformState
 find_package(geometry_msgs REQUIRED)        # Twist, Vector3
 find_package(sensor_msgs REQUIRED)          # CameraInfo
+find_package(diagnostic_msgs REQUIRED)      # 二维快环时延和安全状态诊断
+find_package(builtin_interfaces REQUIRED)   # 分阶段控制时间戳
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)               # 矩阵/线性代数（交互矩阵、伪逆）
@@ -124,6 +126,27 @@ ament_target_dependencies(mvp_follow_controller_node
 target_link_libraries(mvp_follow_controller_node servo_qos)
 install(TARGETS mvp_follow_controller_node DESTINATION lib/${PROJECT_NAME})
 
+# ── Sony→RS2 独立二维云台快环 ────────────────────────────────────
+add_library(gimbal_visual_servo_core SHARED
+  src/gimbal_visual_servo_core.cpp
+)
+target_include_directories(gimbal_visual_servo_core PUBLIC include)
+install(TARGETS gimbal_visual_servo_core
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+)
+
+add_executable(gimbal_visual_servo_node src/gimbal_visual_servo_node.cpp)
+target_include_directories(gimbal_visual_servo_node PRIVATE include)
+ament_target_dependencies(gimbal_visual_servo_node
+  rclcpp vision_servo_msgs sensor_msgs diagnostic_msgs builtin_interfaces
+)
+target_link_libraries(gimbal_visual_servo_node
+  gimbal_visual_servo_core
+  servo_qos
+)
+install(TARGETS gimbal_visual_servo_node DESTINATION lib/${PROJECT_NAME})
+
 # ── 速度指令节点 ──────────────────────────────────────────────────
 add_executable(velocity_commander_node src/velocity_commander_node.cpp)
 target_include_directories(velocity_commander_node PRIVATE include)
@@ -155,6 +178,13 @@ if(BUILD_TESTING)
   ament_add_gtest(test_mvp_yaw_control test/test_mvp_yaw_control.cpp)
   if(TARGET test_mvp_yaw_control)
     target_include_directories(test_mvp_yaw_control PRIVATE include)
+  endif()
+  ament_add_gtest(test_gimbal_visual_servo_core
+    test/test_gimbal_visual_servo_core.cpp)
+  if(TARGET test_gimbal_visual_servo_core)
+    target_include_directories(test_gimbal_visual_servo_core PRIVATE include)
+    target_link_libraries(test_gimbal_visual_servo_core
+      gimbal_visual_servo_core)
   endif()
 endif()
 

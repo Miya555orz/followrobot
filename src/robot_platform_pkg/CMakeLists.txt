@@ -30,9 +30,11 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(builtin_interfaces REQUIRED)          # 分阶段控制时间戳
 find_package(vision_servo_msgs REQUIRED)   # GimbalCmd, PlatformState
 find_package(geometry_msgs REQUIRED)        # Twist, Pose, Transform
 find_package(sensor_msgs REQUIRED)          # Imu, Image
+find_package(std_msgs REQUIRED)             # 全局急停状态
 find_package(std_srvs REQUIRED)             # Trigger debug services
 find_package(nav_msgs REQUIRED)             # Odometry
 find_package(tf2_ros REQUIRED)              # TF 广播
@@ -67,7 +69,7 @@ add_executable(gimbal_driver_node src/gimbal_driver_node.cpp src/gimbal_interfac
   src/dji_rs2_protocol.cpp)
 target_include_directories(gimbal_driver_node PRIVATE include)
 ament_target_dependencies(gimbal_driver_node
-  rclcpp rclcpp_lifecycle vision_servo_msgs sensor_msgs std_srvs
+  rclcpp rclcpp_lifecycle builtin_interfaces vision_servo_msgs sensor_msgs std_srvs
 )
 target_link_libraries(gimbal_driver_node platform_qos)
 install(TARGETS gimbal_driver_node DESTINATION lib/${PROJECT_NAME})
@@ -94,7 +96,7 @@ install(TARGETS odometry_node DESTINATION lib/${PROJECT_NAME})
 add_executable(platform_manager_node src/platform_manager_node.cpp)
 target_include_directories(platform_manager_node PRIVATE include)
 ament_target_dependencies(platform_manager_node
-  rclcpp vision_servo_msgs geometry_msgs sensor_msgs nav_msgs tf2_ros
+  rclcpp vision_servo_msgs geometry_msgs sensor_msgs std_msgs nav_msgs tf2_ros
 )
 target_link_libraries(platform_manager_node platform_qos)
 install(TARGETS platform_manager_node DESTINATION lib/${PROJECT_NAME})
