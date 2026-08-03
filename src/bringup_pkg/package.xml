@@ -17,6 +17,8 @@
   <exec_depend>sony_camera_pkg</exec_depend>
   <exec_depend>servo_control_pkg</exec_depend>
   <exec_depend>teleop_control_pkg</exec_depend>
+  <exec_depend>external_control_pkg</exec_depend>
+  <exec_depend>voice_intent_pkg</exec_depend>
   <exec_depend>robot_platform_pkg</exec_depend>
   <exec_depend>vision_servo_msgs</exec_depend>
   <exec_depend>rclcpp_components</exec_depend>

@@ -799,7 +799,7 @@ yaw auto decel    = 1.20 rad/s²
 推荐入口：
 
 ```bash
-ros2 run bringup_pkg start_fcr_ibvs.sh \
+ros2 run bringup_pkg start_fcr.sh \
   --controller pbvs
 ```
 
@@ -875,5 +875,4 @@ ros2 topic echo /gimbal/status --once
 | `src/servo_control_pkg/config/allocator_params.yaml` | 分配器参数 |
 | `src/teleop_control_pkg/src/command_mux_core.cpp` | 手动/自动仲裁与停车语义 |
 | `src/teleop_control_pkg/config/remote_control.yaml` | 仲裁限幅和租约 |
-| `src/bringup_pkg/scripts/start_fcr_ibvs.sh` | 实机一键启动和PBVS覆盖参数 |
-
+| `src/bringup_pkg/scripts/start_fcr.sh` | 实机一键启动和PBVS覆盖参数 |

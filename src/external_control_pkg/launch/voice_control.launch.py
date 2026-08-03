@@ -36,6 +36,10 @@ def generate_launch_description():
     publish_cloud_intents = LaunchConfiguration("publish_cloud_intents")
     classifier_model_root = LaunchConfiguration("classifier_model_root")
     embedding_model_dir = LaunchConfiguration("embedding_model_dir")
+    min_coarse_confidence = LaunchConfiguration("min_coarse_confidence")
+    min_coarse_margin = LaunchConfiguration("min_coarse_margin")
+    min_fine_confidence = LaunchConfiguration("min_fine_confidence")
+    max_fine_confusion = LaunchConfiguration("max_fine_confusion")
     start_command_router = LaunchConfiguration("start_command_router")
     start_chassis_control = LaunchConfiguration("start_chassis_control")
     start_keyboard_node = LaunchConfiguration("start_keyboard_node")
@@ -158,6 +162,26 @@ def generate_launch_description():
             "embedding_model_dir",
             default_value="",
             description="BGE 语义嵌入模型目录",
+        ),
+        DeclareLaunchArgument(
+            "min_coarse_confidence",
+            default_value="0.60",
+            description="粗分类最低置信度，低于此值拒绝控制",
+        ),
+        DeclareLaunchArgument(
+            "min_coarse_margin",
+            default_value="0.15",
+            description="粗分类 Top-1 与 Top-2 最小差距",
+        ),
+        DeclareLaunchArgument(
+            "min_fine_confidence",
+            default_value="0.60",
+            description="细分类最低置信度，低于此值拒绝控制",
+        ),
+        DeclareLaunchArgument(
+            "max_fine_confusion",
+            default_value="0.05",
+            description="细分类最大混淆度，超过此值拒绝控制",
         ),
         DeclareLaunchArgument(
             "gimbal_voice_command_topic",
@@ -327,6 +351,18 @@ def generate_launch_description():
             parameters=[{
                 "model_root": classifier_model_root,
                 "embedding_model_dir": embedding_model_dir,
+                "min_coarse_confidence": ParameterValue(
+                    min_coarse_confidence, value_type=float
+                ),
+                "min_coarse_margin": ParameterValue(
+                    min_coarse_margin, value_type=float
+                ),
+                "min_fine_confidence": ParameterValue(
+                    min_fine_confidence, value_type=float
+                ),
+                "max_fine_confusion": ParameterValue(
+                    max_fine_confusion, value_type=float
+                ),
                 "text_input_topic": text_topic,
                 "enable_console_input": False,
             }],

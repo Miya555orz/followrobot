@@ -13,6 +13,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 from voice_intent_pkg.double_layer_classifier import DoubleLayerClassifier
+from voice_intent_pkg.intent_gate import evaluate_intent
 
 
 CONTROL_INTENTS = {
@@ -48,6 +49,8 @@ class DoubleLayerConsoleVoiceNode(Node):
         self.declare_parameter("embedding_model_dir", "")
         self.declare_parameter("device", "cpu")
         self.declare_parameter("min_coarse_confidence", 0.60)
+        self.declare_parameter("min_coarse_margin", 0.15)
+        self.declare_parameter("min_fine_confidence", 0.60)
         self.declare_parameter("max_fine_confusion", 0.05)
         self.declare_parameter("voice_command_topic", "/external/voice_command")
         self.declare_parameter("result_topic", "/external/intent_result")
@@ -61,6 +64,12 @@ class DoubleLayerConsoleVoiceNode(Node):
         self._validate_paths(model_root, embedding_dir)
         self._min_coarse_confidence = float(
             self.get_parameter("min_coarse_confidence").value
+        )
+        self._min_coarse_margin = float(
+            self.get_parameter("min_coarse_margin").value
+        )
+        self._min_fine_confidence = float(
+            self.get_parameter("min_fine_confidence").value
         )
 
         self.get_logger().info(f"正在加载双层意图模型: {model_root}")
@@ -161,23 +170,27 @@ class DoubleLayerConsoleVoiceNode(Node):
         result = self._classifier.predict(text)
         coarse = result["coarse"]
         fine = result["fine"]
-        control_intent = CONTROL_INTENTS.get((coarse["name"], fine["name"]), "")
-        accepted = (
-            bool(control_intent)
-            and coarse["confidence"] >= self._min_coarse_confidence
-            and bool(fine["passed"])
-            and coarse["name"] != "干扰项"
+        decision = evaluate_intent(
+            result,
+            CONTROL_INTENTS,
+            min_coarse_confidence=self._min_coarse_confidence,
+            min_coarse_margin=self._min_coarse_margin,
+            min_fine_confidence=self._min_fine_confidence,
         )
+        control_intent = str(decision["control_intent"])
+        accepted = bool(decision["accepted"])
 
         self.get_logger().info(
             f'[MODEL] text="{text}" | coarse={coarse["name"]} '
             f'({coarse["confidence"]:.4f}) | fine={fine["name"]} '
             f'({fine["confidence"]:.4f}, confusion={fine["confusion"]:.4f}, '
-            f'decision={fine["decision"]})'
+            f'decision={fine["decision"]}) | '
+            f'coarse_margin={decision["coarse_margin"]:.4f}'
         )
         self.get_logger().info(
             f"[CONTROL] intent={control_intent or 'none'} | "
-            f"published={'true' if accepted else 'false'}"
+            f"published={'true' if accepted else 'false'} | "
+            f"reason={decision['rejection_reason']}"
         )
 
         if accepted:
@@ -199,6 +212,10 @@ class DoubleLayerConsoleVoiceNode(Node):
         diagnostic = dict(result)
         diagnostic["control_intent"] = control_intent
         diagnostic["published"] = accepted
+        diagnostic["accepted"] = accepted
+        diagnostic["rejection_reason"] = decision["rejection_reason"]
+        diagnostic["rejection_reasons"] = decision["rejection_reasons"]
+        diagnostic["coarse_margin"] = decision["coarse_margin"]
         output = String()
         output.data = json.dumps(diagnostic, ensure_ascii=False)
         self._result_pub.publish(output)

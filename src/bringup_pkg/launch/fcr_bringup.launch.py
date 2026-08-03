@@ -40,6 +40,7 @@ def generate_launch_description():
     sony_share = FindPackageShare("sony_camera_pkg")
     remote_monitor_share = FindPackageShare("remote_monitor_pkg")
     teleop_share = FindPackageShare("teleop_control_pkg")
+    external_control_share = FindPackageShare("external_control_pkg")
 
     # ── 1. 机器人平台（硬件驱动层） ─────────────────────────
     platform_launch = IncludeLaunchDescription(
@@ -101,6 +102,54 @@ def generate_launch_description():
         }.items(),
     )
 
+    # Remote Windows ASR is an optional command source. Its local voice
+    # routers arbitrate voice nudges over the PBVS stream, then publish to the
+    # existing /auto inputs. command_mux remains the only publisher connected
+    # to the hardware drivers.
+    voice_control_launch = IncludeLaunchDescription(
+        PathJoinSubstitution(
+            [external_control_share, "launch", "voice_control.launch.py"]
+        ),
+        launch_arguments={
+            "start_wake_up_node": "false",
+            "start_text_http_bridge": "true",
+            "start_intent_classifier": "true",
+            "publish_cloud_intents": "false",
+            "start_dispatcher": "true",
+            "start_command_router": "true",
+            "start_chassis_control": LaunchConfiguration("enable_chassis"),
+            "start_keyboard_node": "false",
+            "classifier_model_root": LaunchConfiguration(
+                "voice_classifier_model_root"
+            ),
+            "embedding_model_dir": LaunchConfiguration(
+                "voice_embedding_model_dir"
+            ),
+            "text_http_bind_address": LaunchConfiguration(
+                "voice_http_bind_address"
+            ),
+            "text_http_port": LaunchConfiguration("voice_http_port"),
+            "text_http_auth_token": LaunchConfiguration("voice_http_auth_token"),
+            "min_coarse_confidence": LaunchConfiguration(
+                "voice_min_coarse_confidence"
+            ),
+            "min_coarse_margin": LaunchConfiguration("voice_min_coarse_margin"),
+            "min_fine_confidence": LaunchConfiguration(
+                "voice_min_fine_confidence"
+            ),
+            "max_fine_confusion": LaunchConfiguration(
+                "voice_max_fine_confusion"
+            ),
+            "manual_cmd_gimbal_topic": "/voice/unused_manual_cmd_gimbal",
+            "autonomy_cmd_gimbal_topic": "/autonomy/cmd_gimbal",
+            "router_output_cmd_topic": "/auto/cmd_gimbal",
+            "manual_cmd_vel_topic": "/voice/unused_manual_cmd_vel",
+            "autonomy_cmd_vel_topic": "/autonomy/cmd_vel",
+            "chassis_output_cmd_topic": "/auto/cmd_vel",
+        }.items(),
+        condition=IfCondition(LaunchConfiguration("enable_voice_control")),
+    )
+
     # Calibrated Gemini depth fusion is opt-in. It owns Gemini startup and the
     # rigid Sony->Gemini static transform, while the RGB perception launch
     # above remains usable on its own.
@@ -137,8 +186,19 @@ def generate_launch_description():
             "aim_target_input": LaunchConfiguration("servo_aim_target_topic"),
             "allow_chassis_translation": LaunchConfiguration(
                 "servo_allow_chassis_translation"),
-            "cmd_vel_output": "/auto/cmd_vel",
-            "cmd_gimbal_output": "/auto/cmd_gimbal",
+            # With voice enabled, its router owns /auto and PBVS publishes to
+            # the lower-priority autonomy inputs. Without voice, preserve the
+            # original direct PBVS -> command_mux path.
+            "cmd_vel_output": PythonExpression([
+                "'/autonomy/cmd_vel' if '",
+                LaunchConfiguration("enable_voice_control"),
+                "' == 'true' else '/auto/cmd_vel'",
+            ]),
+            "cmd_gimbal_output": PythonExpression([
+                "'/autonomy/cmd_gimbal' if '",
+                LaunchConfiguration("enable_voice_control"),
+                "' == 'true' else '/auto/cmd_gimbal'",
+            ]),
         }.items(),
         condition=IfCondition(LaunchConfiguration("enable_servo")),
     )
@@ -333,10 +393,53 @@ def generate_launch_description():
             "servo_allocation_ratio", default_value="0.5",
             description="偏航分配比例：0为纯云台，1为纯底盘",
         ),
+        DeclareLaunchArgument(
+            "enable_voice_control", default_value="false",
+            description="启动Windows ASR HTTP桥接、意图分类和语音控制路由",
+        ),
+        DeclareLaunchArgument(
+            "voice_classifier_model_root",
+            default_value="",
+            description="Jetson双层意图分类器模型根目录",
+        ),
+        DeclareLaunchArgument(
+            "voice_embedding_model_dir",
+            default_value="",
+            description="Jetson中文语义嵌入模型目录",
+        ),
+        DeclareLaunchArgument(
+            "voice_http_bind_address", default_value="0.0.0.0",
+            description="Windows ASR文本HTTP桥接监听地址",
+        ),
+        DeclareLaunchArgument(
+            "voice_http_port", default_value="8081",
+            description="Windows ASR文本HTTP桥接端口",
+        ),
+        DeclareLaunchArgument(
+            "voice_http_auth_token", default_value="",
+            description="可选HTTP共享令牌；不要写入仓库",
+        ),
+        DeclareLaunchArgument(
+            "voice_min_coarse_confidence", default_value="0.60",
+            description="语音粗分类最低置信度",
+        ),
+        DeclareLaunchArgument(
+            "voice_min_coarse_margin", default_value="0.15",
+            description="语音粗分类Top-1/Top-2最小差距",
+        ),
+        DeclareLaunchArgument(
+            "voice_min_fine_confidence", default_value="0.60",
+            description="语音细分类最低置信度",
+        ),
+        DeclareLaunchArgument(
+            "voice_max_fine_confusion", default_value="0.05",
+            description="语音细分类最大混淆度",
+        ),
 
         # 阶段 1：平台驱动 (t=0s)
         platform_launch,
         remote_control_launch,
+        voice_control_launch,
         sony_launch,
         mock_detector,
 

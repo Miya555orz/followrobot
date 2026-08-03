@@ -15,7 +15,7 @@ install(DIRECTORY launch config rviz
 
 # Jetson real-hardware convenience entrypoints.
 install(PROGRAMS
-  scripts/start_fcr_ibvs.sh
+  scripts/start_fcr.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
