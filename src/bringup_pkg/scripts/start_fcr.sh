@@ -429,6 +429,16 @@ fi
 echo "  command mux    : starts in MANUAL; switch to AUTO explicitly"
 echo
 
+# ROS 2 Humble rejects an explicitly empty launch assignment such as
+# "voice_http_auth_token:=". Omit the optional argument entirely when no
+# shared token is configured so the launch-file default remains in effect.
+VOICE_AUTH_LAUNCH_ARGS=()
+if [[ -n "$VOICE_HTTP_AUTH_TOKEN" ]]; then
+  VOICE_AUTH_LAUNCH_ARGS+=(
+    "voice_http_auth_token:=$VOICE_HTTP_AUTH_TOKEN"
+  )
+fi
+
 # PBVS uses the fused 3D target for distance control and the 2D aim target for
 # the fast angular loop. Keep comments outside the continued launch command:
 # a shell comment inside a backslash continuation truncates all later args.
@@ -457,4 +467,4 @@ exec ros2 launch bringup_pkg fcr_bringup.launch.py \
   voice_embedding_model_dir:="$VOICE_EMBEDDING_MODEL_DIR" \
   voice_http_bind_address:="$VOICE_HTTP_BIND_ADDRESS" \
   voice_http_port:="$VOICE_HTTP_PORT" \
-  voice_http_auth_token:="$VOICE_HTTP_AUTH_TOKEN"
+  "${VOICE_AUTH_LAUNCH_ARGS[@]}"
