@@ -27,6 +27,8 @@ setup(
             "voice_intent_pkg.bert_console_voice_node:main",
             "double_layer_console_voice_node = "
             "voice_intent_pkg.double_layer_console_voice_node:main",
+            "voice_text_http_bridge_node = "
+            "voice_intent_pkg.voice_text_http_bridge_node:main",
         ],
     },
 )

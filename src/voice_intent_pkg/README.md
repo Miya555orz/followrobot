@@ -26,3 +26,11 @@ ros2 run voice_intent_pkg double_layer_console_voice_node
 
 模型及语义嵌入权重仍放在工作空间外部。完整部署和验证步骤见
 `docs/double_layer_intent_model_test.md`。
+
+## 笔记本远程 ASR
+
+`voice_text_http_bridge_node` 接收笔记本 ASR 发送的 JSON 文本，校验并去重后
+发布为 `/voice/text`。双层意图节点继续负责分类，因此远程 ASR 不会绕过意图
+模型、指令分发器或控制仲裁。
+
+完整双端部署和验证步骤见 `docs/remote_asr_voice_control.md`。

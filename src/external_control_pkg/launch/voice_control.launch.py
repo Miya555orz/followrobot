@@ -29,6 +29,10 @@ def generate_launch_description():
     start_wake_up_node = LaunchConfiguration("start_wake_up_node")
     start_dispatcher = LaunchConfiguration("start_dispatcher")
     start_intent_classifier = LaunchConfiguration("start_intent_classifier")
+    start_text_http_bridge = LaunchConfiguration("start_text_http_bridge")
+    text_http_bind_address = LaunchConfiguration("text_http_bind_address")
+    text_http_port = LaunchConfiguration("text_http_port")
+    text_http_auth_token = LaunchConfiguration("text_http_auth_token")
     publish_cloud_intents = LaunchConfiguration("publish_cloud_intents")
     classifier_model_root = LaunchConfiguration("classifier_model_root")
     embedding_model_dir = LaunchConfiguration("embedding_model_dir")
@@ -107,6 +111,26 @@ def generate_launch_description():
             "text_topic",
             default_value="/voice/text",
             description="ASR 文本输出和本地意图模型输入话题",
+        ),
+        DeclareLaunchArgument(
+            "start_text_http_bridge",
+            default_value="false",
+            description="是否接收笔记本 ASR 通过 HTTP 发送的文本",
+        ),
+        DeclareLaunchArgument(
+            "text_http_bind_address",
+            default_value="0.0.0.0",
+            description="远程 ASR 文本 HTTP 服务监听地址",
+        ),
+        DeclareLaunchArgument(
+            "text_http_port",
+            default_value="8081",
+            description="远程 ASR 文本 HTTP 服务端口",
+        ),
+        DeclareLaunchArgument(
+            "text_http_auth_token",
+            default_value="",
+            description="可选的 HTTP Bearer 共享令牌",
         ),
         DeclareLaunchArgument(
             "start_dispatcher",
@@ -277,6 +301,20 @@ def generate_launch_description():
                 "energy_threshold": energy_threshold,
                 "silence_timeout": silence_timeout,
                 "mic_device": mic_device,
+            }],
+        ),
+
+        Node(
+            package="voice_intent_pkg",
+            executable="voice_text_http_bridge_node",
+            name="voice_text_http_bridge_node",
+            output="screen",
+            condition=IfCondition(start_text_http_bridge),
+            parameters=[{
+                "bind_address": text_http_bind_address,
+                "port": ParameterValue(text_http_port, value_type=int),
+                "text_topic": text_topic,
+                "auth_token": text_http_auth_token,
             }],
         ),
 
