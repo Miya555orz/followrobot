@@ -1,0 +1,47 @@
+# Long-running, cancelable cinematic camera move.
+uint8 STATIC_TRACK=0
+uint8 DOLLY_IN_OUT=1
+uint8 TRUCK_LEFT_RIGHT=2
+uint8 ORBIT_ARC=3
+
+int8 DIRECTION_RIGHT=-1
+int8 DIRECTION_AUTO=0
+int8 DIRECTION_LEFT=1
+
+uint8 mode
+int32 tracking_id
+float32 target_distance_m
+float32 displacement_m
+float32 orbit_angle_deg
+float32 orbit_radius_m
+float32 max_speed
+float32 duration_sec
+int8 direction
+---
+uint8 RESULT_SUCCESS=0
+uint8 RESULT_CANCELED=1
+uint8 RESULT_TARGET_LOST=2
+uint8 RESULT_DEPTH_INVALID=3
+uint8 RESULT_TIMEOUT=4
+uint8 RESULT_SAFETY_STOP=5
+uint8 RESULT_REJECTED=6
+
+bool success
+uint8 result_code
+string message
+float32 traveled_distance_m
+float32 completed_angle_deg
+---
+uint8 STATE_IDLE=0
+uint8 STATE_ACQUIRE=1
+uint8 STATE_ALIGN=2
+uint8 STATE_EXECUTE=3
+uint8 STATE_HOLD=4
+uint8 STATE_RECOVER=5
+
+uint8 state
+float32 progress
+float32 current_distance_m
+float32 traveled_distance_m
+float32 completed_angle_deg
+int32 active_tracking_id

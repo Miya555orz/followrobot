@@ -43,6 +43,7 @@ def generate_launch_description():
     enable_velocity_commander = LaunchConfiguration("enable_velocity_commander")
     enable_gimbal_visual_servo = LaunchConfiguration(
         "enable_gimbal_visual_servo")
+    enable_cinematic_motion = LaunchConfiguration("enable_cinematic_motion")
 
     config_dir = PathJoinSubstitution([
         FindPackageShare("servo_control_pkg"), "config"
@@ -104,6 +105,27 @@ def generate_launch_description():
             ("/auto/cmd_gimbal", cmd_gimbal_output),
         ],
         condition=IfCondition(enable_gimbal_visual_servo),
+    )
+
+    # ── 可取消运镜任务层 ──────────────────────────────────────────────
+    # 该节点只发布 /cinematic/reference，不直接发布执行器指令。
+    # 最终速度仍由 servo_manager 的 PBVS 反馈、质量门控及 command_mux
+    # 统一处理，避免出现第二个 /auto/cmd_vel 控制源。
+    cinematic_motion_manager = Node(
+        package="servo_control_pkg",
+        executable="cinematic_motion_manager_node",
+        name="cinematic_motion_manager",
+        output="screen",
+        parameters=[PathJoinSubstitution([
+            config_dir, "cinematic_params.yaml"
+        ])],
+        remappings=[
+            ("/perception/tracks", "/perception/tracks"),
+            ("/perception/targets_3d", target_input),
+            ("/platform/state", "/platform/state"),
+            ("/cinematic/reference", "/cinematic/reference"),
+        ],
+        condition=IfCondition(enable_cinematic_motion),
     )
 
     # ── 速度指令节点（限幅 + 转发） ────────────────────────────────
@@ -169,7 +191,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "enable_gimbal_visual_servo", default_value="false",
             description="启用独立Sony二维云台快环；启用后隔离servo_manager云台输出"),
+        DeclareLaunchArgument(
+            "enable_cinematic_motion", default_value="false",
+            description="启用STATIC/DOLLY/TRUCK/ORBIT可取消运镜Action任务层"),
         servo_manager,
         gimbal_visual_servo,
+        cinematic_motion_manager,
         velocity_commander,
     ])

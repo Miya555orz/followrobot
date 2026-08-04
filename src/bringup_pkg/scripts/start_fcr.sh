@@ -26,6 +26,7 @@ SERVO_TRANSLATION="${FCR_SERVO_TRANSLATION:-true}"
 CONTROLLER="${FCR_CONTROLLER:-pbvs}"
 ENABLE_SERVO_MANAGER="${FCR_ENABLE_SERVO_MANAGER:-true}"
 ENABLE_GIMBAL_VISUAL_SERVO="${FCR_ENABLE_GIMBAL_VISUAL_SERVO:-true}"
+ENABLE_CINEMATIC_MOTION="${FCR_ENABLE_CINEMATIC_MOTION:-true}"
 ENABLE_VOICE="${FCR_ENABLE_VOICE:-true}"
 RUNTIME_VENV="${FCR_RUNTIME_VENV:-$HOME/venvs/fcr_runtime}"
 VOICE_CLASSIFIER_MODEL_ROOT="${FCR_CLASSIFIER_MODEL_ROOT:-$WORKSPACE/models/classifier_v2}"
@@ -49,6 +50,7 @@ Options:
   --controller MODE      Chassis/depth controller: ibvs or pbvs (default: pbvs).
   --gimbal-only          Start Sony 2D perception and the RS2 gimbal fast loop only.
   --legacy-gimbal-loop   Disable the independent Sony 2D gimbal fast loop.
+  --no-cinematic         Disable STATIC/DOLLY/TRUCK/ORBIT task support.
   --no-gemini            Do not start Gemini/depth fusion.
   --no-chassis           Do not start the chassis driver.
   --no-translation       Disable automatic chassis translation.
@@ -63,7 +65,7 @@ Environment equivalents:
   FCR_ROS2_WS, FCR_FOXGLOVE_PORT, FCR_START_GEMINI,
   FCR_ENABLE_CHASSIS, FCR_SERVO_TRANSLATION, FCR_CONTROLLER,
   FCR_ENABLE_SERVO_MANAGER,
-  FCR_ENABLE_GIMBAL_VISUAL_SERVO.
+  FCR_ENABLE_GIMBAL_VISUAL_SERVO, FCR_ENABLE_CINEMATIC_MOTION.
   FCR_ENABLE_VOICE, FCR_RUNTIME_VENV, FCR_CLASSIFIER_MODEL_ROOT,
   FCR_EMBEDDING_MODEL_DIR, FCR_VOICE_HTTP_BIND_ADDRESS,
   FCR_VOICE_HTTP_PORT, FCR_VOICE_HTTP_AUTH_TOKEN.
@@ -106,6 +108,7 @@ while (($# > 0)); do
       SERVO_TRANSLATION=false
       ENABLE_SERVO_MANAGER=false
       ENABLE_GIMBAL_VISUAL_SERVO=true
+      ENABLE_CINEMATIC_MOTION=false
       ENABLE_VOICE=false
       shift
       ;;
@@ -123,6 +126,10 @@ while (($# > 0)); do
       ;;
     --legacy-gimbal-loop)
       ENABLE_GIMBAL_VISUAL_SERVO=false
+      shift
+      ;;
+    --no-cinematic)
+      ENABLE_CINEMATIC_MOTION=false
       shift
       ;;
     --no-voice)
@@ -184,6 +191,15 @@ case "${CONTROLLER,,}" in
     exit 2
     ;;
 esac
+
+if [[ "$ENABLE_CINEMATIC_MOTION" == true && "$CONTROLLER" != pbvs ]]; then
+  echo "WARNING: cinematic motion requires PBVS; disabling cinematic task support." >&2
+  ENABLE_CINEMATIC_MOTION=false
+fi
+if [[ "$ENABLE_CINEMATIC_MOTION" == true && "$ENABLE_SERVO_MANAGER" != true ]]; then
+  echo "WARNING: cinematic motion requires servo_manager; disabling it." >&2
+  ENABLE_CINEMATIC_MOTION=false
+fi
 
 can_driver() {
   local iface="$1"
@@ -437,6 +453,7 @@ echo "Starting FCR:"
 echo "  controller     : ${CONTROLLER^^}"
 echo "  servo manager  : $ENABLE_SERVO_MANAGER"
 echo "  2D gimbal loop : $ENABLE_GIMBAL_VISUAL_SERVO"
+echo "  cinematic task : $ENABLE_CINEMATIC_MOTION"
 echo "  model          : $MODEL_PATH"
 echo "  gimbal CAN     : $CAN_INTERFACE"
 echo "  Gemini/fusion  : $START_GEMINI"
@@ -483,6 +500,7 @@ exec ros2 launch bringup_pkg fcr_bringup.launch.py \
   servo_aim_target_topic:=/perception/aim_target_2d \
   enable_servo_manager:="$ENABLE_SERVO_MANAGER" \
   enable_gimbal_visual_servo:="$ENABLE_GIMBAL_VISUAL_SERVO" \
+  enable_cinematic_motion:="$ENABLE_CINEMATIC_MOTION" \
   servo_allocation_ratio:="$ALLOCATION_RATIO" \
   servo_allow_chassis_translation:="$SERVO_TRANSLATION" \
   enable_voice_control:="$ENABLE_VOICE" \

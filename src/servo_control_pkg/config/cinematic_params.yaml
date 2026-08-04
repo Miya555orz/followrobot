@@ -1,0 +1,33 @@
+cinematic_motion_manager:
+  ros__parameters:
+    control_rate_hz: 20.0
+    target_timeout_sec: 0.35
+    target_lost_abort_sec: 1.0
+    depth_abort_sec: 0.60
+    alignment_timeout_sec: 3.0
+    alignment_bearing_tolerance_deg: 5.0
+    # Must match servo_manager's PBVS translation authorization.
+    min_valid_depth_confidence: 0.65
+    min_degraded_depth_confidence: 0.40
+
+    default_target_distance_m: 2.0
+    default_max_speed_mps: 0.10
+    max_linear_speed_mps: 0.20
+    max_angular_speed_rad_s: 0.25
+    linear_acceleration_mps2: 0.20
+
+    distance_tolerance_m: 0.10
+    orbit_radius_tolerance_m: 0.15
+    orbit_angle_tolerance_deg: 3.0
+    orbit_radial_gain: 0.45
+    orbit_facing_gain: 0.50
+    camera_mount_yaw_offset_rad: 0.0
+    target_world_filter_alpha: 0.08
+    completion_hold_sec: 0.40
+
+    # Hard task bounds. Dynamic modes with duration_sec=0 are rejected.
+    max_task_duration_sec: 120.0
+    max_displacement_m: 2.0
+    max_orbit_angle_deg: 180.0
+    min_target_distance_m: 0.60
+    max_target_distance_m: 5.0

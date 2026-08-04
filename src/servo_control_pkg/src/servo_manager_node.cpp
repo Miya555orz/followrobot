@@ -82,6 +82,7 @@
 #include "servo_control_pkg/qos.hpp"
 #include "servo_control_pkg/target_input.hpp"
 #include <vision_servo_msgs/msg/aim_target2_d.hpp>
+#include <vision_servo_msgs/msg/cinematic_reference.hpp>
 #include <vision_servo_msgs/msg/target_array.hpp>
 #include <vision_servo_msgs/msg/servo_state.hpp>
 #include <vision_servo_msgs/msg/gimbal_cmd.hpp>
@@ -183,6 +184,9 @@ public:
     // V2 分层授权：3D 目标过期但 2D 关注点新鲜时，云台角度环继续跟踪，
     // 底盘平移不授权（平移质量门控不变）。false 保留 V1 一票否决语义。
     this->declare_parameter("pbvs_aim_only_bearing", false);
+    this->declare_parameter("cinematic_reference_timeout", 0.20);
+    this->declare_parameter("cinematic_max_linear_feedforward", 0.20);
+    this->declare_parameter("cinematic_max_angular_feedforward", 0.25);
 
     std::string plugin_name = this->get_parameter("controller_plugin").as_string();
     auto_start_ = this->get_parameter("auto_start").as_bool();
@@ -280,6 +284,15 @@ public:
     platform_sub_ = this->create_subscription<vision_servo_msgs::msg::PlatformState>(
       "/platform/state", qos::platform_state(),
       std::bind(&ServoManagerNode::platform_callback, this, std::placeholders::_1));
+
+    cinematic_reference_sub_ =
+      this->create_subscription<vision_servo_msgs::msg::CinematicReference>(
+      "/cinematic/reference", rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
+      [this](vision_servo_msgs::msg::CinematicReference::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(state_mutex_);
+        cinematic_reference_ = *msg;
+        last_cinematic_reference_time_ = now();
+      });
 
     // 相机内参标定信息。
     // 使用 SensorDataQoS（BEST_EFFORT + VOLATILE）兼容 Sony 等相机驱动的
@@ -901,7 +914,11 @@ private:
         return;
       }
       if (!controller_->hasGoal()) {
-        const double desired_depth = this->get_parameter("desired_depth").as_double();
+        double desired_depth = this->get_parameter("desired_depth").as_double();
+        if (cinematic_reference_fresh_locked(now) &&
+            cinematic_reference_->desired_depth > 0.0F) {
+          desired_depth = cinematic_reference_->desired_depth;
+        }
         const double tolerance = this->get_parameter("feature_tolerance").as_double();
         if (!controller_->setGoalFromTarget(active_target_, desired_depth, tolerance)) {
           publish_zero_command(now);
@@ -969,6 +986,11 @@ private:
         (latest_aim_target_->pixel_y - camera_cy_) / camera_fy_ * z);
     }
 
+    const bool cinematic_fresh = cinematic_reference_fresh_locked(now);
+    if (cinematic_fresh && cinematic_reference_->desired_depth > 0.0F) {
+      controller_->updateDesiredDepth(cinematic_reference_->desired_depth);
+    }
+
     // ═══ 步骤 1：计算相机期望速度 ═════════════════════════════════════
     // controller_->computeVelocity() 是策略模式的核心调用点。
     // 不同控制器（IBVS/PBVS）在此返回语义相同（6-DOF 相机速度），
@@ -989,6 +1011,52 @@ private:
     if (!allow_chassis_translation_ || !metric_translation_allowed) {
       allocation.chassis_twist.linear.x = 0.0;
       allocation.chassis_twist.linear.y = 0.0;
+    }
+
+    // The cinematic manager publishes references, never actuator commands.
+    // Apply its bounded feed-forward only after PBVS quality gating so stale or
+    // predicted depth can never authorize chassis translation.
+    if (cinematic_fresh) {
+      const auto & reference = *cinematic_reference_;
+      if (reference.mode ==
+          vision_servo_msgs::msg::CinematicReference::STATIC_TRACK ||
+          !reference.allow_translation) {
+        allocation.chassis_twist = geometry_msgs::msg::Twist();
+      } else if (allow_chassis_translation_ && metric_translation_allowed) {
+        const double max_linear = std::max(
+          0.0, get_parameter("cinematic_max_linear_feedforward").as_double());
+        const double max_angular = std::max(
+          0.0, get_parameter("cinematic_max_angular_feedforward").as_double());
+        allocation.chassis_twist.linear.x = std::clamp(
+          allocation.chassis_twist.linear.x +
+            reference.chassis_feedforward.linear.x,
+          -max_linear, max_linear);
+        allocation.chassis_twist.linear.y = std::clamp(
+          allocation.chassis_twist.linear.y +
+            reference.chassis_feedforward.linear.y,
+          -max_linear, max_linear);
+        allocation.chassis_twist.angular.z = std::clamp(
+          allocation.chassis_twist.angular.z +
+            reference.chassis_feedforward.angular.z,
+          -max_angular, max_angular);
+
+        // max_speed belongs to the individual Action goal. Apply it to the
+        // combined PBVS feedback and cinematic feed-forward vector so Dolly,
+        // Truck and Orbit all obey the same per-task translational limit.
+        const double task_linear_limit = std::clamp(
+          static_cast<double>(reference.max_linear_speed), 0.0, max_linear);
+        const double linear_norm = std::hypot(
+          allocation.chassis_twist.linear.x,
+          allocation.chassis_twist.linear.y);
+        if (task_linear_limit <= 0.0) {
+          allocation.chassis_twist.linear.x = 0.0;
+          allocation.chassis_twist.linear.y = 0.0;
+        } else if (linear_norm > task_linear_limit) {
+          const double scale = task_linear_limit / linear_norm;
+          allocation.chassis_twist.linear.x *= scale;
+          allocation.chassis_twist.linear.y *= scale;
+        }
+      }
     }
 
     const bool platform_fresh =
@@ -1137,6 +1205,22 @@ private:
     const float py = latest_aim_target_->pixel_y;
     return px >= 0.0F && px < static_cast<float>(camera_width_) &&
            py >= 0.0F && py < static_cast<float>(camera_height_);
+  }
+
+  bool cinematic_reference_fresh_locked(const rclcpp::Time & now) const
+  {
+    if (!cinematic_reference_.has_value() || !cinematic_reference_->valid ||
+        last_cinematic_reference_time_.nanoseconds() <= 0) {
+      return false;
+    }
+    const double age = (now - last_cinematic_reference_time_).seconds();
+    const double timeout = std::max(
+      0.05, get_parameter("cinematic_reference_timeout").as_double());
+    if (!std::isfinite(age) || age < -0.05 || age > timeout) {
+      return false;
+    }
+    return cinematic_reference_->tracking_id < 0 || locked_target_id_ < 0 ||
+      cinematic_reference_->tracking_id == locked_target_id_;
   }
 
   /**
@@ -1408,6 +1492,8 @@ private:
   rclcpp::Subscription<vision_servo_msgs::msg::AimTarget2D>::SharedPtr
     aim_target_sub_;
   rclcpp::Subscription<vision_servo_msgs::msg::PlatformState>::SharedPtr platform_sub_;
+  rclcpp::Subscription<vision_servo_msgs::msg::CinematicReference>::SharedPtr
+    cinematic_reference_sub_;
   rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_sub_;
 
   // ── 发布者 ─────────────────────────────────────────────────────────
@@ -1432,6 +1518,7 @@ private:
   vision_servo_msgs::msg::TargetArray::ConstSharedPtr last_target_;
   vision_servo_msgs::msg::Target active_target_;
   std::optional<vision_servo_msgs::msg::AimTarget2D> latest_aim_target_;
+  std::optional<vision_servo_msgs::msg::CinematicReference> cinematic_reference_;
   vision_servo_msgs::msg::PlatformState last_platform_state_;
   double last_valid_depth_ = 0.0;
   int32_t last_valid_depth_target_id_ = -1;
@@ -1447,6 +1534,7 @@ private:
   rclcpp::Time last_aim_receive_time_;
   rclcpp::Time last_aim_source_time_;
   rclcpp::Time last_platform_state_time_;
+  rclcpp::Time last_cinematic_reference_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_debug_print_time_;  ///< 上次调试打印时间（用于 debug_print_rate 限速）
 
   // ── 相机内参缓存 ────────────────────────────────────────────────────

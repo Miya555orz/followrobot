@@ -37,6 +37,7 @@
   <!-- rclcpp: C++ ROS2 客户端库                                    -->
   <!-- std_msgs: Header 等基础消息                                   -->
   <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
   <depend>std_msgs</depend>
   <depend>std_srvs</depend>
   <depend>geometry_msgs</depend>

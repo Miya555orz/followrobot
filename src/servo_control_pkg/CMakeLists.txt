@@ -30,6 +30,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(vision_servo_msgs REQUIRED)   # TargetArray, ServoState, PlatformState
@@ -116,6 +117,16 @@ target_link_libraries(servo_manager_node
   servo_qos
 )
 install(TARGETS servo_manager_node DESTINATION lib/${PROJECT_NAME})
+
+# ── 运镜任务管理器（STATIC/DOLLY/TRUCK/ORBIT Action）──────────────
+add_executable(cinematic_motion_manager_node
+  src/cinematic_motion_manager_node.cpp)
+target_include_directories(cinematic_motion_manager_node PRIVATE include)
+ament_target_dependencies(cinematic_motion_manager_node
+  rclcpp rclcpp_action std_srvs vision_servo_msgs geometry_msgs
+)
+target_link_libraries(cinematic_motion_manager_node servo_qos)
+install(TARGETS cinematic_motion_manager_node DESTINATION lib/${PROJECT_NAME})
 
 # ── 第一阶段 MVP 跟拍控制节点 ────────────────────────────────────
 add_executable(mvp_follow_controller_node src/mvp_follow_controller_node.cpp)

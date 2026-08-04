@@ -98,6 +98,15 @@ void ServoControllerBase::setDesiredFeatures(
   RCLCPP_INFO(get_logger(), "期望特征已设置, depth=%.2f", goal_.desired_depth);
 }
 
+bool ServoControllerBase::updateDesiredDepth(double depth)
+{
+  if (!goal_configured_ || !std::isfinite(depth) || depth <= 0.0) {
+    return false;
+  }
+  goal_.desired_depth = depth;
+  return true;
+}
+
 bool ServoControllerBase::setGoalFromTarget(
     const vision_servo_msgs::msg::Target& target,
     double desired_depth,

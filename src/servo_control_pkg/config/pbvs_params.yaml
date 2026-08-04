@@ -44,3 +44,8 @@ servo_manager:
     # （Z 回退为保持深度/期望深度，Z 在角度公式中约消），底盘平移不授权。
     # false 保留 V1 一票否决语义（3D 过期 → 云台 hold + 底盘零速）。
     pbvs_aim_only_bearing: true
+
+    # 运镜任务参考；超时后自动退回普通PBVS，不复用过期前馈速度。
+    cinematic_reference_timeout: 0.20
+    cinematic_max_linear_feedforward: 0.20
+    cinematic_max_angular_feedforward: 0.25

@@ -421,6 +421,19 @@ def generate_launch_description():
 
         Node(
             package="external_control_pkg",
+            executable="voice_cinematic_action_node",
+            name="voice_cinematic_action_node",
+            output="screen",
+            condition=IfCondition(start_dispatcher),
+            parameters=[{
+                "voice_command_topic": "/voice/autonomy_command",
+                "action_name": "/cinematic/execute",
+                "min_confidence": min_confidence,
+            }],
+        ),
+
+        Node(
+            package="external_control_pkg",
             executable="chassis_command_router_node",
             name="chassis_command_router_node",
             output="screen",

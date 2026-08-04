@@ -86,6 +86,10 @@ public:
    */
   virtual void setDesiredFeatures(const Eigen::Matrix<double, 6, 1>& desired, double depth);
 
+  /// Update only the metric distance reference without resetting filters or
+  /// the visual feature goal. Used by long-running cinematic moves.
+  virtual bool updateDesiredDepth(double depth);
+
   /**
    * @brief 用当前目标观测生成一个伺服目标。
    * @param target 当前目标观测

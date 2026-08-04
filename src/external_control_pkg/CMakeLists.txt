@@ -31,6 +31,7 @@ endif()
 # ── 依赖声明（ROS2 包） ──────────────────────────────────────────────
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)           # Header 消息
 find_package(std_srvs REQUIRED)           # Trigger 云台服务
@@ -171,6 +172,21 @@ target_link_libraries(voice_command_dispatcher_node
 )
 
 list(APPEND EXTERNAL_CONTROL_TARGETS voice_command_dispatcher_node)
+
+# ── 语音自主意图 → 可取消运镜Action ────────────────────────────────
+add_executable(voice_cinematic_action_node
+  src/voice_cinematic_action_node.cpp
+)
+
+ament_target_dependencies(voice_cinematic_action_node
+  rclcpp rclcpp_action std_msgs vision_servo_msgs
+)
+
+target_link_libraries(voice_cinematic_action_node
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
+)
+
+list(APPEND EXTERNAL_CONTROL_TARGETS voice_cinematic_action_node)
 
 # ── 语音底盘短动作桥接节点 ─────────────────────────────────────────────
 add_executable(voice_chassis_nudge_node

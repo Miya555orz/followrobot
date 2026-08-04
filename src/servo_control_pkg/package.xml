@@ -28,6 +28,7 @@
 
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
+  <depend>std_srvs</depend>
   <depend>rclcpp_components</depend>
   <depend>rcl_interfaces</depend>
   <depend>vision_servo_msgs</depend>       <!-- ServoState, PlatformState, TargetArray -->

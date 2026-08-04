@@ -44,12 +44,14 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/GimbalStatus.msg"    # 云台运行状态与 CAN/协议诊断信息
   "msg/PerceptionMonitor.msg" # 远程视觉观察层的结构化状态与性能指标
   "msg/AimTarget2D.msg"       # 单一人脸/关键点/上身瞄准点消息（像素坐标）
+  "msg/CinematicReference.msg" # 运镜任务输出的动态PBVS/底盘参考
   # ── 服务定义 ──────────────────────────────────────────────────
   "srv/SetTrackingTarget.srv" # 设置/切换跟踪目标（请求：目标 ID，响应：成功/失败）
   "srv/SetServoMode.srv"      # 切换伺服控制模式（IBVS/PBVS/MPC/RL）
   "srv/CalibrateCamera.srv"   # 触发相机标定流程（内参 + 外参）
   # ── 动作定义 ──────────────────────────────────────────────────
   "action/VisualServo.action" # 视觉伺服长周期任务（可取消、可反馈进度）
+  "action/CinematicMove.action" # STATIC/DOLLY/TRUCK/ORBIT 可取消运镜任务
   DEPENDENCIES
     std_msgs            # 基础消息类型（Header, String, Float32 等）
     geometry_msgs       # 几何消息类型（Pose, Twist, Vector3 等）

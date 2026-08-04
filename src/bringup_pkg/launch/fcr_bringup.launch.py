@@ -188,6 +188,8 @@ def generate_launch_description():
                 "enable_servo_manager"),
             "enable_gimbal_visual_servo": LaunchConfiguration(
                 "enable_gimbal_visual_servo"),
+            "enable_cinematic_motion": LaunchConfiguration(
+                "enable_cinematic_motion"),
             "allow_chassis_translation": LaunchConfiguration(
                 "servo_allow_chassis_translation"),
             # With voice enabled, its router owns /auto and PBVS publishes to
@@ -396,6 +398,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "enable_gimbal_visual_servo", default_value="true",
             description="启用独立二维云台快环；不依赖Gemini、3D融合或PBVS分配器",
+        ),
+        DeclareLaunchArgument(
+            "enable_cinematic_motion", default_value="false",
+            description="启用四种可取消运镜任务；需要PBVS、3D融合和底盘",
         ),
         DeclareLaunchArgument(
             "servo_allow_chassis_translation", default_value="false",
