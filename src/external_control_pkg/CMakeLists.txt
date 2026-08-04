@@ -179,7 +179,7 @@ add_executable(voice_cinematic_action_node
 )
 
 ament_target_dependencies(voice_cinematic_action_node
-  rclcpp rclcpp_action std_msgs vision_servo_msgs
+  rclcpp rclcpp_action std_msgs std_srvs vision_servo_msgs
 )
 
 target_link_libraries(voice_cinematic_action_node
@@ -187,6 +187,18 @@ target_link_libraries(voice_cinematic_action_node
 )
 
 list(APPEND EXTERNAL_CONTROL_TARGETS voice_cinematic_action_node)
+
+# 语音底盘/云台微调 -> 可取消MANUAL_JOG Action，不直连执行器
+add_executable(voice_manual_jog_action_node
+  src/voice_manual_jog_action_node.cpp
+)
+ament_target_dependencies(voice_manual_jog_action_node
+  rclcpp rclcpp_action std_msgs vision_servo_msgs
+)
+target_link_libraries(voice_manual_jog_action_node
+  ${PROJECT_NAME}__rosidl_typesupport_cpp
+)
+list(APPEND EXTERNAL_CONTROL_TARGETS voice_manual_jog_action_node)
 
 # ── 语音底盘短动作桥接节点 ─────────────────────────────────────────────
 add_executable(voice_chassis_nudge_node

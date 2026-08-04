@@ -24,6 +24,10 @@ TEST(VoiceIntentContract, RoutesCameraAndAutonomyIntents)
     intentTarget("start_following"), VoiceTarget::Autonomy);
   EXPECT_EQ(
     intentTarget("switch_target"), VoiceTarget::Autonomy);
+  EXPECT_EQ(
+    intentTarget("enter_cinematic"), VoiceTarget::Autonomy);
+  EXPECT_EQ(
+    intentTarget("exit_cinematic"), VoiceTarget::Autonomy);
 }
 
 TEST(VoiceIntentContract, RejectsUnknownAndAmbiguousStops)

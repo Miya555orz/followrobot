@@ -19,6 +19,18 @@ def generate_launch_description():
         output="screen",
         parameters=[config],
     )
+    manual_jog = Node(
+        package="teleop_control_pkg",
+        executable="manual_jog_manager_node",
+        name="manual_jog_manager",
+        output="screen",
+        parameters=[PathJoinSubstitution([
+            FindPackageShare("teleop_control_pkg"),
+            "config",
+            "manual_jog.yaml",
+        ])],
+        condition=IfCondition(LaunchConfiguration("start_manual_jog")),
+    )
     keyboard = Node(
         package="teleop_control_pkg",
         executable="keyboard_platform_teleop",
@@ -34,6 +46,12 @@ def generate_launch_description():
             default_value="false",
             description="Start terminal keyboard; ros2 run in an interactive shell is preferred.",
         ),
+        DeclareLaunchArgument(
+            "start_manual_jog",
+            default_value="true",
+            description="Start bounded MANUAL_JOG action manager.",
+        ),
         mux,
+        manual_jog,
         keyboard,
     ])

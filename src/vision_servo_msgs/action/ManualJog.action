@@ -1,0 +1,35 @@
+# Cancelable, bounded direct motion owned by MANUAL_JOG mode.
+uint8 CHASSIS_X=0
+uint8 CHASSIS_Y=1
+uint8 CHASSIS_YAW=2
+uint8 GIMBAL_YAW=3
+uint8 GIMBAL_PITCH=4
+
+uint8 axis
+# Signed target: metres for CHASSIS_X/Y, radians for yaw/pitch axes.
+float32 displacement
+# Positive speed limit: m/s for translation, rad/s for rotation.
+float32 max_speed
+float32 timeout_sec
+---
+uint8 RESULT_SUCCESS=0
+uint8 RESULT_CANCELED=1
+uint8 RESULT_TIMEOUT=2
+uint8 RESULT_ODOMETRY_UNAVAILABLE=3
+uint8 RESULT_GIMBAL_UNAVAILABLE=4
+uint8 RESULT_ESTOP=5
+uint8 RESULT_REJECTED=6
+
+bool success
+uint8 result_code
+string message
+float32 completed_displacement
+---
+uint8 STATE_ENTERING=0
+uint8 STATE_EXECUTING=1
+uint8 STATE_SETTLING=2
+
+uint8 state
+float32 progress
+float32 completed_displacement
+float32 remaining_displacement

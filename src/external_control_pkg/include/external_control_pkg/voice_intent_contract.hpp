@@ -73,6 +73,8 @@ inline VoiceTarget intentTarget(const std::string& intent)
     {"pause_following", VoiceTarget::Autonomy},
     {"resume_following", VoiceTarget::Autonomy},
     {"switch_target", VoiceTarget::Autonomy},
+    {"enter_cinematic", VoiceTarget::Autonomy},
+    {"exit_cinematic", VoiceTarget::Autonomy},
     {"start_orbit", VoiceTarget::Autonomy},
     {"start_dolly", VoiceTarget::Autonomy},
     {"stop_cinematic", VoiceTarget::Autonomy},

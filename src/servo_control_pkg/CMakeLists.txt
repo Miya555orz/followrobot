@@ -30,6 +30,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(rcl_interfaces REQUIRED)
@@ -123,7 +124,7 @@ add_executable(cinematic_motion_manager_node
   src/cinematic_motion_manager_node.cpp)
 target_include_directories(cinematic_motion_manager_node PRIVATE include)
 ament_target_dependencies(cinematic_motion_manager_node
-  rclcpp rclcpp_action std_srvs vision_servo_msgs geometry_msgs
+  rclcpp rclcpp_action std_msgs std_srvs vision_servo_msgs geometry_msgs
 )
 target_link_libraries(cinematic_motion_manager_node servo_qos)
 install(TARGETS cinematic_motion_manager_node DESTINATION lib/${PROJECT_NAME})

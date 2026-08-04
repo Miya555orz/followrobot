@@ -3,8 +3,11 @@ project(teleop_control_pkg)
 
 find_package(ament_cmake REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(vision_servo_msgs REQUIRED)
 
 add_library(command_mux_core src/command_mux_core.cpp)
@@ -19,7 +22,12 @@ target_link_libraries(command_mux_node command_mux_core)
 ament_target_dependencies(command_mux_node
   geometry_msgs rclcpp std_msgs vision_servo_msgs)
 
-install(TARGETS command_mux_core command_mux_node
+add_executable(manual_jog_manager_node src/manual_jog_manager_node.cpp)
+target_compile_features(manual_jog_manager_node PUBLIC cxx_std_17)
+ament_target_dependencies(manual_jog_manager_node
+  geometry_msgs nav_msgs rclcpp rclcpp_action std_msgs std_srvs vision_servo_msgs)
+
+install(TARGETS command_mux_core command_mux_node manual_jog_manager_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME})

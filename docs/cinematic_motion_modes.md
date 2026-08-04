@@ -9,9 +9,10 @@
 - `TRUCK_LEFT_RIGHT`：底盘横移指定距离，云台快环持续保持人物构图。
 - `ORBIT_ARC`：以目标为圆心，在指定半径上完成限定角度圆弧运动。
 
-任务入口是 `/cinematic/execute` Action，强制停止入口是
-`/cinematic/stop`。任务管理器只发布 `/cinematic/reference`，不会直接发布
-底盘或云台命令。
+运镜采用“两级状态机”：先通过 `/cinematic/enter` 进入运镜待命，再通过
+`/cinematic/execute` 执行一个动作。`/cinematic/stop` 只停止当前动作并返回
+运镜待命，`/cinematic/exit` 才会退出运镜并进入待机。任务管理器只发布
+`/cinematic/reference` 和模式请求，不会直接发布底盘或云台命令。
 
 ```mermaid
 flowchart LR
@@ -34,9 +35,28 @@ flowchart LR
 因此仍满足两条控制纪律：`command_mux` 是最终执行命令的唯一所有者；运镜
 任务不能绕过 PBVS 深度质量门控、平台在线状态、急停和速度限幅。
 
-## 2. 状态机与安全行为
+## 2. 两级状态机与安全行为
 
-任务状态为：`ACQUIRE → ALIGN → EXECUTE → HOLD`。短时漏检进入
+顶层状态为：
+
+```text
+STANDBY ── /cinematic/enter ──> CINEMATIC
+CINEMATIC ── /cinematic/exit ──> STANDBY
+```
+
+运镜模式内部状态为：
+
+```text
+READY ── Action goal ──> EXECUTING ── 完成/停止/失败 ──> READY
+```
+
+- `STANDBY` 可以接受普通跟随或进入运镜指令，但不接受运镜 Action。
+- 进入 `CINEMATIC/READY` 后，普通底盘跟随被锁止，感知和目标跟踪继续运行。
+- 一个动作结束后仍处于 `CINEMATIC/READY`，可以连续执行下一个动作。
+- 只有 `/cinematic/exit` 会释放运镜参考、切换到手动并进入待机；不会自动恢复跟随。
+- `/cinematic/status` 使用可靠、Transient Local QoS 发布当前顶层模式、动作状态、动作类型和目标 ID。
+
+单个任务内部状态为：`ACQUIRE → ALIGN → EXECUTE → HOLD`。短时漏检进入
 `RECOVER`，恢复同一 tracking ID 后继续；超过超时则中止。
 
 - 动态模式必须有可信的真实/降级三维测量，预测深度不得授权平移。
@@ -70,13 +90,20 @@ source ~/ros2_ws/install/setup.bash
 ros2 run bringup_pkg start_fcr.sh --controller pbvs
 ```
 
-启动脚本仍以 `MANUAL` 模式启动。确认人员和安全空间后，再切换自动：
+启动脚本仍以 `MANUAL/STANDBY` 启动。确认人员和安全空间后，先进入运镜模式：
 
 ```bash
-ros2 topic pub -r 2 /teleop/mode std_msgs/msg/String "{data: auto}"
+ros2 service call /cinematic/enter std_srvs/srv/Trigger "{}"
 ```
 
-看到 `/remote_control/status` 变成 `mode=auto` 后按 `Ctrl+C` 停止重复发布。
+确认已进入运镜待命：
+
+```bash
+ros2 topic echo /cinematic/status --once --qos-durability transient_local
+ros2 topic echo /remote_control/status --once --full-length
+```
+
+应分别看到 `mode=CINEMATIC, action_state=READY` 和 `mode=auto`。
 
 ## 4. 四种任务命令
 
@@ -129,35 +156,41 @@ ros2 action send_goal --feedback \
 
 ## 5. 随时停止与回到遥控
 
-停止当前运镜任务：
+停止当前运镜任务，但保留运镜模式：
 
 ```bash
 ros2 service call /cinematic/stop std_srvs/srv/Trigger "{}"
 ```
 
-然后切回手动模式：
+退出运镜模式并进入待机：
 
 ```bash
-ros2 topic pub -r 2 /teleop/mode std_msgs/msg/String "{data: manual}"
+ros2 service call /cinematic/exit std_srvs/srv/Trigger "{}"
 ```
+
+退出后不会自动恢复 PBVS 跟随。需要跟随时，再使用项目既有的“开始跟随”
+指令显式进入跟随模式。
 
 紧急情况下应优先使用项目既有急停，而不是等待 Action 正常结束。
 
 ## 6. 语音接口
 
-启用语音链路时，以下已经接到同一个 Action 管理器：
+启用语音链路时，动作仍统一进入同一个 Action 管理器。运镜语音协议需要
+遵循相同的两级语义：先进入运镜模式，再发送具体动作；动作结束后不自动
+退出运镜模式。
 
 - `start_dolly`：使用语音消息中的距离；未指定时默认 `1.5 m`。
 - `start_orbit`：默认半径 `2.0 m`、左向 30°。
-- `stop_cinematic` / 已路由的 `stop_current_action`：取消活动任务。
-- `start_following`：取消运镜参考，恢复普通 PBVS 跟随。
+- `stop_cinematic` / 已路由的 `stop_current_action`：只取消活动任务并返回 READY。
+- “退出运镜”：调用 `/cinematic/exit`，回到 STANDBY。
+- `start_following`：必须在退出运镜后由跟随模式管理器显式接受。
 - `query_camera_motion_status`：在 Jetson 日志中输出任务状态。
 
 语音桥只读取经过分类和门控的 `intents`，不会从 ASR 原文猜测硬件动作。
 
 ## 7. 首轮验收顺序
 
-1. 架空底盘验证节点唯一性、模式切换和停止服务。
+1. 架空底盘验证节点唯一性、进入/退出运镜及停止服务。
 2. 落地测试 `STATIC_TRACK`，确认 `/cmd_vel` 始终为零。
 3. 以 `0.05 m/s` 测试 Dolly 前后两个方向。
 4. 以 `0.05 m/s` 测试 Truck 左右各 `0.3–0.5 m`。

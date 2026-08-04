@@ -52,6 +52,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   # ── 动作定义 ──────────────────────────────────────────────────
   "action/VisualServo.action" # 视觉伺服长周期任务（可取消、可反馈进度）
   "action/CinematicMove.action" # STATIC/DOLLY/TRUCK/ORBIT 可取消运镜任务
+  "action/ManualJog.action" # 底盘/云台有界手动微调，完成后自动回待机
   DEPENDENCIES
     std_msgs            # 基础消息类型（Header, String, Float32 等）
     geometry_msgs       # 几何消息类型（Pose, Twist, Vector3 等）

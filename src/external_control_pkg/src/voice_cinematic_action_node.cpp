@@ -8,6 +8,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include <external_control_pkg/msg/voice_command.hpp>
 #include <vision_servo_msgs/action/cinematic_move.hpp>
@@ -34,6 +35,9 @@ public:
   {
     declare_parameter("voice_command_topic", "/voice/autonomy_command");
     declare_parameter("action_name", "/cinematic/execute");
+    declare_parameter("enter_service", "/cinematic/enter");
+    declare_parameter("stop_service", "/cinematic/stop");
+    declare_parameter("exit_service", "/cinematic/exit");
     declare_parameter("min_confidence", 0.60);
     declare_parameter("default_dolly_distance_m", 1.5);
     declare_parameter("default_orbit_radius_m", 2.0);
@@ -44,8 +48,19 @@ public:
 
     min_confidence_ = std::clamp(
       get_parameter("min_confidence").as_double(), 0.0, 1.0);
+    service_client_group_ = create_callback_group(
+      rclcpp::CallbackGroupType::MutuallyExclusive);
     action_client_ = rclcpp_action::create_client<Action>(
       this, get_parameter("action_name").as_string());
+    enter_client_ = create_client<std_srvs::srv::Trigger>(
+      get_parameter("enter_service").as_string(),
+      rmw_qos_profile_services_default, service_client_group_);
+    stop_client_ = create_client<std_srvs::srv::Trigger>(
+      get_parameter("stop_service").as_string(),
+      rmw_qos_profile_services_default, service_client_group_);
+    exit_client_ = create_client<std_srvs::srv::Trigger>(
+      get_parameter("exit_service").as_string(),
+      rmw_qos_profile_services_default, service_client_group_);
     command_sub_ = create_subscription<VoiceCommand>(
       get_parameter("voice_command_topic").as_string(),
       rclcpp::QoS(rclcpp::KeepLast(5)).reliable(),
@@ -66,11 +81,20 @@ private:
         continue;
       }
       const auto & intent = msg->intents[i];
-      if (intent == "stop_cinematic" || intent == "stop_current_action") {
-        cancel_active("语音停止运镜", true);
+      if (intent == "enter_cinematic") {
+        call_mode_service(enter_client_, "进入运镜模式");
+      } else if (intent == "exit_cinematic") {
+        pending_goal_.reset();
+        call_mode_service(exit_client_, "退出运镜模式");
+      } else if (intent == "stop_cinematic" || intent == "stop_current_action") {
+        pending_goal_.reset();
+        call_mode_service(stop_client_, "停止当前运镜动作");
       } else if (intent == "start_following") {
-        // Returning to ordinary PBVS means releasing any cinematic reference.
-        cancel_active("恢复普通跟随", true);
+        // Follow is a peer top-level mode.  Explicitly leave cinematic mode;
+        // the existing follow command consumer then owns the transition from
+        // STANDBY to FOLLOW.
+        pending_goal_.reset();
+        call_mode_service(exit_client_, "开始跟随前退出运镜模式");
       } else if (intent == "start_dolly") {
         Action::Goal goal;
         goal.mode = Action::Goal::DOLLY_IN_OUT;
@@ -201,6 +225,37 @@ private:
     send_goal(next);
   }
 
+  void call_mode_service(
+    const rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr & client,
+    const char * description)
+  {
+    if (!client->service_is_ready()) {
+      RCLCPP_WARN(get_logger(), "%s失败: 服务未就绪", description);
+      return;
+    }
+    auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+    client->async_send_request(
+      request,
+      [this, description](
+        rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture future) {
+        try {
+          const auto response = future.get();
+          if (response->success) {
+            RCLCPP_INFO(
+              get_logger(), "%s成功: %s", description,
+              response->message.c_str());
+          } else {
+            RCLCPP_WARN(
+              get_logger(), "%s被拒绝: %s", description,
+              response->message.c_str());
+          }
+        } catch (const std::exception & error) {
+          RCLCPP_ERROR(
+            get_logger(), "%s异常: %s", description, error.what());
+        }
+      });
+  }
+
   double min_confidence_{0.60};
   std::optional<Action::Goal> pending_goal_;
   GoalHandle::SharedPtr active_goal_;
@@ -208,6 +263,10 @@ private:
   bool cancel_when_accepted_{false};
   rclcpp::Subscription<VoiceCommand>::SharedPtr command_sub_;
   rclcpp_action::Client<Action>::SharedPtr action_client_;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr enter_client_;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_client_;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr exit_client_;
+  rclcpp::CallbackGroup::SharedPtr service_client_group_;
 };
 
 }  // namespace external_control_pkg

@@ -1,6 +1,9 @@
 cinematic_motion_manager:
   ros__parameters:
     control_rate_hz: 20.0
+    # Enter CINEMATIC through a short STOP handover so a fresh FOLLOW command
+    # cannot leak into the new control mode.
+    mode_transition_settle_sec: 0.20
     target_timeout_sec: 0.35
     target_lost_abort_sec: 1.0
     depth_abort_sec: 0.60

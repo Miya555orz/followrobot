@@ -12,10 +12,9 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
@@ -68,12 +67,6 @@ def generate_launch_description():
     chassis_linear_speed = LaunchConfiguration("chassis_linear_speed")
     chassis_angular_speed = LaunchConfiguration("chassis_angular_speed")
     chassis_nudge_duration = LaunchConfiguration("chassis_nudge_duration")
-
-    nudge_config = PathJoinSubstitution([
-        FindPackageShare("external_control_pkg"),
-        "config",
-        "voice_gimbal_nudge.yaml",
-    ])
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -370,27 +363,6 @@ def generate_launch_description():
 
         Node(
             package="external_control_pkg",
-            executable="voice_gimbal_nudge_node",
-            name="voice_gimbal_nudge_node",
-            output="screen",
-            parameters=[
-                nudge_config,
-                {
-                    "voice_command_topic": gimbal_voice_command_topic,
-                    "cmd_gimbal_topic": cmd_gimbal_topic,
-                    "yaw_step_rate": nudge_yaw_rate,
-                    "pitch_step_rate": nudge_pitch_rate,
-                    "step_duration_sec": nudge_duration,
-                    "right_yaw_sign": right_yaw_sign,
-                    "up_pitch_sign": up_pitch_sign,
-                    "min_confidence": min_confidence,
-                    "enable_raw_text_fallback": False,
-                },
-            ],
-        ),
-
-        Node(
-            package="external_control_pkg",
             executable="command_router_node",
             name="command_router_node",
             output="screen",
@@ -405,17 +377,19 @@ def generate_launch_description():
 
         Node(
             package="external_control_pkg",
-            executable="voice_chassis_nudge_node",
-            name="voice_chassis_nudge_node",
+            executable="voice_manual_jog_action_node",
+            name="voice_manual_jog_action_node",
             output="screen",
-            condition=IfCondition(start_chassis_control),
+            condition=IfCondition(start_dispatcher),
             parameters=[{
-                "voice_command_topic": chassis_voice_command_topic,
-                "cmd_vel_topic": voice_cmd_vel_topic,
-                "linear_speed": chassis_linear_speed,
-                "angular_speed": chassis_angular_speed,
-                "step_duration_sec": chassis_nudge_duration,
+                "gimbal_voice_topic": gimbal_voice_command_topic,
+                "chassis_voice_topic": chassis_voice_command_topic,
                 "min_confidence": min_confidence,
+                "linear_speed_mps": chassis_linear_speed,
+                "chassis_yaw_rate": chassis_angular_speed,
+                "gimbal_rate": nudge_yaw_rate,
+                "right_gimbal_yaw_sign": right_yaw_sign,
+                "up_gimbal_pitch_sign": up_pitch_sign,
             }],
         ),
 

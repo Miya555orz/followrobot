@@ -9,6 +9,8 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
 #include <vision_servo_msgs/action/cinematic_move.hpp>
@@ -55,6 +57,7 @@ public:
   : Node("cinematic_motion_manager")
   {
     declare_parameter("control_rate_hz", 20.0);
+    declare_parameter("mode_transition_settle_sec", 0.20);
     declare_parameter("target_timeout_sec", 0.35);
     declare_parameter("target_lost_abort_sec", 1.0);
     declare_parameter("depth_abort_sec", 0.60);
@@ -82,6 +85,8 @@ public:
     declare_parameter("max_target_distance_m", 5.0);
 
     control_rate_hz_ = std::clamp(get_parameter("control_rate_hz").as_double(), 5.0, 50.0);
+    mode_transition_settle_sec_ = std::clamp(
+      get_parameter("mode_transition_settle_sec").as_double(), 0.05, 1.0);
     target_timeout_sec_ = std::max(0.05, get_parameter("target_timeout_sec").as_double());
     target_lost_abort_sec_ = std::max(
       target_timeout_sec_, get_parameter("target_lost_abort_sec").as_double());
@@ -130,6 +135,11 @@ public:
 
     const auto command_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
     reference_pub_ = create_publisher<Reference>("/cinematic/reference", command_qos);
+    mode_command_pub_ = create_publisher<std_msgs::msg::String>(
+      "/teleop/mode", command_qos);
+    status_pub_ = create_publisher<std_msgs::msg::String>(
+      "/cinematic/status",
+      rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
     tracks_sub_ = create_subscription<TargetArray>(
       "/perception/tracks", command_qos,
       [this](TargetArray::ConstSharedPtr msg) {
@@ -151,6 +161,13 @@ public:
         platform_state_ = *msg;
         platform_receive_time_ = now();
       });
+    manual_jog_active_sub_ = create_subscription<std_msgs::msg::Bool>(
+      "/manual_jog/active",
+      rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local(),
+      [this](std_msgs::msg::Bool::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        manual_jog_active_ = msg->data;
+      });
 
     action_server_ = rclcpp_action::create_server<CinematicMove>(
       this, "/cinematic/execute",
@@ -164,27 +181,106 @@ public:
         &CinematicMotionManagerNode::handle_accepted, this,
         std::placeholders::_1));
 
+    enter_service_ = create_service<std_srvs::srv::Trigger>(
+      "/cinematic/enter",
+      [this](
+        const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (manual_jog_active_) {
+          response->success = false;
+          response->message = "MANUAL_JOG正在执行，拒绝进入运镜模式";
+          return;
+        }
+        if (cinematic_mode_active_) {
+          response->success = true;
+          response->message = mode_transition_pending_ ?
+            "正在进入运镜模式" :
+            (active_goal_ ? "已处于运镜模式，当前动作正在执行" :
+            "已处于运镜待命模式");
+          publish_status(now());
+          return;
+        }
+        cinematic_mode_active_ = true;
+        mode_transition_pending_ = true;
+        mode_transition_start_time_ = now();
+        phase_ = Phase::Idle;
+        last_detail_ = "ENTERING";
+        // Force the final mux to zero before enabling the cinematic auto
+        // lease. This prevents a fresh pre-existing FOLLOW command from being
+        // reused during the ownership handover.
+        publish_mux_mode("stop");
+        publish_reference(ready_reference(now()));
+        publish_status(now());
+        response->success = true;
+        response->message = "正在退出底盘跟随并进入运镜待命";
+        RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
+      });
+
     stop_service_ = create_service<std_srvs::srv::Trigger>(
       "/cinematic/stop",
       [this](
         const std::shared_ptr<std_srvs::srv::Trigger::Request>,
         std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (!cinematic_mode_active_) {
+          response->success = false;
+          response->message = "当前未处于运镜模式";
+          return;
+        }
         if (!active_goal_) {
           response->success = true;
-          response->message = "没有活动运镜任务";
+          response->message = "没有活动运镜任务，保持运镜待命";
+          publish_reference(ready_reference(now()));
+          publish_status(now());
           return;
         }
         publish_reference(stopped_reference(now()));
-        finish_goal(CinematicMove::Result::RESULT_CANCELED, "运镜任务被停止服务终止");
+        finish_goal(
+          CinematicMove::Result::RESULT_CANCELED,
+          "运镜任务被停止服务终止", true);
         response->success = true;
-        response->message = "已停止运镜任务";
+        response->message = "已停止当前运镜任务，保持运镜待命";
+      });
+
+    exit_service_ = create_service<std_srvs::srv::Trigger>(
+      "/cinematic/exit",
+      [this](
+        const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!cinematic_mode_active_) {
+          response->success = true;
+          response->message = "已处于待机状态";
+          publish_status(now());
+          return;
+        }
+        const auto tick = now();
+        if (active_goal_) {
+          publish_reference(stopped_reference(tick));
+          finish_goal(
+            CinematicMove::Result::RESULT_CANCELED,
+            "退出运镜模式，当前任务已取消", true);
+        }
+        cinematic_mode_active_ = false;
+        mode_transition_pending_ = false;
+        phase_ = Phase::Idle;
+        locked_target_id_ = -1;
+        last_detail_ = "STANDBY";
+        publish_reference(inactive_reference(tick));
+        publish_mux_mode("manual");
+        publish_status(tick);
+        response->success = true;
+        response->message = "已退出运镜模式并进入待机，可接受跟随或运镜指令";
+        RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
       });
 
     timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::duration<double>(1.0 / control_rate_hz_)),
       std::bind(&CinematicMotionManagerNode::control_tick, this));
+
+    publish_status(now());
 
     RCLCPP_INFO(
       get_logger(),
@@ -208,6 +304,13 @@ private:
     std::shared_ptr<const CinematicMove::Goal> goal)
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    if (manual_jog_active_ || !cinematic_mode_active_ || mode_transition_pending_) {
+      RCLCPP_WARN(
+        get_logger(), "%s，拒绝运镜任务",
+        manual_jog_active_ ? "MANUAL_JOG正在执行" :
+        (cinematic_mode_active_ ? "运镜模式仍在准备" : "未进入运镜模式"));
+      return rclcpp_action::GoalResponse::REJECT;
+    }
     if (active_goal_) {
       RCLCPP_WARN(get_logger(), "已有运镜任务，拒绝新任务");
       return rclcpp_action::GoalResponse::REJECT;
@@ -272,6 +375,8 @@ private:
     traveled_distance_m_ = 0.0;
     completed_angle_rad_ = 0.0;
     previous_orbit_bearing_rad_ = 0.0;
+    last_detail_ = "EXECUTING";
+    publish_status(goal_start_time_);
     RCLCPP_INFO(
       get_logger(), "接受运镜任务: mode=%u target=%d",
       goal_.mode, goal_.tracking_id);
@@ -413,6 +518,76 @@ private:
     reference_pub_->publish(reference);
   }
 
+  Reference ready_reference(const rclcpp::Time & tick) const
+  {
+    Reference reference;
+    reference.header.stamp = tick;
+    reference.header.frame_id = "base_link";
+    reference.mode = Reference::STATIC_TRACK;
+    // READY is a mode-level chassis lock, not a task-level target lock.  Use
+    // the wildcard ID so servo_manager cannot resume ordinary following merely
+    // because its currently locked tracking ID changes while we are waiting.
+    reference.tracking_id = -1;
+    reference.desired_depth = static_cast<float>(default_target_distance_m_);
+    reference.max_linear_speed = 0.0F;
+    reference.chassis_feedforward = geometry_msgs::msg::Twist();
+    reference.progress = 0.0F;
+    reference.allow_translation = false;
+    reference.valid = true;
+    return reference;
+  }
+
+  Reference inactive_reference(const rclcpp::Time & tick) const
+  {
+    Reference reference;
+    reference.header.stamp = tick;
+    reference.header.frame_id = "base_link";
+    reference.mode = Reference::STATIC_TRACK;
+    reference.tracking_id = -1;
+    reference.allow_translation = false;
+    reference.valid = false;
+    return reference;
+  }
+
+  int32_t selected_tracking_id() const
+  {
+    if (locked_target_id_ >= 0) {
+      return locked_target_id_;
+    }
+    if (latest_targets_3d_ && latest_targets_3d_->tracking_id >= 0) {
+      return latest_targets_3d_->tracking_id;
+    }
+    if (latest_tracks_ && latest_tracks_->tracking_id >= 0) {
+      return latest_tracks_->tracking_id;
+    }
+    return -1;
+  }
+
+  void publish_mux_mode(const std::string & mode)
+  {
+    std_msgs::msg::String message;
+    message.data = mode;
+    mode_command_pub_->publish(message);
+  }
+
+  void publish_status(const rclcpp::Time & tick)
+  {
+    std_msgs::msg::String status;
+    const char * action_state = active_goal_ ? "EXECUTING" :
+      (mode_transition_pending_ ? "ENTERING" :
+      (cinematic_mode_active_ ? "READY" : "INACTIVE"));
+    const int active_motion = active_goal_ ? static_cast<int>(goal_.mode) : -1;
+    status.data =
+      std::string("{\"mode\":\"") +
+      (cinematic_mode_active_ ? "CINEMATIC" : "STANDBY") +
+      "\",\"action_state\":\"" + action_state +
+      "\",\"active_motion\":" + std::to_string(active_motion) +
+      ",\"tracking_id\":" + std::to_string(selected_tracking_id()) +
+      ",\"detail\":\"" + last_detail_ + "\"}";
+    status_pub_->publish(status);
+    last_status_publish_time_ = tick;
+  }
+
   Reference stopped_reference(const rclcpp::Time & tick) const
   {
     Reference reference;
@@ -456,6 +631,11 @@ private:
     phase_ = Phase::Idle;
     locked_target_id_ = -1;
     current_profile_speed_ = 0.0;
+    last_detail_ = message;
+    if (cinematic_mode_active_) {
+      publish_reference(ready_reference(now()));
+    }
+    publish_status(now());
   }
 
   void publish_feedback(double progress, double current_distance)
@@ -476,10 +656,29 @@ private:
   void control_tick()
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!active_goal_) {
+    const auto tick = now();
+    if (mode_transition_pending_) {
+      publish_reference(ready_reference(tick));
+      if ((tick - mode_transition_start_time_).seconds() >=
+          mode_transition_settle_sec_) {
+        mode_transition_pending_ = false;
+        last_detail_ = "READY";
+        publish_mux_mode("auto");
+        publish_status(tick);
+        RCLCPP_INFO(get_logger(), "运镜控制权切换完成，已进入运镜待命");
+      }
       return;
     }
-    const auto tick = now();
+    if (!active_goal_) {
+      if (cinematic_mode_active_) {
+        publish_reference(ready_reference(tick));
+      }
+      if (last_status_publish_time_.nanoseconds() == 0 ||
+          (tick - last_status_publish_time_).seconds() >= 0.5) {
+        publish_status(tick);
+      }
+      return;
+    }
     const double dt = std::clamp((tick - last_tick_time_).seconds(), 0.001, 0.10);
     last_tick_time_ = tick;
 
@@ -684,6 +883,7 @@ private:
   }
 
   double control_rate_hz_{20.0};
+  double mode_transition_settle_sec_{0.20};
   double target_timeout_sec_{0.35};
   double target_lost_abort_sec_{1.0};
   double depth_abort_sec_{0.60};
@@ -741,13 +941,24 @@ private:
   double current_profile_speed_{0.0};
   double traveled_distance_m_{0.0};
   double completed_angle_rad_{0.0};
+  bool cinematic_mode_active_{false};
+  bool manual_jog_active_{false};
+  bool mode_transition_pending_{false};
+  std::string last_detail_{"STANDBY"};
+  rclcpp::Time last_status_publish_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time mode_transition_start_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Publisher<Reference>::SharedPtr reference_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mode_command_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
   rclcpp::Subscription<TargetArray>::SharedPtr tracks_sub_;
   rclcpp::Subscription<TargetArray>::SharedPtr targets_3d_sub_;
   rclcpp::Subscription<vision_servo_msgs::msg::PlatformState>::SharedPtr platform_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr manual_jog_active_sub_;
   rclcpp_action::Server<CinematicMove>::SharedPtr action_server_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr enter_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stop_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr exit_service_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
