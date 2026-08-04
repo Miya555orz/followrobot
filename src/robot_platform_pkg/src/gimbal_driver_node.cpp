@@ -164,7 +164,7 @@ public:
       speed_send_timer_ = create_wall_timer(
         std::chrono::duration_cast<std::chrono::nanoseconds>(
           std::chrono::duration<double>(speed_command_period_sec_)),
-        std::bind(&GimbalDriverNode::send_latest_speed_command, this, false));
+        [this]() {send_latest_speed_command(false);});
     }
 
     RCLCPP_INFO(get_logger(), "云台驱动已激活");
