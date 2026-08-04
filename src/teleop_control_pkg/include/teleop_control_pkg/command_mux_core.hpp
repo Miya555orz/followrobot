@@ -51,6 +51,10 @@ public:
   void receive_deadman(bool active, int64_t now_ms);
   void receive_manual_command(const VelocityCommand & command, int64_t now_ms);
   void receive_auto_command(const VelocityCommand & command, int64_t now_ms);
+  // A gimbal-only profile has no autonomous chassis publisher. Keep a
+  // separate lease so fresh /auto/cmd_gimbal messages can still activate the
+  // automatic source without weakening the chassis velocity timeout.
+  void receive_auto_gimbal(int64_t now_ms);
   void latch_estop();
   bool clear_estop(int64_t now_ms);
   MuxDecision step(int64_t now_ms, double dt_sec);
@@ -61,6 +65,7 @@ public:
   int64_t heartbeat_age_ms(int64_t now_ms) const;
   int64_t manual_command_age_ms(int64_t now_ms) const;
   int64_t auto_command_age_ms(int64_t now_ms) const;
+  int64_t auto_gimbal_age_ms(int64_t now_ms) const;
 
 private:
   static double clamp(double value, double lower, double upper);
@@ -80,6 +85,7 @@ private:
   int64_t deadman_time_ms_{-1};
   int64_t manual_command_time_ms_{-1};
   int64_t auto_command_time_ms_{-1};
+  int64_t auto_gimbal_time_ms_{-1};
   bool deadman_active_{false};
   bool estop_latched_{false};
   VelocityCommand manual_command_;

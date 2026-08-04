@@ -110,6 +110,7 @@ public:
       [this](vision_servo_msgs::msg::GimbalCmd::ConstSharedPtr msg) {
         auto_gimbal_ = clamp_gimbal(*msg);
         auto_gimbal_time_ms_ = steady_now_ms();
+        core_->receive_auto_gimbal(auto_gimbal_time_ms_);
       });
     heartbeat_sub_ = create_subscription<std_msgs::msg::Empty>(
       "teleop/heartbeat", command_qos,
@@ -297,6 +298,7 @@ private:
            << ",\"heartbeat_age_ms\":" << core_->heartbeat_age_ms(now_ms)
            << ",\"manual_command_age_ms\":" << core_->manual_command_age_ms(now_ms)
            << ",\"auto_command_age_ms\":" << core_->auto_command_age_ms(now_ms)
+           << ",\"auto_gimbal_age_ms\":" << core_->auto_gimbal_age_ms(now_ms)
            << ",\"reason\":\"" << decision.reason << "\"}";
     status.data = stream.str();
     status_pub_->publish(status);

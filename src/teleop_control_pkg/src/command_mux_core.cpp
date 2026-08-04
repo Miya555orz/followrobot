@@ -53,6 +53,11 @@ void CommandMuxCore::receive_auto_command(
   auto_command_time_ms_ = now_ms;
 }
 
+void CommandMuxCore::receive_auto_gimbal(int64_t now_ms)
+{
+  auto_gimbal_time_ms_ = now_ms;
+}
+
 void CommandMuxCore::latch_estop()
 {
   estop_latched_ = true;
@@ -112,13 +117,21 @@ MuxDecision CommandMuxCore::step(int64_t now_ms, double dt_sec)
       desired = CommandSource::kManual;
       target = manual_command_;
       reason = "manual_override";
-    } else if (fresh(
-        auto_command_time_ms_, now_ms, config_.auto_command_timeout_ms)) {
-      desired = CommandSource::kAuto;
-      target = auto_command_;
-      reason = "auto_active";
     } else {
-      reason = "auto_command_timeout";
+      const bool auto_velocity_ok = fresh(
+        auto_command_time_ms_, now_ms, config_.auto_command_timeout_ms);
+      const bool auto_gimbal_ok = fresh(
+        auto_gimbal_time_ms_, now_ms, config_.auto_command_timeout_ms);
+      if (auto_velocity_ok || auto_gimbal_ok) {
+        desired = CommandSource::kAuto;
+        // In the gimbal-only profile there is intentionally no chassis
+        // velocity source. Never reuse an old velocity sample just because a
+        // fresh gimbal command keeps the auto lease alive.
+        target = auto_velocity_ok ? auto_command_ : VelocityCommand{};
+        reason = auto_velocity_ok ? "auto_active" : "auto_gimbal_only";
+      } else {
+        reason = "auto_command_timeout";
+      }
     }
   } else {
     reason = "mode_stop";
@@ -232,6 +245,11 @@ int64_t CommandMuxCore::manual_command_age_ms(int64_t now_ms) const
 int64_t CommandMuxCore::auto_command_age_ms(int64_t now_ms) const
 {
   return age_ms(auto_command_time_ms_, now_ms);
+}
+
+int64_t CommandMuxCore::auto_gimbal_age_ms(int64_t now_ms) const
+{
+  return age_ms(auto_gimbal_time_ms_, now_ms);
 }
 
 bool CommandMuxCore::is_zero(const VelocityCommand & command) const
