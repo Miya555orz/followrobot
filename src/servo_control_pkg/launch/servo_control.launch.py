@@ -79,10 +79,10 @@ def generate_launch_description():
             ("/perception/aim_target_2d", aim_target_input),
             ("/platform/state", "/platform/state"),                # 输入：平台状态
             ("/camera/camera_info", camera_info_input),             # 输入：相机内参
-            ("/cmd_vel", cmd_vel_output),                          # 输出：底盘速度指令
+            ("/auto/cmd_vel", cmd_vel_output),                     # 输出：底盘候选指令
             # 独立二维快环启用时，隔离旧统一PBVS/IBVS云台输出，避免两个
             # 节点同时驱动同一候选话题。servo_manager仍只负责底盘链路。
-            ("/cmd_gimbal", manager_gimbal_output),
+            ("/auto/cmd_gimbal", manager_gimbal_output),
             ("/servo/state", "/servo/state"),                      # 输出：伺服状态
         ],
         condition=IfCondition(enable_servo_manager),
