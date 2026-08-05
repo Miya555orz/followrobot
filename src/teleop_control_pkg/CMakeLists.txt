@@ -45,6 +45,11 @@ install(PROGRAMS scripts/keyboard_platform_teleop.py
   RENAME keyboard_platform_teleop
 )
 
+install(PROGRAMS scripts/fcr_mode_console.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME fcr_mode_console
+)
+
 install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME}
 )

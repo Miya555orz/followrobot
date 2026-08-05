@@ -22,6 +22,7 @@ install(DIRECTORY launch config rviz
 set(FCR_START_SCRIPTS
   start_fcr.sh
   start_fcr_gimbal.sh
+  start_fcr_console.sh
 )
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/scripts")
 foreach(script_name IN LISTS FCR_START_SCRIPTS)
@@ -42,6 +43,7 @@ endforeach()
 install(PROGRAMS
   ${CMAKE_CURRENT_BINARY_DIR}/scripts/start_fcr.sh
   ${CMAKE_CURRENT_BINARY_DIR}/scripts/start_fcr_gimbal.sh
+  ${CMAKE_CURRENT_BINARY_DIR}/scripts/start_fcr_console.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
