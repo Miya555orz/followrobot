@@ -136,6 +136,7 @@ class FcrModeConsole(Node):
         self.speed_scale = 1.0
         self.gimbal_nudge_id = 0
         self.active_cinematic = None
+        self.pending_cinematic_goal = None
         self.active_jog = None
         self.pending_transition = None
         self.transition_at = 0.0
@@ -194,7 +195,7 @@ class FcrModeConsole(Node):
             self._enter_teleop()
         elif self.state == self.TELEOP:
             self._handle_teleop_key(key)
-        elif self.state == self.CINEMATIC:
+        elif self.state in (self.CINEMATIC, "CINEMATIC_EXECUTING"):
             self._handle_cinematic_key(key)
         elif self.state == self.JOG_MENU:
             self._handle_jog_key(key)
@@ -302,6 +303,10 @@ class FcrModeConsole(Node):
         self._send_jog(goal)
 
     def _handle_cinematic_key(self, key: str) -> None:
+        if key == " ":
+            self.pending_cinematic_goal = None
+            self._cancel_cinematic_keep_ready()
+            return
         mode = None
         direction = CinematicMove.Goal.DIRECTION_AUTO
         if key in ("z", "Z"): mode = CinematicMove.Goal.STATIC_TRACK
@@ -321,9 +326,29 @@ class FcrModeConsole(Node):
         goal.orbit_angle_deg = self.cinematic_orbit
         goal.orbit_radius_m = 2.0
         goal.max_speed = self.cinematic_speed
-        goal.duration_sec = 15.0
+        goal.duration_sec = self._cinematic_timeout(goal)
         goal.direction = direction
-        self._send_cinematic(goal)
+        if self.active_cinematic is not None:
+            self.pending_cinematic_goal = goal
+            self.get_logger().warning("正在停止当前运镜，随后切换到新任务")
+            self._cancel_cinematic_keep_ready()
+        else:
+            self._send_cinematic(goal)
+
+    def _cinematic_timeout(self, goal: CinematicMove.Goal) -> float:
+        if goal.mode == CinematicMove.Goal.STATIC_TRACK:
+            return 15.0
+        speed = max(float(goal.max_speed), 0.01)
+        if goal.mode in (
+            CinematicMove.Goal.DOLLY_IN_OUT,
+            CinematicMove.Goal.TRUCK_LEFT_RIGHT,
+        ):
+            path_length = abs(float(goal.displacement_m))
+        else:
+            path_length = abs(math.radians(float(goal.orbit_angle_deg))) * float(
+                goal.orbit_radius_m
+            )
+        return min(120.0, max(12.0, path_length / speed * 1.8 + 5.0))
 
     def _send_jog(self, goal: ManualJog.Goal) -> None:
         if not self.jog_action.server_is_ready():
@@ -357,6 +382,15 @@ class FcrModeConsole(Node):
         if not self.cinematic_action.server_is_ready():
             self.get_logger().error("运镜Action未就绪")
             return
+        self.get_logger().info(
+            "发送运镜任务: mode=%d displacement=%.2fm orbit=%.1fdeg timeout=%.1fs"
+            % (
+                goal.mode,
+                goal.displacement_m,
+                goal.orbit_angle_deg,
+                goal.duration_sec,
+            )
+        )
         future = self.cinematic_action.send_goal_async(goal)
         future.add_done_callback(self._cinematic_goal_response)
 
@@ -374,9 +408,23 @@ class FcrModeConsole(Node):
         self.active_cinematic = None
         if self.state == "CINEMATIC_EXECUTING":
             self._set_state(self.CINEMATIC, result.message)
+            if self.pending_cinematic_goal is not None:
+                goal = self.pending_cinematic_goal
+                self.pending_cinematic_goal = None
+                self._send_cinematic(goal)
+
+    def _cancel_cinematic_keep_ready(self) -> None:
+        if self.active_cinematic is None:
+            self._set_state(self.CINEMATIC, "没有活动任务")
+            return
+        # The manager stop service atomically cancels the action and preserves
+        # CINEMATIC_READY. Do not publish mux STOP here because ownership stays
+        # inside cinematic mode.
+        self._call(self.cinematic_stop, "停止当前运镜")
 
     def _safe_stop(self, cancel_tasks: bool) -> None:
         self.pending_transition = None
+        self.pending_cinematic_goal = None
         self._zero_manual()
         self._publish_mode("stop")
         if cancel_tasks:

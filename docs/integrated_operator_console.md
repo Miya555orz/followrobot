@@ -56,5 +56,15 @@ ros2 run bringup_pkg start_fcr_console.sh --controller pbvs
 - `W/S`：DOLLY_IN_OUT 前/后方向。
 - `A/D`：TRUCK_LEFT_RIGHT 左/右方向。
 - `Q/E`：ORBIT_ARC 左/右方向。
+- 运镜执行中直接按另一动作键：平滑停止当前动作并切换到新动作。
+- 空格：只停止当前动作，继续保持 `CINEMATIC_READY`。
+
+动态运镜的截止时间按运动量自动计算：
+
+```text
+超时 = max(12秒, 理论运动时间 × 1.8 + 5秒)
+```
+
+推拉采用相对当前深度的目标：`W` 靠近0.5m，`S` 远离0.5m。
 
 动作结束后保持在 `CINEMATIC_READY`，可以继续发送下一条运镜动作；按 `1` 才退出。

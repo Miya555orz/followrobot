@@ -328,11 +328,18 @@ private:
       RCLCPP_WARN(get_logger(), "动态运镜必须设置正的 duration_sec");
       return rclcpp_action::GoalResponse::REJECT;
     }
-    if (goal->mode == CinematicMove::Goal::DOLLY_IN_OUT &&
-        (!finite_positive(goal->target_distance_m) ||
-         goal->target_distance_m < min_target_distance_m_ ||
-         goal->target_distance_m > max_target_distance_m_)) {
-      return rclcpp_action::GoalResponse::REJECT;
+    if (goal->mode == CinematicMove::Goal::DOLLY_IN_OUT) {
+      const bool valid_relative = finite_positive(std::abs(goal->displacement_m)) &&
+        std::abs(goal->displacement_m) <= max_displacement_m_;
+      const bool valid_absolute = finite_positive(goal->target_distance_m) &&
+        goal->target_distance_m >= min_target_distance_m_ &&
+        goal->target_distance_m <= max_target_distance_m_;
+      if (!valid_relative && !valid_absolute) {
+        RCLCPP_WARN(
+          get_logger(),
+          "DOLLY需要合法的相对位移displacement_m或绝对target_distance_m");
+        return rclcpp_action::GoalResponse::REJECT;
+      }
     }
     if (goal->mode == CinematicMove::Goal::TRUCK_LEFT_RIGHT &&
         (!finite_positive(std::abs(goal->displacement_m)) ||
@@ -374,6 +381,7 @@ private:
     current_profile_speed_ = 0.0;
     traveled_distance_m_ = 0.0;
     completed_angle_rad_ = 0.0;
+    resolved_dolly_distance_m_ = 0.0;
     previous_orbit_bearing_rad_ = 0.0;
     last_detail_ = "EXECUTING";
     publish_status(goal_start_time_);
@@ -597,8 +605,8 @@ private:
     reference.tracking_id = locked_target_id_;
     double hold_depth = have_initial_distance_ ? initial_distance_m_ : 0.0;
     if (goal_.mode == CinematicMove::Goal::DOLLY_IN_OUT &&
-        goal_.target_distance_m > 0.0F) {
-      hold_depth = goal_.target_distance_m;
+        resolved_dolly_distance_m_ > 0.0) {
+      hold_depth = resolved_dolly_distance_m_;
     } else if (goal_.mode == CinematicMove::Goal::ORBIT_ARC &&
                goal_.orbit_radius_m > 0.0F) {
       hold_depth = goal_.orbit_radius_m;
@@ -794,14 +802,32 @@ private:
         metric_valid ? current_distance : 0.0);
       progress = 1.0;
     } else if (goal_.mode == CinematicMove::Goal::DOLLY_IN_OUT) {
-      reference.desired_depth = goal_.target_distance_m;
       if (!have_initial_distance_) {
         initial_distance_m_ = current_distance;
         have_initial_distance_ = true;
       }
+      if (resolved_dolly_distance_m_ <= 0.0) {
+        if (finite_positive(std::abs(goal_.displacement_m))) {
+          // Positive direction means dolly-in: reduce camera-to-target depth.
+          // Negative direction means dolly-out: increase it.
+          const double requested_distance = initial_distance_m_ -
+            direction_sign() * std::abs(static_cast<double>(goal_.displacement_m));
+          resolved_dolly_distance_m_ = std::clamp(
+            requested_distance, min_target_distance_m_, max_target_distance_m_);
+          if (std::abs(resolved_dolly_distance_m_ - requested_distance) > 1e-6) {
+            RCLCPP_WARN(
+              get_logger(),
+              "DOLLY相对目标超出安全距离，已限制为%.2fm",
+              resolved_dolly_distance_m_);
+          }
+        } else {
+          resolved_dolly_distance_m_ = goal_.target_distance_m;
+        }
+      }
+      reference.desired_depth = static_cast<float>(resolved_dolly_distance_m_);
       const double total = std::max(
-        distance_tolerance_m_, std::abs(initial_distance_m_ - goal_.target_distance_m));
-      const double remaining = std::abs(current_distance - goal_.target_distance_m);
+        distance_tolerance_m_, std::abs(initial_distance_m_ - resolved_dolly_distance_m_));
+      const double remaining = std::abs(current_distance - resolved_dolly_distance_m_);
       progress = 1.0 - std::clamp(remaining / total, 0.0, 1.0);
       complete = remaining <= distance_tolerance_m_;
     } else if (goal_.mode == CinematicMove::Goal::TRUCK_LEFT_RIGHT) {
@@ -941,6 +967,7 @@ private:
   double current_profile_speed_{0.0};
   double traveled_distance_m_{0.0};
   double completed_angle_rad_{0.0};
+  double resolved_dolly_distance_m_{0.0};
   bool cinematic_mode_active_{false};
   bool manual_jog_active_{false};
   bool mode_transition_pending_{false};
