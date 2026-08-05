@@ -627,7 +627,12 @@ private:
     result->traveled_distance_m = static_cast<float>(traveled_distance_m_);
     result->completed_angle_deg = static_cast<float>(completed_angle_rad_ * 180.0 / M_PI);
     if (active_goal_) {
-      if (canceled) {
+      // rcl_action only permits the CANCELED terminal transition after the
+      // client has requested cancellation and the goal is in CANCELING.
+      // A server-side stop/exit service terminates an EXECUTING goal directly,
+      // so report the domain result as RESULT_CANCELED but use ABORTED as the
+      // legal Action protocol terminal state in that case.
+      if (canceled && active_goal_->is_canceling()) {
         active_goal_->canceled(result);
       } else if (result->success) {
         active_goal_->succeed(result);
