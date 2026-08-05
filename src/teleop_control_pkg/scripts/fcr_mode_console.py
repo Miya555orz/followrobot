@@ -87,6 +87,7 @@ class FcrModeConsole(Node):
         self.declare_parameter("cinematic_displacement_m", 0.50)
         self.declare_parameter("cinematic_orbit_deg", 30.0)
         self.declare_parameter("cinematic_speed", 0.08)
+        self.declare_parameter("cinematic_service_wait_sec", 5.0)
 
         self.rate_hz = max(float(self.get_parameter("rate_hz").value), 10.0)
         self.key_timeout = max(float(self.get_parameter("key_timeout_sec").value), 0.05)
@@ -101,6 +102,9 @@ class FcrModeConsole(Node):
         )
         self.cinematic_orbit = abs(float(self.get_parameter("cinematic_orbit_deg").value))
         self.cinematic_speed = abs(float(self.get_parameter("cinematic_speed").value))
+        self.cinematic_service_wait = max(
+            float(self.get_parameter("cinematic_service_wait_sec").value), 0.0
+        )
 
         qos = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE)
         latched = QoSProfile(
@@ -140,6 +144,7 @@ class FcrModeConsole(Node):
         self.active_jog = None
         self.pending_transition = None
         self.transition_at = 0.0
+        self.cinematic_service_deadline = 0.0
         self.shutdown_requested = False
         self.keyboard = Keyboard()
         self.timer = self.create_timer(1.0 / self.rate_hz, self._tick)
@@ -216,12 +221,22 @@ class FcrModeConsole(Node):
 
     def _enter_cinematic(self) -> None:
         self._safe_stop(cancel_tasks=True)
+        self.cinematic_service_deadline = (
+            time.monotonic() + self.cinematic_service_wait
+        )
         self._schedule_transition(self._finish_enter_cinematic, "CINEMATIC准备中")
 
     def _finish_enter_cinematic(self) -> None:
         if not self.cinematic_enter.service_is_ready():
-            self.get_logger().error("运镜进入服务未就绪")
-            self._set_state(self.STANDBY, "运镜不可用")
+            if time.monotonic() < self.cinematic_service_deadline:
+                self.pending_transition = self._finish_enter_cinematic
+                self.transition_at = time.monotonic() + 0.20
+                return
+            self.get_logger().error(
+                "运镜进入服务 /cinematic/enter 在等待期限内未就绪；"
+                "确认 cinematic_motion_manager 已启动且未使用 --no-cinematic"
+            )
+            self._set_state(self.STANDBY, "运镜管理节点不可用")
             return
         future = self.cinematic_enter.call_async(Trigger.Request())
         future.add_done_callback(self._cinematic_entered)
