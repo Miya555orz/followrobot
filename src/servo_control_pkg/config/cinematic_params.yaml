@@ -19,7 +19,10 @@ cinematic_motion_manager:
     max_angular_speed_rad_s: 0.25
     linear_acceleration_mps2: 0.20
 
-    distance_tolerance_m: 0.10
+    # Must be >= PBVS depth_deadband_m (currently 0.20 m).  Otherwise PBVS
+    # legitimately stops inside its deadband while the cinematic task keeps
+    # waiting for a tighter, unreachable completion threshold until timeout.
+    distance_tolerance_m: 0.20
     orbit_radius_tolerance_m: 0.15
     orbit_angle_tolerance_deg: 3.0
     orbit_radial_gain: 0.45
