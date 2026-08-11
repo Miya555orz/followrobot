@@ -28,6 +28,12 @@ TEST(VoiceIntentContract, RoutesCameraAndAutonomyIntents)
     intentTarget("enter_cinematic"), VoiceTarget::Autonomy);
   EXPECT_EQ(
     intentTarget("exit_cinematic"), VoiceTarget::Autonomy);
+  EXPECT_EQ(
+    intentTarget("distance_adjust"), VoiceTarget::Autonomy);
+  EXPECT_EQ(
+    intentTarget("start_static_track"), VoiceTarget::Autonomy);
+  EXPECT_EQ(
+    intentTarget("start_truck"), VoiceTarget::Autonomy);
 }
 
 TEST(VoiceIntentContract, RejectsUnknownAndAmbiguousStops)

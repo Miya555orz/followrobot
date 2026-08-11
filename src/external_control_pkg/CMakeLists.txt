@@ -40,7 +40,7 @@ find_package(vision_servo_msgs REQUIRED)  # GimbalCmd
 
 # ── 依赖声明（系统库） ───────────────────────────────────────────────
 find_package(PkgConfig REQUIRED)
-option(BUILD_WAKE_UP_NODE "Build PortAudio/sherpa-onnx wake-up and ASR node" ON)
+option(BUILD_WAKE_UP_NODE "Build PortAudio/sherpa-onnx wake-up and ASR node" OFF)
 
 pkg_check_modules(PORTAUDIO portaudio-2.0)
 pkg_check_modules(LIBCURL libcurl)
@@ -164,7 +164,7 @@ add_executable(voice_command_dispatcher_node
 target_include_directories(voice_command_dispatcher_node PRIVATE include)
 
 ament_target_dependencies(voice_command_dispatcher_node
-  rclcpp std_msgs
+  rclcpp std_msgs std_srvs vision_servo_msgs
 )
 
 target_link_libraries(voice_command_dispatcher_node
@@ -172,6 +172,15 @@ target_link_libraries(voice_command_dispatcher_node
 )
 
 list(APPEND EXTERNAL_CONTROL_TARGETS voice_command_dispatcher_node)
+
+# Jetson is the single authority for STANDBY/FOLLOW/CINEMATIC state.
+add_executable(system_mode_manager_node
+  src/system_mode_manager_node.cpp
+)
+ament_target_dependencies(system_mode_manager_node
+  rclcpp std_msgs std_srvs vision_servo_msgs
+)
+list(APPEND EXTERNAL_CONTROL_TARGETS system_mode_manager_node)
 
 # ── 语音自主意图 → 可取消运镜Action ────────────────────────────────
 add_executable(voice_cinematic_action_node

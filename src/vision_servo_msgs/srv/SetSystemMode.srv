@@ -1,0 +1,12 @@
+uint8 MODE_STANDBY=0
+uint8 MODE_FOLLOW=1
+uint8 MODE_CINEMATIC=2
+
+uint8 mode
+string reason
+---
+bool success
+uint8 current_mode
+uint64 state_version
+string message
+

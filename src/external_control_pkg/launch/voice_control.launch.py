@@ -101,8 +101,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "start_wake_up_node",
-            default_value="true",
-            description="是否启动 wake_up_node；依赖未安装时可设为 false，仅验证语音指令桥接",
+            default_value="false",
+            description="是否启动Jetson本地唤醒/ASR；独立语音计算机方案保持false",
         ),
         DeclareLaunchArgument(
             "text_topic",

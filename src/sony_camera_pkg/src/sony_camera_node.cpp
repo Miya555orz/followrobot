@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <stdexcept>
 #include <vector>
@@ -23,6 +24,10 @@
 #include <sensor_msgs/image_encodings.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/image.hpp>
+#include <std_srvs/srv/trigger.hpp>
+#include <vision_servo_msgs/msg/camera_recording_state.hpp>
+#include <vision_servo_msgs/msg/system_state.hpp>
+#include <vision_servo_msgs/srv/set_camera_recording.hpp>
 
 #include "sony_camera_pkg/sony_camera_streamer.hpp"
 
@@ -108,6 +113,24 @@ public:
         this, "image_raw", rclcpp::SensorDataQoS().keep_last(1).get_rmw_qos_profile());
     camera_info_pub_ = create_publisher<sensor_msgs::msg::CameraInfo>(
         "camera_info", rclcpp::SensorDataQoS().keep_last(1));
+    recording_state_pub_ = create_publisher<vision_servo_msgs::msg::CameraRecordingState>(
+        "/sony/recording_status", rclcpp::QoS(1).reliable().transient_local());
+    recording_service_ = create_service<vision_servo_msgs::srv::SetCameraRecording>(
+        "/sony/set_recording",
+        std::bind(&SonyCameraNode::set_recording_callback, this,
+                  std::placeholders::_1, std::placeholders::_2));
+    take_photo_service_ = create_service<std_srvs::srv::Trigger>(
+        "/sony/take_photo",
+        std::bind(&SonyCameraNode::take_photo_callback, this,
+                  std::placeholders::_1, std::placeholders::_2));
+    system_state_sub_ = create_subscription<vision_servo_msgs::msg::SystemState>(
+        "/system/state", rclcpp::QoS(1).reliable().transient_local(),
+        [this](const vision_servo_msgs::msg::SystemState::ConstSharedPtr state) {
+          cinematic_recording_lock_ =
+              state->mode == vision_servo_msgs::msg::SystemState::MODE_CINEMATIC &&
+              state->cinematic_state ==
+                  vision_servo_msgs::msg::SystemState::CINEMATIC_EXECUTING;
+        });
 
     camera_info_manager_ = std::make_unique<camera_info_manager::CameraInfoManager>(
         this, camera_name_, camera_info_url_);
@@ -170,6 +193,7 @@ private:
   }
 
   void maintenance_callback() {
+    refresh_recording_state();
     if (streamer_.isConnected()) {
       const int64_t last_frame = last_frame_steady_ns_.load(std::memory_order_relaxed);
       const int64_t stream_started =
@@ -193,6 +217,144 @@ private:
     if (!connect_and_stream()) {
       schedule_reconnect();
     }
+  }
+
+  static uint8_t recording_message_state(RecordingState state) {
+    using Message = vision_servo_msgs::msg::CameraRecordingState;
+    switch (state) {
+      case RecordingState::Stopped: return Message::STOPPED;
+      case RecordingState::Recording: return Message::RECORDING;
+      case RecordingState::Error: return Message::ERROR;
+      case RecordingState::IntervalWaiting: return Message::STARTING;
+      default: return Message::UNKNOWN;
+    }
+  }
+
+  static const char* recording_state_name(uint8_t state) {
+    using Message = vision_servo_msgs::msg::CameraRecordingState;
+    switch (state) {
+      case Message::STOPPED: return "STOPPED";
+      case Message::STARTING: return "STARTING";
+      case Message::RECORDING: return "RECORDING";
+      case Message::STOPPING: return "STOPPING";
+      case Message::ERROR: return "ERROR";
+      default: return "UNKNOWN";
+    }
+  }
+
+  void publish_recording_state(uint8_t state, uint32_t sdk_code, const std::string& detail) {
+    vision_servo_msgs::msg::CameraRecordingState message;
+    message.header.stamp = now();
+    message.header.frame_id = camera_frame_;
+    message.state = state;
+    message.state_name = recording_state_name(state);
+    message.connected = streamer_.isConnected();
+    message.command_pending = recording_command_pending_;
+    message.sdk_code = sdk_code;
+    message.detail = detail;
+    recording_state_pub_->publish(message);
+    last_recording_state_ = state;
+    last_recording_sdk_code_ = sdk_code;
+  }
+
+  void refresh_recording_state() {
+    using Message = vision_servo_msgs::msg::CameraRecordingState;
+    if (!streamer_.isConnected()) {
+      recording_command_pending_ = false;
+      publish_recording_state(Message::UNKNOWN, 0, "camera_disconnected");
+      return;
+    }
+    uint32_t sdk_code = 0;
+    const uint8_t observed = recording_message_state(streamer_.recordingState(sdk_code));
+    if (observed == Message::UNKNOWN && sdk_code != 0) {
+      publish_recording_state(Message::ERROR, sdk_code, "recording_state_query_failed");
+      return;
+    }
+    if (recording_command_pending_) {
+      const bool reached = pending_recording_target_
+          ? observed == Message::RECORDING
+          : observed == Message::STOPPED;
+      if (reached) {
+        recording_command_pending_ = false;
+      } else if (SteadyClock::now() >= recording_command_deadline_) {
+        recording_command_pending_ = false;
+        publish_recording_state(Message::ERROR, sdk_code, "recording_transition_timeout");
+        return;
+      } else {
+        publish_recording_state(
+            pending_recording_target_ ? Message::STARTING : Message::STOPPING,
+            sdk_code, "waiting_for_camera_confirmation");
+        return;
+      }
+    }
+    publish_recording_state(observed, sdk_code, "camera_property_confirmed");
+  }
+
+  void set_recording_callback(
+      const std::shared_ptr<vision_servo_msgs::srv::SetCameraRecording::Request> request,
+      std::shared_ptr<vision_servo_msgs::srv::SetCameraRecording::Response> response) {
+    using Message = vision_servo_msgs::msg::CameraRecordingState;
+    if (!streamer_.isConnected()) {
+      response->accepted = false;
+      response->state = Message::UNKNOWN;
+      response->message = "Sony camera is disconnected";
+      return;
+    }
+    if (!request->recording && cinematic_recording_lock_) {
+      response->accepted = false;
+      response->state = last_recording_state_;
+      response->sdk_code = last_recording_sdk_code_;
+      response->message = "Recording is locked while cinematic action is executing";
+      return;
+    }
+    const bool already_reached = request->recording
+        ? last_recording_state_ == Message::RECORDING
+        : last_recording_state_ == Message::STOPPED;
+    if (already_reached && !recording_command_pending_) {
+      response->accepted = true;
+      response->state = last_recording_state_;
+      response->sdk_code = last_recording_sdk_code_;
+      response->message = "Recording state already matches request";
+      return;
+    }
+    if (recording_command_pending_) {
+      response->accepted = false;
+      response->state = last_recording_state_;
+      response->sdk_code = last_recording_sdk_code_;
+      response->message = "Another recording transition is pending";
+      return;
+    }
+    uint32_t sdk_code = 0;
+    if (!streamer_.setRecording(request->recording, sdk_code)) {
+      response->accepted = false;
+      response->state = Message::ERROR;
+      response->sdk_code = sdk_code;
+      response->message = "CRSDK rejected movie recording command";
+      publish_recording_state(Message::ERROR, sdk_code, response->message);
+      return;
+    }
+    pending_recording_target_ = request->recording;
+    recording_command_pending_ = true;
+    recording_command_deadline_ = SteadyClock::now() + std::chrono::seconds(5);
+    const uint8_t transition_state = request->recording ? Message::STARTING : Message::STOPPING;
+    publish_recording_state(
+        transition_state, sdk_code,
+        request->requester.empty() ? "recording_command_accepted" : request->requester);
+    response->accepted = true;
+    response->state = transition_state;
+    response->sdk_code = sdk_code;
+    response->message = "Command accepted; wait for recording_status confirmation";
+  }
+
+  void take_photo_callback(
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    uint32_t sdk_code = 0;
+    response->success = streamer_.takePhoto(sdk_code);
+    std::ostringstream message;
+    message << (response->success ? "Photo command accepted" : "Photo command failed")
+            << " (sdk=0x" << std::hex << std::uppercase << sdk_code << ")";
+    response->message = message.str();
   }
 
   void frame_callback(
@@ -315,6 +477,8 @@ private:
     status.add(
         "calibration_valid_for_stream",
         calibration_valid_for_stream_.load(std::memory_order_relaxed));
+    status.add("recording_state", recording_state_name(last_recording_state_));
+    status.add("recording_command_pending", recording_command_pending_);
   }
 
   int camera_index_ = 1;
@@ -331,6 +495,13 @@ private:
   SonyCameraStreamer streamer_;
   image_transport::Publisher image_pub_;
   rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr camera_info_pub_;
+  rclcpp::Publisher<vision_servo_msgs::msg::CameraRecordingState>::SharedPtr
+      recording_state_pub_;
+  rclcpp::Service<vision_servo_msgs::srv::SetCameraRecording>::SharedPtr
+      recording_service_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr take_photo_service_;
+  rclcpp::Subscription<vision_servo_msgs::msg::SystemState>::SharedPtr
+      system_state_sub_;
   std::unique_ptr<camera_info_manager::CameraInfoManager> camera_info_manager_;
   diagnostic_updater::Updater diagnostics_;
   rclcpp::TimerBase::SharedPtr maintenance_timer_;
@@ -348,6 +519,14 @@ private:
   std::atomic<uint32_t> last_width_{0};
   std::atomic<uint32_t> last_height_{0};
   std::atomic<bool> calibration_valid_for_stream_{false};
+  bool recording_command_pending_{false};
+  bool pending_recording_target_{false};
+  bool cinematic_recording_lock_{false};
+  uint8_t last_recording_state_{
+      vision_servo_msgs::msg::CameraRecordingState::UNKNOWN};
+  uint32_t last_recording_sdk_code_{0};
+  SteadyClock::time_point recording_command_deadline_{
+      SteadyClock::time_point::min()};
 };
 
 }  // namespace sony_camera_pkg

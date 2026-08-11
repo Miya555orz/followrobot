@@ -13,6 +13,11 @@ cinematic_motion_manager:
     min_valid_depth_confidence: 0.65
     min_degraded_depth_confidence: 0.40
 
+    # Any action client (voice or operator console) must wait for Sony's
+    # RecordingState property to confirm RECORDING before motion begins.
+    require_camera_recording: true
+    recording_start_timeout_sec: 8.0
+
     default_target_distance_m: 2.0
     default_max_speed_mps: 0.10
     max_linear_speed_mps: 0.20

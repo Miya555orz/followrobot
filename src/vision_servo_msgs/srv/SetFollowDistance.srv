@@ -1,0 +1,6 @@
+float32 distance_m
+bool relative
+---
+bool success
+float32 applied_distance_m
+string message

@@ -15,8 +15,10 @@
 
 #include <vision_servo_msgs/action/cinematic_move.hpp>
 #include <vision_servo_msgs/msg/cinematic_reference.hpp>
+#include <vision_servo_msgs/msg/camera_recording_state.hpp>
 #include <vision_servo_msgs/msg/platform_state.hpp>
 #include <vision_servo_msgs/msg/target_array.hpp>
+#include <vision_servo_msgs/srv/set_camera_recording.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -83,6 +85,8 @@ public:
     declare_parameter("max_orbit_angle_deg", 180.0);
     declare_parameter("min_target_distance_m", 0.60);
     declare_parameter("max_target_distance_m", 5.0);
+    declare_parameter("require_camera_recording", true);
+    declare_parameter("recording_start_timeout_sec", 8.0);
 
     control_rate_hz_ = std::clamp(get_parameter("control_rate_hz").as_double(), 5.0, 50.0);
     mode_transition_settle_sec_ = std::clamp(
@@ -132,6 +136,9 @@ public:
       0.1, get_parameter("min_target_distance_m").as_double());
     max_target_distance_m_ = std::max(
       min_target_distance_m_, get_parameter("max_target_distance_m").as_double());
+    require_camera_recording_ = get_parameter("require_camera_recording").as_bool();
+    recording_start_timeout_sec_ = std::max(
+      1.0, get_parameter("recording_start_timeout_sec").as_double());
 
     const auto command_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
     reference_pub_ = create_publisher<Reference>("/cinematic/reference", command_qos);
@@ -168,6 +175,17 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         manual_jog_active_ = msg->data;
       });
+    recording_state_sub_ =
+      create_subscription<vision_servo_msgs::msg::CameraRecordingState>(
+      "/sony/recording_status",
+      rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local(),
+      [this](vision_servo_msgs::msg::CameraRecordingState::ConstSharedPtr msg) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        recording_state_ = msg->state;
+      });
+    recording_client_ =
+      create_client<vision_servo_msgs::srv::SetCameraRecording>(
+      "/sony/set_recording");
 
     action_server_ = rclcpp_action::create_server<CinematicMove>(
       this, "/cinematic/execute",
@@ -261,6 +279,10 @@ public:
           finish_goal(
             CinematicMove::Result::RESULT_CANCELED,
             "退出运镜模式，当前任务已取消", true);
+        }
+        if (recording_owned_) {
+          request_recording(false, "cinematic_manager_release");
+          recording_owned_ = false;
         }
         cinematic_mode_active_ = false;
         mode_transition_pending_ = false;
@@ -383,6 +405,10 @@ private:
     completed_angle_rad_ = 0.0;
     resolved_dolly_distance_m_ = 0.0;
     previous_orbit_bearing_rad_ = 0.0;
+    recording_ready_for_goal_ = !require_camera_recording_ ||
+      recording_state_ == vision_servo_msgs::msg::CameraRecordingState::RECORDING;
+    recording_request_sent_ = false;
+    recording_wait_start_time_ = goal_start_time_;
     last_detail_ = "EXECUTING";
     publish_status(goal_start_time_);
     RCLCPP_INFO(
@@ -578,6 +604,18 @@ private:
     mode_command_pub_->publish(message);
   }
 
+  void request_recording(bool recording, const std::string & requester)
+  {
+    if (!recording_client_->service_is_ready()) {
+      return;
+    }
+    auto request =
+      std::make_shared<vision_servo_msgs::srv::SetCameraRecording::Request>();
+    request->recording = recording;
+    request->requester = requester;
+    recording_client_->async_send_request(request);
+  }
+
   void publish_status(const rclcpp::Time & tick)
   {
     std_msgs::msg::String status;
@@ -699,6 +737,32 @@ private:
       publish_reference(stopped_reference(tick));
       finish_goal(CinematicMove::Result::RESULT_CANCELED, "运镜任务已取消", true);
       return;
+    }
+    if (!recording_ready_for_goal_) {
+      if (recording_state_ ==
+          vision_servo_msgs::msg::CameraRecordingState::RECORDING) {
+        recording_ready_for_goal_ = true;
+        goal_start_time_ = tick;
+        last_tick_time_ = tick;
+        last_detail_ = "EXECUTING";
+        publish_status(tick);
+      } else {
+        if (!recording_request_sent_ && recording_client_->service_is_ready()) {
+          request_recording(true, "cinematic_manager");
+          recording_request_sent_ = true;
+          recording_owned_ = true;
+          last_detail_ = "WAITING_RECORDING";
+          publish_status(tick);
+        }
+        publish_reference(stopped_reference(tick));
+        publish_feedback(0.0, 0.0);
+        if ((tick - recording_wait_start_time_).seconds() >
+            recording_start_timeout_sec_) {
+          finish_goal(CinematicMove::Result::RESULT_SAFETY_STOP,
+            "相机录像未在期限内确认，运镜未执行");
+        }
+        return;
+      }
     }
     if (goal_.duration_sec > 0.0F &&
         (tick - goal_start_time_).seconds() > goal_.duration_sec) {
@@ -940,6 +1004,8 @@ private:
   double max_orbit_angle_deg_{180.0};
   double min_target_distance_m_{0.60};
   double max_target_distance_m_{5.0};
+  bool require_camera_recording_{true};
+  double recording_start_timeout_sec_{8.0};
 
   std::mutex mutex_;
   std::shared_ptr<GoalHandle> active_goal_;
@@ -976,9 +1042,15 @@ private:
   bool cinematic_mode_active_{false};
   bool manual_jog_active_{false};
   bool mode_transition_pending_{false};
+  bool recording_ready_for_goal_{false};
+  bool recording_request_sent_{false};
+  bool recording_owned_{false};
+  uint8_t recording_state_{
+    vision_servo_msgs::msg::CameraRecordingState::UNKNOWN};
   std::string last_detail_{"STANDBY"};
   rclcpp::Time last_status_publish_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time mode_transition_start_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time recording_wait_start_time_{0, 0, RCL_ROS_TIME};
 
   rclcpp::Publisher<Reference>::SharedPtr reference_pub_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mode_command_pub_;
@@ -987,6 +1059,10 @@ private:
   rclcpp::Subscription<TargetArray>::SharedPtr targets_3d_sub_;
   rclcpp::Subscription<vision_servo_msgs::msg::PlatformState>::SharedPtr platform_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr manual_jog_active_sub_;
+  rclcpp::Subscription<vision_servo_msgs::msg::CameraRecordingState>::SharedPtr
+    recording_state_sub_;
+  rclcpp::Client<vision_servo_msgs::srv::SetCameraRecording>::SharedPtr
+    recording_client_;
   rclcpp_action::Server<CinematicMove>::SharedPtr action_server_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr enter_service_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stop_service_;

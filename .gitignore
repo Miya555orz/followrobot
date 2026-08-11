@@ -49,6 +49,15 @@ src/sony_camera_pkg/sdk/
 # Generated artifacts
 output/
 tmp/
+.tmp/
+.codex_tmp/
+
+# Office lock files
+~$*
+
+# Presentation drafts and inspection artifacts
+*.pptx
+*.pptx.inspect.ndjson
 
 # Runtime ML artifacts are downloaded from a release or generated on the target.
 src/perception_pkg/models/*

@@ -10,6 +10,14 @@
 
 namespace sony_camera_pkg {
 
+enum class RecordingState : uint8_t {
+  Unknown = 0,
+  Stopped,
+  Recording,
+  Error,
+  IntervalWaiting,
+};
+
 using FrameCallback = std::function<void(const std::vector<uint8_t>& jpeg_data,
                                          uint32_t width, uint32_t height)>;
 
@@ -32,6 +40,9 @@ public:
   bool isInitialized() const;
   bool isConnected() const;
   uint64_t consecutiveCaptureFailures() const;
+  bool setRecording(bool recording, uint32_t& sdk_error);
+  bool takePhoto(uint32_t& sdk_error);
+  RecordingState recordingState(uint32_t& sdk_error);
 
 private:
   struct Impl;
@@ -42,6 +53,7 @@ private:
   std::atomic<bool> streaming_{false};
   std::atomic<uint64_t> consecutive_capture_failures_{0};
   std::mutex stream_mutex_;
+  std::mutex command_mutex_;
   FrameCallback frame_callback_;
   std::unique_ptr<Impl> impl_;
 };

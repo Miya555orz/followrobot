@@ -60,7 +60,7 @@ inline VoiceTarget intentTarget(const std::string& intent)
     {"chassis_speed_up", VoiceTarget::Chassis},
     {"chassis_speed_down", VoiceTarget::Chassis},
     {"chassis_adjust_parameter", VoiceTarget::Chassis},
-    {"distance_adjust", VoiceTarget::Chassis},
+    {"distance_adjust", VoiceTarget::Autonomy},
     {"query_chassis_status", VoiceTarget::Chassis},
 
     {"camera_take_photo", VoiceTarget::Camera},
@@ -77,6 +77,8 @@ inline VoiceTarget intentTarget(const std::string& intent)
     {"exit_cinematic", VoiceTarget::Autonomy},
     {"start_orbit", VoiceTarget::Autonomy},
     {"start_dolly", VoiceTarget::Autonomy},
+    {"start_truck", VoiceTarget::Autonomy},
+    {"start_static_track", VoiceTarget::Autonomy},
     {"stop_cinematic", VoiceTarget::Autonomy},
     {"query_camera_motion_status", VoiceTarget::Autonomy},
 

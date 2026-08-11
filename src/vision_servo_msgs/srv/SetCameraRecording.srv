@@ -1,0 +1,8 @@
+bool recording
+string requester
+---
+bool accepted
+uint8 state
+uint32 sdk_code
+string message
+

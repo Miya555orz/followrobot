@@ -18,7 +18,8 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, Empty, String
 from std_srvs.srv import Trigger
 from vision_servo_msgs.action import CinematicMove, ManualJog
-from vision_servo_msgs.msg import GimbalCmd, GimbalNudge
+from vision_servo_msgs.msg import GimbalCmd, GimbalNudge, SystemState
+from vision_servo_msgs.srv import SetSystemMode
 
 
 @dataclass
@@ -129,6 +130,7 @@ class FcrModeConsole(Node):
         self.cinematic_enter = self.create_client(Trigger, "/cinematic/enter")
         self.cinematic_exit = self.create_client(Trigger, "/cinematic/exit")
         self.cinematic_stop = self.create_client(Trigger, "/cinematic/stop")
+        self.system_mode = self.create_client(SetSystemMode, "/system/set_mode")
         self.jog_stop = self.create_client(Trigger, "/manual_jog/stop")
         self.cinematic_action = ActionClient(self, CinematicMove, "/cinematic/execute")
         self.jog_action = ActionClient(self, ManualJog, "/manual_jog/execute")
@@ -207,17 +209,20 @@ class FcrModeConsole(Node):
 
     def _enter_standby(self, detail: str) -> None:
         self._safe_stop(cancel_tasks=True)
-        self._call(self.cinematic_exit, "退出运镜")
+        self._request_system_mode(SystemState.MODE_STANDBY, detail)
         self._set_state(self.STANDBY, detail)
 
     def _enter_follow(self) -> None:
         self._safe_stop(cancel_tasks=True)
-        self._call(self.cinematic_exit, "退出运镜")
         self._schedule_transition(self._finish_enter_follow, "FOLLOW准备中")
 
     def _finish_enter_follow(self) -> None:
-        self._publish_mode("auto")
-        self._set_state(self.FOLLOW, "自动跟随已接管")
+        self._request_system_mode(
+            SystemState.MODE_FOLLOW,
+            "operator_console_follow",
+            self.FOLLOW,
+            "自动跟随已接管",
+        )
 
     def _enter_cinematic(self) -> None:
         self._safe_stop(cancel_tasks=True)
@@ -227,32 +232,59 @@ class FcrModeConsole(Node):
         self._schedule_transition(self._finish_enter_cinematic, "CINEMATIC准备中")
 
     def _finish_enter_cinematic(self) -> None:
-        if not self.cinematic_enter.service_is_ready():
+        if not self.system_mode.service_is_ready():
             if time.monotonic() < self.cinematic_service_deadline:
                 self.pending_transition = self._finish_enter_cinematic
                 self.transition_at = time.monotonic() + 0.20
                 return
             self.get_logger().error(
-                "运镜进入服务 /cinematic/enter 在等待期限内未就绪；"
-                "确认 cinematic_motion_manager 已启动且未使用 --no-cinematic"
+                "系统模式服务 /system/set_mode 在等待期限内未就绪；"
+                "确认 system_mode_manager 已启动"
             )
-            self._set_state(self.STANDBY, "运镜管理节点不可用")
+            self._set_state(self.STANDBY, "系统模式管理节点不可用")
             return
-        future = self.cinematic_enter.call_async(Trigger.Request())
-        future.add_done_callback(self._cinematic_entered)
+        self._request_system_mode(
+            SystemState.MODE_CINEMATIC,
+            "operator_console_cinematic",
+            self.CINEMATIC,
+            "等待运镜动作",
+        )
 
-    def _cinematic_entered(self, future) -> None:
+    def _system_mode_changed(self, future, success_state: str, detail: str) -> None:
         response = future.result()
         if not response.success:
-            self.get_logger().error(f"进入运镜失败: {response.message}")
+            self.get_logger().error(f"系统模式切换失败: {response.message}")
             self._set_state(self.STANDBY, response.message)
             return
-        self._set_state(self.CINEMATIC, "等待运镜动作")
-        self.get_logger().info("运镜键: Z静态，W/S推拉，A/D横移，Q/E环绕")
+        self._set_state(success_state, detail)
+        if success_state == self.CINEMATIC:
+            self.get_logger().info("运镜键: Z静态，W/S推拉，A/D横移，Q/E环绕")
+
+    def _request_system_mode(
+        self,
+        mode: int,
+        reason: str,
+        success_state: Optional[str] = None,
+        detail: str = "",
+    ) -> bool:
+        if not self.system_mode.service_is_ready():
+            self.get_logger().error("系统模式服务 /system/set_mode 未就绪")
+            return False
+        request = SetSystemMode.Request()
+        request.mode = mode
+        request.reason = reason
+        future = self.system_mode.call_async(request)
+        if success_state is not None:
+            future.add_done_callback(
+                lambda completed: self._system_mode_changed(
+                    completed, success_state, detail
+                )
+            )
+        return True
 
     def _prepare_jog(self) -> None:
         self._safe_stop(cancel_tasks=True)
-        self._call(self.cinematic_exit, "退出运镜")
+        self._request_system_mode(SystemState.MODE_STANDBY, "operator_console_jog")
         self._schedule_transition(self._finish_prepare_jog, "MANUAL_JOG准备中")
 
     def _finish_prepare_jog(self) -> None:
@@ -263,7 +295,7 @@ class FcrModeConsole(Node):
 
     def _enter_teleop(self) -> None:
         self._safe_stop(cancel_tasks=True)
-        self._call(self.cinematic_exit, "退出运镜")
+        self._request_system_mode(SystemState.MODE_STANDBY, "operator_console_teleop")
         self._schedule_transition(self._finish_enter_teleop, "TELEOP准备中")
 
     def _finish_enter_teleop(self) -> None:

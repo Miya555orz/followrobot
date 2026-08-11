@@ -28,12 +28,6 @@ ENABLE_SERVO_MANAGER="${FCR_ENABLE_SERVO_MANAGER:-true}"
 ENABLE_GIMBAL_VISUAL_SERVO="${FCR_ENABLE_GIMBAL_VISUAL_SERVO:-true}"
 ENABLE_CINEMATIC_MOTION="${FCR_ENABLE_CINEMATIC_MOTION:-true}"
 ENABLE_VOICE="${FCR_ENABLE_VOICE:-true}"
-RUNTIME_VENV="${FCR_RUNTIME_VENV:-$HOME/venvs/fcr_runtime}"
-VOICE_CLASSIFIER_MODEL_ROOT="${FCR_CLASSIFIER_MODEL_ROOT:-$WORKSPACE/models/classifier_v2}"
-VOICE_EMBEDDING_MODEL_DIR="${FCR_EMBEDDING_MODEL_DIR:-$WORKSPACE/models/bge-base-zh-v1.5}"
-VOICE_HTTP_BIND_ADDRESS="${FCR_VOICE_HTTP_BIND_ADDRESS:-0.0.0.0}"
-VOICE_HTTP_PORT="${FCR_VOICE_HTTP_PORT:-8081}"
-VOICE_HTTP_AUTH_TOKEN="${FCR_VOICE_HTTP_AUTH_TOKEN:-}"
 
 usage() {
   cat <<'EOF'
@@ -54,7 +48,7 @@ Options:
   --no-gemini            Do not start Gemini/depth fusion.
   --no-chassis           Do not start the chassis driver.
   --no-translation       Disable automatic chassis translation.
-  --no-voice             Disable the Jetson-side Windows ASR bridge and voice routing.
+  --no-voice             Disable the Jetson-side candidate-intent gate and routing.
   -h, --help             Show this help.
 
 Environment equivalents:
@@ -65,10 +59,8 @@ Environment equivalents:
   FCR_ROS2_WS, FCR_FOXGLOVE_PORT, FCR_START_GEMINI,
   FCR_ENABLE_CHASSIS, FCR_SERVO_TRANSLATION, FCR_CONTROLLER,
   FCR_ENABLE_SERVO_MANAGER,
-  FCR_ENABLE_GIMBAL_VISUAL_SERVO, FCR_ENABLE_CINEMATIC_MOTION.
-  FCR_ENABLE_VOICE, FCR_RUNTIME_VENV, FCR_CLASSIFIER_MODEL_ROOT,
-  FCR_EMBEDDING_MODEL_DIR, FCR_VOICE_HTTP_BIND_ADDRESS,
-  FCR_VOICE_HTTP_PORT, FCR_VOICE_HTTP_AUTH_TOKEN.
+  FCR_ENABLE_GIMBAL_VISUAL_SERVO, FCR_ENABLE_CINEMATIC_MOTION,
+  FCR_ENABLE_VOICE.
 EOF
 }
 
@@ -309,12 +301,6 @@ if command -v flock >/dev/null 2>&1; then
     exit 1
   fi
 fi
-if [[ ! "$VOICE_HTTP_PORT" =~ ^[0-9]+$ ]] ||
-   ((VOICE_HTTP_PORT < 1 || VOICE_HTTP_PORT > 65535)); then
-  echo "ERROR: invalid voice HTTP port: $VOICE_HTTP_PORT" >&2
-  exit 2
-fi
-
 # Ask for sudo once. Repeated prompts in the middle of hardware recovery can
 # leave the interface half-configured.
 sudo -v
@@ -409,25 +395,6 @@ if [[ ! -f "$MODEL_PATH" ]]; then
   echo "ERROR: TensorRT engine not found: $MODEL_PATH" >&2
   exit 1
 fi
-if [[ "$ENABLE_VOICE" == true ]]; then
-  if [[ ! -f "$RUNTIME_VENV/bin/activate" ]]; then
-    echo "ERROR: voice runtime environment not found: $RUNTIME_VENV" >&2
-    exit 1
-  fi
-  if [[ ! -f "$VOICE_CLASSIFIER_MODEL_ROOT/bert_intent_output/config.json" ]]; then
-    echo "ERROR: voice classifier model not found under: $VOICE_CLASSIFIER_MODEL_ROOT" >&2
-    exit 1
-  fi
-  if [[ ! -d "$VOICE_CLASSIFIER_MODEL_ROOT/council" ]]; then
-    echo "ERROR: voice classifier council not found: $VOICE_CLASSIFIER_MODEL_ROOT/council" >&2
-    exit 1
-  fi
-  if [[ ! -f "$VOICE_EMBEDDING_MODEL_DIR/config.json" ]]; then
-    echo "ERROR: voice embedding model not found under: $VOICE_EMBEDDING_MODEL_DIR" >&2
-    exit 1
-  fi
-fi
-
 # ROS 2 generated setup files legitimately probe optional variables before
 # defining them, which is incompatible with Bash nounset. Keep strict mode for
 # this script, but suspend nounset only while the generated environments load.
@@ -437,15 +404,6 @@ source "/opt/ros/$ROS_DISTRO_NAME/setup.bash"
 # shellcheck disable=SC1090
 source "$WORKSPACE/install/setup.bash"
 set -u
-if [[ "$ENABLE_VOICE" == true ]]; then
-  # Preserve the proven Jetson ML runtime for torch/transformers while the
-  # detector remains the independent C++ TensorRT process. Do not modify
-  # CUDA_VISIBLE_DEVICES here: that would also hide the GPU from YOLO.
-  set +u
-  # shellcheck disable=SC1090
-  source "$RUNTIME_VENV/bin/activate"
-  set -u
-fi
 require_command ros2
 
 echo
@@ -460,22 +418,9 @@ echo "  Gemini/fusion  : $START_GEMINI"
 echo "  chassis        : $ENABLE_CHASSIS"
 echo "  translation    : $SERVO_TRANSLATION"
 echo "  Foxglove       : ws://0.0.0.0:$FOXGLOVE_PORT"
-echo "  voice bridge    : $ENABLE_VOICE"
-if [[ "$ENABLE_VOICE" == true ]]; then
-  echo "  voice endpoint  : http://$VOICE_HTTP_BIND_ADDRESS:$VOICE_HTTP_PORT/voice/text"
-fi
+echo "  voice gate      : $ENABLE_VOICE (external candidate intents only)"
 echo "  command mux    : starts in MANUAL; switch to AUTO explicitly"
 echo
-
-# ROS 2 Humble rejects an explicitly empty launch assignment such as
-# "voice_http_auth_token:=". Omit the optional argument entirely when no
-# shared token is configured so the launch-file default remains in effect.
-VOICE_AUTH_LAUNCH_ARGS=()
-if [[ -n "$VOICE_HTTP_AUTH_TOKEN" ]]; then
-  VOICE_AUTH_LAUNCH_ARGS+=(
-    "voice_http_auth_token:=$VOICE_HTTP_AUTH_TOKEN"
-  )
-fi
 
 # PBVS uses the fused 3D target for distance control and the 2D aim target for
 # the fast angular loop. Keep comments outside the continued launch command:
@@ -503,9 +448,4 @@ exec ros2 launch bringup_pkg fcr_bringup.launch.py \
   enable_cinematic_motion:="$ENABLE_CINEMATIC_MOTION" \
   servo_allocation_ratio:="$ALLOCATION_RATIO" \
   servo_allow_chassis_translation:="$SERVO_TRANSLATION" \
-  enable_voice_control:="$ENABLE_VOICE" \
-  voice_classifier_model_root:="$VOICE_CLASSIFIER_MODEL_ROOT" \
-  voice_embedding_model_dir:="$VOICE_EMBEDDING_MODEL_DIR" \
-  voice_http_bind_address:="$VOICE_HTTP_BIND_ADDRESS" \
-  voice_http_port:="$VOICE_HTTP_PORT" \
-  "${VOICE_AUTH_LAUNCH_ARGS[@]}"
+  enable_voice_control:="$ENABLE_VOICE"

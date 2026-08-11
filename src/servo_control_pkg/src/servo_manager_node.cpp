@@ -88,6 +88,7 @@
 #include <vision_servo_msgs/msg/gimbal_cmd.hpp>
 #include <vision_servo_msgs/msg/platform_state.hpp>
 #include <vision_servo_msgs/srv/set_servo_mode.hpp>
+#include <vision_servo_msgs/srv/set_follow_distance.hpp>
 #include <vision_servo_msgs/action/visual_servo.hpp>
 #include <builtin_interfaces/msg/time.hpp>
 #include <geometry_msgs/msg/twist.hpp>
@@ -336,6 +337,11 @@ public:
     servo_mode_srv_ = this->create_service<vision_servo_msgs::srv::SetServoMode>(
       "/servo/set_mode",
       std::bind(&ServoManagerNode::set_mode_callback, this, std::placeholders::_1, std::placeholders::_2));
+    follow_distance_srv_ =
+      this->create_service<vision_servo_msgs::srv::SetFollowDistance>(
+      "/follow/set_distance",
+      std::bind(&ServoManagerNode::set_follow_distance_callback, this,
+        std::placeholders::_1, std::placeholders::_2));
 
     // ═══════════════════════════════════════════════════════════════════════
     // 6. 动作服务器 — 长周期伺服任务
@@ -610,6 +616,33 @@ private:
    *   mode 2-4 → IBVSController（HYBRID/MPC/RL 占位，待实现）
    * 当前仅有 mode 0 和 mode 1 具备独立实现。
    */
+  void set_follow_distance_callback(
+      const vision_servo_msgs::srv::SetFollowDistance::Request::SharedPtr req,
+      vision_servo_msgs::srv::SetFollowDistance::Response::SharedPtr resp) {
+    const double current = this->get_parameter("desired_depth").as_double();
+    const double requested = req->relative ? current + req->distance_m : req->distance_m;
+    if (!std::isfinite(requested) || requested < 0.5 || requested > 8.0) {
+      resp->success = false;
+      resp->applied_distance_m = static_cast<float>(current);
+      resp->message = "distance_out_of_safe_range_0.5_to_8.0m";
+      return;
+    }
+    const auto result = this->set_parameter(rclcpp::Parameter("desired_depth", requested));
+    if (!result.successful) {
+      resp->success = false;
+      resp->applied_distance_m = static_cast<float>(current);
+      resp->message = result.reason;
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> lock(state_mutex_);
+      if (controller_) controller_->updateDesiredDepth(requested);
+    }
+    resp->success = true;
+    resp->applied_distance_m = static_cast<float>(requested);
+    resp->message = "follow_distance_updated";
+  }
+
   void set_mode_callback(
       const std::shared_ptr<vision_servo_msgs::srv::SetServoMode::Request> req,
       std::shared_ptr<vision_servo_msgs::srv::SetServoMode::Response> resp) {
@@ -1504,6 +1537,8 @@ private:
 
   // ── 服务与动作 ──────────────────────────────────────────────────────
   rclcpp::Service<vision_servo_msgs::srv::SetServoMode>::SharedPtr servo_mode_srv_;
+  rclcpp::Service<vision_servo_msgs::srv::SetFollowDistance>::SharedPtr
+    follow_distance_srv_;
   rclcpp_action::Server<vision_servo_msgs::action::VisualServo>::SharedPtr servo_action_;
   std::thread action_thread_;  ///< 执行 VisualServo action 的独立线程
 

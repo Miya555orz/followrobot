@@ -9,6 +9,7 @@
 
 #include "CameraRemote_SDK.h"
 #include "CrDeviceProperty.h"
+#include "CrCommandData.h"
 #include "CrError.h"
 #include "CrImageDataBlock.h"
 #include "ICrCameraObjectInfo.h"
@@ -382,6 +383,94 @@ bool SonyCameraStreamer::isInitialized() const { return initialized_; }
 
 uint64_t SonyCameraStreamer::consecutiveCaptureFailures() const {
   return consecutive_capture_failures_.load(std::memory_order_relaxed);
+}
+
+bool SonyCameraStreamer::setRecording(bool recording, uint32_t& sdk_error) {
+  std::lock_guard<std::mutex> lock(command_mutex_);
+  sdk_error = static_cast<uint32_t>(SDK::CrError_None);
+  if (!connected_ || device_handle_ == 0) {
+    sdk_error = static_cast<uint32_t>(SDK::CrError_Connect_Disconnected);
+    return false;
+  }
+  const auto parameter = recording
+      ? SDK::CrCommandParam_Down
+      : SDK::CrCommandParam_Up;
+  const auto error = SDK::SendCommand(
+      static_cast<SDK::CrDeviceHandle>(device_handle_),
+      SDK::CrCommandId_MovieRecord, parameter);
+  sdk_error = static_cast<uint32_t>(error);
+  return CR_SUCCEEDED(error);
+}
+
+bool SonyCameraStreamer::takePhoto(uint32_t& sdk_error) {
+  std::lock_guard<std::mutex> lock(command_mutex_);
+  sdk_error = static_cast<uint32_t>(SDK::CrError_None);
+  if (!connected_ || device_handle_ == 0) {
+    sdk_error = static_cast<uint32_t>(SDK::CrError_Connect_Disconnected);
+    return false;
+  }
+  const auto handle = static_cast<SDK::CrDeviceHandle>(device_handle_);
+  auto error = SDK::SendCommand(
+      handle, SDK::CrCommandId_Release, SDK::CrCommandParam_Down);
+  if (CR_FAILED(error)) {
+    sdk_error = static_cast<uint32_t>(error);
+    return false;
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(35));
+  error = SDK::SendCommand(
+      handle, SDK::CrCommandId_Release, SDK::CrCommandParam_Up);
+  sdk_error = static_cast<uint32_t>(error);
+  return CR_SUCCEEDED(error);
+}
+
+RecordingState SonyCameraStreamer::recordingState(uint32_t& sdk_error) {
+  std::lock_guard<std::mutex> lock(command_mutex_);
+  sdk_error = static_cast<uint32_t>(SDK::CrError_None);
+  if (!connected_ || device_handle_ == 0) {
+    sdk_error = static_cast<uint32_t>(SDK::CrError_Connect_Disconnected);
+    return RecordingState::Unknown;
+  }
+
+  CrInt32u code = SDK::CrDeviceProperty_RecordingState;
+  SDK::CrDeviceProperty* properties = nullptr;
+  CrInt32 count = 0;
+  const auto handle = static_cast<SDK::CrDeviceHandle>(device_handle_);
+  const auto error = SDK::GetSelectDeviceProperties(
+      handle, 1, &code, &properties, &count);
+  sdk_error = static_cast<uint32_t>(error);
+  if (CR_FAILED(error) || properties == nullptr || count < 1) {
+    if (properties != nullptr) {
+      SDK::ReleaseDeviceProperties(handle, properties);
+    }
+    return RecordingState::Unknown;
+  }
+
+  RecordingState result = RecordingState::Unknown;
+  for (CrInt32 index = 0; index < count; ++index) {
+    if (properties[index].GetCode() != SDK::CrDeviceProperty_RecordingState) {
+      continue;
+    }
+    switch (static_cast<CrInt16u>(properties[index].GetCurrentValue())) {
+      case SDK::CrMovie_Recording_State_Not_Recording:
+        result = RecordingState::Stopped;
+        break;
+      case SDK::CrMovie_Recording_State_Recording:
+        result = RecordingState::Recording;
+        break;
+      case SDK::CrMovie_Recording_State_Recording_Failed:
+        result = RecordingState::Error;
+        break;
+      case SDK::CrMovie_Recording_State_IntervalRec_Waiting_Record:
+        result = RecordingState::IntervalWaiting;
+        break;
+      default:
+        result = RecordingState::Unknown;
+        break;
+    }
+    break;
+  }
+  SDK::ReleaseDeviceProperties(handle, properties);
+  return result;
 }
 
 }  // namespace sony_camera_pkg

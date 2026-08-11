@@ -48,6 +48,8 @@ endif()
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(vision_servo_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(image_transport REQUIRED)
 find_package(camera_info_manager REQUIRED)
@@ -83,7 +85,7 @@ add_executable(sony_camera_node src/sony_camera_node.cpp)
 target_include_directories(sony_camera_node PRIVATE include ${OpenCV_INCLUDE_DIRS})
 ament_target_dependencies(
   sony_camera_node
-  rclcpp sensor_msgs std_msgs cv_bridge image_transport
+  rclcpp sensor_msgs std_msgs std_srvs vision_servo_msgs cv_bridge image_transport
   camera_info_manager diagnostic_updater diagnostic_msgs
 )
 target_link_libraries(sony_camera_node sony_camera_streamer ${OpenCV_LIBS})
