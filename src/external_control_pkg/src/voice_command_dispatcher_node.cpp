@@ -167,14 +167,13 @@ private:
       publish_for(command, index, target, false, "confidence_below_threshold");
       return;
     }
-    if (!have_system_state_) {
-      publish_for(command, index, target, false, "system_state_unavailable");
-      return;
-    }
-
     if (intent == "emergency_stop") {
       std_msgs::msg::Bool stop; stop.data = true; estop_pub_->publish(stop);
       publish_for(command, index, target, true, "emergency_stop_latched");
+      return;
+    }
+    if (!have_system_state_) {
+      publish_for(command, index, target, false, "system_state_unavailable");
       return;
     }
     if (intent == "stop_all") {
@@ -282,13 +281,15 @@ private:
       if (system_state_.mode != SystemState::MODE_FOLLOW) {
         publish_for(command, index, VoiceTarget::Autonomy, false, "distance_adjust_requires_follow");
       } else {
-        if (command.distance <= 0.0F || !follow_distance_client_->service_is_ready()) {
+        const bool valid_distance = std::isfinite(command.distance) &&
+          (command.distance_relative ? std::abs(command.distance) > 0.0F : command.distance > 0.0F);
+        if (!valid_distance || !follow_distance_client_->service_is_ready()) {
           publish_for(command, index, VoiceTarget::Autonomy, false,
-                      command.distance <= 0.0F ? "distance_parameter_missing" : "follow_distance_service_unavailable");
+                      !valid_distance ? "distance_parameter_missing" : "follow_distance_service_unavailable");
         } else {
           auto request = std::make_shared<SetFollowDistance::Request>();
           request->distance_m = command.unit == "cm" ? command.distance / 100.0F : command.distance;
-          request->relative = false;
+          request->relative = command.distance_relative;
           follow_distance_client_->async_send_request(request);
           publish_for(command, index, VoiceTarget::Autonomy, true, "follow_distance_requested");
         }

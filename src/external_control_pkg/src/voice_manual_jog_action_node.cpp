@@ -82,8 +82,13 @@ private:
     const double requested_distance = distance_metres(command);
     const double chassis_step = requested_distance > 0.0 ? requested_distance :
       get_parameter("default_chassis_step_m").as_double();
-    const double turn_step = get_parameter("default_chassis_turn_rad").as_double();
-    const double gimbal_step = get_parameter("default_gimbal_step_rad").as_double();
+    constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+    const double requested_angle = std::isfinite(command.angle) && command.angle > 0.0F ?
+      static_cast<double>(command.angle) * kDegToRad : -1.0;
+    const double turn_step = requested_angle > 0.0 ? requested_angle :
+      get_parameter("default_chassis_turn_rad").as_double();
+    const double gimbal_step = requested_angle > 0.0 ? requested_angle :
+      get_parameter("default_gimbal_step_rad").as_double();
 
     if (has_intent(command, {"chassis_move_forward"})) {
       goal.axis = ManualJog::Goal::CHASSIS_X;

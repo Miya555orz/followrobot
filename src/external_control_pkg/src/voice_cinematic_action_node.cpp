@@ -40,6 +40,7 @@ public:
     declare_parameter("exit_service", "/cinematic/exit");
     declare_parameter("min_confidence", 0.60);
     declare_parameter("default_dolly_distance_m", 1.5);
+    declare_parameter("default_truck_distance_m", 0.5);
     declare_parameter("default_orbit_radius_m", 2.0);
     declare_parameter("default_orbit_angle_deg", 30.0);
     declare_parameter("default_speed_mps", 0.08);
@@ -100,8 +101,15 @@ private:
         goal.mode = Action::Goal::DOLLY_IN_OUT;
         goal.tracking_id = -1;
         const float requested_distance = distance_metres(*msg);
-        goal.target_distance_m = requested_distance > 0.0F ? requested_distance :
-          static_cast<float>(get_parameter("default_dolly_distance_m").as_double());
+        if (msg->direction != 0) {
+          const float displacement = requested_distance > 0.0F ? requested_distance :
+            static_cast<float>(get_parameter("default_dolly_distance_m").as_double());
+          goal.displacement_m = static_cast<float>(msg->direction) * displacement;
+          goal.direction = msg->direction;
+        } else {
+          goal.target_distance_m = requested_distance > 0.0F ? requested_distance :
+            static_cast<float>(get_parameter("default_dolly_distance_m").as_double());
+        }
         goal.max_speed = speed_from_command(*msg);
         goal.duration_sec = static_cast<float>(
           get_parameter("default_timeout_sec").as_double());
@@ -113,13 +121,31 @@ private:
         const float requested_distance = distance_metres(*msg);
         goal.orbit_radius_m = requested_distance > 0.0F ? requested_distance :
           static_cast<float>(get_parameter("default_orbit_radius_m").as_double());
-        goal.orbit_angle_deg = static_cast<float>(
+        goal.orbit_angle_deg = msg->angle > 0.0F ? msg->angle : static_cast<float>(
           get_parameter("default_orbit_angle_deg").as_double());
         goal.max_speed = speed_from_command(*msg);
         goal.duration_sec = static_cast<float>(
           get_parameter("default_timeout_sec").as_double());
-        goal.direction = static_cast<int8_t>(std::clamp<int64_t>(
-          get_parameter("default_orbit_direction").as_int(), -1, 1));
+        goal.direction = msg->direction != 0 ? msg->direction : static_cast<int8_t>(
+          std::clamp<int64_t>(get_parameter("default_orbit_direction").as_int(), -1, 1));
+        queue_or_send(goal);
+      } else if (intent == "start_truck") {
+        Action::Goal goal;
+        goal.mode = Action::Goal::TRUCK_LEFT_RIGHT;
+        goal.tracking_id = -1;
+        const float requested_distance = distance_metres(*msg);
+        const float displacement = requested_distance > 0.0F ? requested_distance :
+          static_cast<float>(get_parameter("default_truck_distance_m").as_double());
+        goal.displacement_m = static_cast<float>(msg->direction == 0 ? 1 : msg->direction) * displacement;
+        goal.max_speed = speed_from_command(*msg);
+        goal.duration_sec = static_cast<float>(get_parameter("default_timeout_sec").as_double());
+        queue_or_send(goal);
+      } else if (intent == "start_static_track") {
+        Action::Goal goal;
+        goal.mode = Action::Goal::STATIC_TRACK;
+        goal.tracking_id = -1;
+        goal.max_speed = speed_from_command(*msg);
+        goal.duration_sec = static_cast<float>(get_parameter("default_timeout_sec").as_double());
         queue_or_send(goal);
       } else if (intent == "query_camera_motion_status") {
         RCLCPP_INFO(

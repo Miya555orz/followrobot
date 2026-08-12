@@ -406,6 +406,12 @@ source "$WORKSPACE/install/setup.bash"
 set -u
 require_command ros2
 
+if [[ "$ENABLE_VOICE" == true && -z "${FCR_VOICE_AUTH_TOKEN:-}" ]]; then
+  echo "ERROR: voice control requires FCR_VOICE_AUTH_TOKEN." >&2
+  echo "Set the same long random token on Jetson and Windows, or start with --no-voice." >&2
+  exit 2
+fi
+
 echo
 echo "Starting FCR:"
 echo "  controller     : ${CONTROLLER^^}"
@@ -418,7 +424,11 @@ echo "  Gemini/fusion  : $START_GEMINI"
 echo "  chassis        : $ENABLE_CHASSIS"
 echo "  translation    : $SERVO_TRANSLATION"
 echo "  Foxglove       : ws://0.0.0.0:$FOXGLOVE_PORT"
-echo "  voice gate      : $ENABLE_VOICE (external candidate intents only)"
+echo "  voice gate      : $ENABLE_VOICE (Windows structured candidates)"
+if [[ "$ENABLE_VOICE" == true ]]; then
+  echo "  voice HTTP      : http://0.0.0.0:8081/voice/command"
+  echo "  voice auth      : $([[ -n "${FCR_VOICE_AUTH_TOKEN:-}" ]] && echo enabled || echo disabled)"
+fi
 echo "  command mux    : starts in MANUAL; switch to AUTO explicitly"
 echo
 

@@ -19,7 +19,7 @@ setup(
     zip_safe=True,
     maintainer="FCR Dev Team",
     maintainer_email="dev@fcr-project.org",
-    description="Console-driven BERT intent inference for the FCR voice control chain.",
+    description="Validated remote voice candidate ingress for the FCR control chain.",
     license="Apache-2.0",
     entry_points={
         "console_scripts": [

@@ -3,7 +3,7 @@
 <package format="3">
   <name>voice_intent_pkg</name>
   <version>0.1.0</version>
-  <description>Console-driven BERT intent inference for the FCR voice control chain.</description>
+  <description>Validated remote voice candidate ingress for the FCR control chain.</description>
   <maintainer email="dev@fcr-project.org">FCR Dev Team</maintainer>
   <license>Apache-2.0</license>
 
@@ -12,6 +12,7 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>rcl_interfaces</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>vision_servo_msgs</exec_depend>
   <exec_depend>external_control_pkg</exec_depend>
   <!-- Python ML dependencies are installed in the fcr_bert virtual environment. -->
 

@@ -112,7 +112,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "start_text_http_bridge",
             default_value="false",
-            description="是否接收笔记本 ASR 通过 HTTP 发送的文本",
+            description="是否接收独立语音计算机通过 HTTP 发送的结构化候选指令",
         ),
         DeclareLaunchArgument(
             "text_http_bind_address",
@@ -332,6 +332,10 @@ def generate_launch_description():
                 "port": ParameterValue(text_http_port, value_type=int),
                 "text_topic": text_topic,
                 "auth_token": text_http_auth_token,
+                "max_request_age_sec": 10.0,
+                "max_future_skew_sec": 5.0,
+                "state_topic": "/system/state",
+                "state_timeout_sec": 3.0,
             }],
         ),
 

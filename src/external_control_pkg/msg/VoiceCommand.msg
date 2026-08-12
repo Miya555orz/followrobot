@@ -20,6 +20,11 @@ string raw_text
 # 距离调整相关
 float32 distance         # 距离值（米），-1 表示未指定
 string unit              # 单位: "m" / "cm"，空字符串表示未指定
+bool distance_relative   # true=相对当前值调整，false=绝对目标/动作位移
+
+# 角度参数（云台微调、底盘转向、环绕角）
+float32 angle            # 角度值（degree），-1 表示未指定
+int8 direction           # -1=右/后退，0=自动，1=左/前进
 
 # 速度设定
 string speed             # "fast" / "mid" / "slow"，空字符串表示未指定

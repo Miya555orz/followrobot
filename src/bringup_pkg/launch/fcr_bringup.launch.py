@@ -15,7 +15,12 @@ from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 )
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import (
+    EnvironmentVariable,
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    PythonExpression,
+)
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition
@@ -110,17 +115,21 @@ def generate_launch_description():
         }.items(),
     )
 
-    # The independent computer publishes candidate VoiceCommand messages.
-    # Jetson validates state/confidence and routes accepted commands; no ASR or
-    # classifier runtime is loaded in this bringup.
+    # The independent Windows computer performs ASR, classification and
+    # parameter extraction. Jetson accepts only versioned candidate commands;
+    # its dispatcher remains the authoritative state/safety gate.
     voice_control_launch = IncludeLaunchDescription(
         PathJoinSubstitution(
             [external_control_share, "launch", "voice_control.launch.py"]
         ),
         launch_arguments={
             "start_wake_up_node": "false",
-            # 独立计算机负责ASR和分类；Jetson只接收结构化候选意图。
-            "start_text_http_bridge": "false",
+            "start_text_http_bridge": LaunchConfiguration(
+                "voice_start_text_http_bridge"
+            ),
+            "text_http_auth_token": LaunchConfiguration(
+                "voice_http_auth_token"
+            ),
             "start_intent_classifier": "false",
             "publish_cloud_intents": "false",
             "start_dispatcher": "true",
@@ -406,6 +415,17 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "voice_min_confidence", default_value="0.60",
             description="Jetson接受独立计算机候选意图的最低置信度",
+        ),
+        DeclareLaunchArgument(
+            "voice_start_text_http_bridge", default_value="true",
+            description="启动Windows语音代理使用的结构化候选HTTP入口",
+        ),
+        DeclareLaunchArgument(
+            "voice_http_auth_token",
+            default_value=EnvironmentVariable(
+                "FCR_VOICE_AUTH_TOKEN", default_value=""
+            ),
+            description="Windows到Jetson语音HTTP网关的Bearer共享令牌",
         ),
 
         # 阶段 1：平台驱动 (t=0s)

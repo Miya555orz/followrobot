@@ -1,0 +1,45 @@
+{
+  "audio": {
+    "device": null,
+    "sample_rate": 16000,
+    "block_ms": 30,
+    "energy_threshold": 0.015,
+    "speech_start_ms": 180,
+    "silence_timeout_ms": 750,
+    "pre_roll_ms": 300,
+    "max_utterance_sec": 8.0,
+    "min_utterance_sec": 0.35
+  },
+  "asr": {
+    "module_root": "D:/code/fcr_ros2/voice/server",
+    "model": "Qwen/Qwen3-ASR-0.6B",
+    "device": "cuda",
+    "offline": true
+  },
+  "classifier": {
+    "enabled": true,
+    "project_root": "D:/code/fcr_ros2/classfier/fcr_speech_interpreter",
+    "bert_model": "xlx2673/classifier",
+    "require_eight_labels": true
+  },
+  "extractor": {
+    "enabled": false,
+    "model": "qwen2.5:1.5b",
+    "ollama_url": "http://127.0.0.1:11434/api/generate"
+  },
+  "jetson": {
+    "base_url": "http://192.168.50.35:8081",
+    "auth_token_env": "FCR_VOICE_AUTH_TOKEN",
+    "require_auth": true,
+    "connect_timeout_sec": 1.0,
+    "request_timeout_sec": 2.0,
+    "retry_delays_sec": [0.2, 0.5, 1.0],
+    "command_ttl_sec": 3.0,
+    "state_cache_sec": 2.0
+  },
+  "runtime": {
+    "duplicate_window_sec": 1.5,
+    "log_dir": "logs",
+    "log_level": "INFO"
+  }
+}
