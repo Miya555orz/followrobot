@@ -17,22 +17,41 @@ import queue
 import re
 import signal
 import sys
-import tempfile
 import threading
 import time
 import uuid
-import wave
 from dataclasses import dataclass
 from typing import Any
 
 
 LOG = logging.getLogger("fcr_voice_agent")
-EMERGENCY_PHRASES = ("急停", "紧急停车", "紧急停止", "立即停车", "马上停车")
+EMERGENCY_PHRASES = frozenset({
+    "急停", "紧急停车", "紧急停止", "立即急停", "执行急停",
+    "全局急停", "立即停车", "马上停车",
+})
+STANDBY_PHRASES = frozenset({
+    "进入待机", "进入待机状态", "进入待机模式", "回到待机",
+    "回到待机状态", "切换到待机", "切换到待机模式",
+})
 STATE_TO_CLASSIFIER = {
     "STANDBY": "待机",
     "FOLLOW": "跟随",
     "CINEMATIC": "运镜",
 }
+
+
+def normalize_control_phrase(text: str) -> str:
+    """Normalize only for exact safety-command matching, never fuzzy matching."""
+    return re.sub(r"[\s\u3000,.，。!！?？;；:：、]", "", text).lower()
+
+
+def deterministic_safety_intent(text: str) -> str | None:
+    normalized = normalize_control_phrase(text)
+    if normalized in STANDBY_PHRASES:
+        return "stop_all"
+    if normalized in EMERGENCY_PHRASES:
+        return "emergency_stop"
+    return None
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -65,8 +84,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "classifier": {
         "enabled": True,
-        "project_root": "D:/code/fcr_ros2/classfier/fcr_speech_interpreter",
-        "bert_model": "xlx2673/classifier",
+        "project_root": "D:/code/fcr_ros2/classfier/eight/fcr_speech_interpreter",
+        "bert_model": "models/classifier_8class",
+        "embedding_model": "models/bge-base-zh-v1.5",
         "require_eight_labels": True,
     },
     "extractor": {
@@ -138,10 +158,27 @@ class JetsonClient:
             raise RuntimeError(
                 f"required environment variable {config['auth_token_env']} is empty"
             )
+        if token:
+            try:
+                token.encode("ascii")
+            except UnicodeEncodeError as exc:
+                raise RuntimeError(
+                    f"{config['auth_token_env']} must contain ASCII characters only; "
+                    "do not use the Chinese placeholder text"
+                ) from exc
+            if len(token) < 32:
+                raise RuntimeError(
+                    f"{config['auth_token_env']} must be at least 32 ASCII characters "
+                    f"(current length: {len(token)})"
+                )
         self._headers = {"Content-Type": "application/json"}
         if token:
             self._headers["Authorization"] = f"Bearer {token}"
         self._session = requests.Session()
+        # Jetson is reached over the local LAN.  Do not inherit Windows
+        # HTTP(S)_PROXY settings, otherwise a stopped desktop proxy can make
+        # an otherwise healthy robot look offline.
+        self._session.trust_env = False
         self._state: str | None = None
         self._state_at = 0.0
 
@@ -249,11 +286,29 @@ class IntentGate:
         if not project_root.is_dir():
             raise FileNotFoundError(f"classifier project not found: {project_root}")
         sys.path.insert(0, str(project_root))
+        import classifier.classifier as classifier_module
         from classifier import DoubleLayerClassifier
         from extractor import Extractor
         from splitter import Splitter
 
-        classifier = DoubleLayerClassifier(bert_dir=str(config["bert_model"]))
+        bert_model = Path(str(config["bert_model"]))
+        embedding_model = Path(str(config["embedding_model"]))
+        if not bert_model.is_absolute():
+            bert_model = Path(__file__).resolve().parent / bert_model
+        if not embedding_model.is_absolute():
+            embedding_model = Path(__file__).resolve().parent / embedding_model
+        if not bert_model.is_dir():
+            raise FileNotFoundError(
+                f"local 8-class BERT model not found: {bert_model}; "
+                "run prepare_models.ps1 once with network access"
+            )
+        if not embedding_model.is_dir():
+            raise FileNotFoundError(
+                f"local BGE embedding model not found: {embedding_model}; "
+                "run prepare_models.ps1 once with network access"
+            )
+        classifier_module.EMBEDDING_MODEL = str(embedding_model)
+        classifier = DoubleLayerClassifier(bert_dir=str(bert_model))
         classifier.load_all()
         num_labels = int(classifier.bert_model.config.num_labels)
         if bool(config["require_eight_labels"]) and num_labels != 8:
@@ -273,12 +328,13 @@ class IntentGate:
     def candidates(
         self, text: str, state: str | None
     ) -> tuple[list[dict[str, Any]], str]:
-        if any(phrase in text for phrase in EMERGENCY_PHRASES):
+        deterministic_intent = deterministic_safety_intent(text)
+        if deterministic_intent is not None:
             return [{
-                "intent": "emergency_stop",
+                "intent": deterministic_intent,
                 "confidence": 1.0,
                 "parameters": {},
-            }], "emergency_phrase_bypass"
+            }], f"deterministic_{deterministic_intent}"
         if state is None:
             return [], "jetson_state_unavailable"
         if not self._enabled:
@@ -297,6 +353,15 @@ class IntentGate:
             )
             converted = convert_candidate(item, extracted)
             if converted is not None:
+                # A statistical classifier must never be the sole authority for
+                # latching the robot-wide emergency stop.  Non-whitelisted stop
+                # language is rejected instead of being guessed into an action.
+                if converted["intent"] == "emergency_stop":
+                    LOG.error(
+                        "blocked non-whitelisted emergency_stop classification: %s",
+                        text,
+                    )
+                    continue
                 candidates.append(converted)
         summary = ",".join(
             f"{item['coarse_name']}/{item['fine_name']}" for item in result.filtered
@@ -509,13 +574,35 @@ class SpeechRecognizer:
         sys.path.insert(0, str(module_root))
         from listener import Listener
 
+        requested_device = str(config.get("device", "auto")).lower()
+        import torch
+
+        cuda_available = bool(torch.cuda.is_available())
+        if requested_device == "auto":
+            device = "cuda" if cuda_available else "cpu"
+        elif requested_device.startswith("cuda") and not cuda_available:
+            LOG.warning(
+                "ASR requested device=%s, but this PyTorch build has no CUDA; "
+                "falling back to CPU",
+                requested_device,
+            )
+            device = "cpu"
+        else:
+            device = requested_device
+
         self._listener = Listener(
-            model_name=str(config["model"]), device=str(config["device"])
+            model_name=str(config["model"]), device=device
         )
         self._listener.load_model()
 
-    def transcribe(self, wav_path: Path) -> str:
-        return str(self._listener.transcribe(str(wav_path))).strip()
+    def transcribe(self, segment: "AudioSegment") -> str:
+        # Feed the float32 waveform directly to Qwen ASR.  Passing a temporary
+        # WAV path makes qwen-asr use librosa, which imports Numba native DLLs;
+        # those DLLs are commonly blocked by managed Windows application-control
+        # policies and are unnecessary for microphone audio we already decoded.
+        return str(
+            self._listener.transcribe_array(segment.samples, segment.sample_rate)
+        ).strip()
 
 
 @dataclass
@@ -625,18 +712,6 @@ class VadRecorder:
                     recording = False
 
 
-def write_wav(segment: AudioSegment, path: Path) -> None:
-    import numpy as np
-
-    pcm = np.clip(segment.samples, -1.0, 1.0)
-    pcm = (pcm * 32767.0).astype("<i2")
-    with wave.open(str(path), "wb") as output:
-        output.setnchannels(1)
-        output.setsampwidth(2)
-        output.setframerate(segment.sample_rate)
-        output.writeframes(pcm.tobytes())
-
-
 class VoiceAgent:
     def __init__(self, config: dict[str, Any]) -> None:
         # Apply offline mode before either the classifier or ASR imports
@@ -675,17 +750,11 @@ class VoiceAgent:
 
     def _process(self, segment: AudioSegment) -> None:
         started = time.monotonic()
-        fd, name = tempfile.mkstemp(suffix=".wav")
-        os.close(fd)
-        wav_path = Path(name)
         try:
-            write_wav(segment, wav_path)
-            text = self._recognizer.transcribe(wav_path)
+            text = self._recognizer.transcribe(segment)
         except Exception:
             LOG.exception("ASR failed")
             return
-        finally:
-            wav_path.unlink(missing_ok=True)
         if not text:
             return
         now = time.monotonic()

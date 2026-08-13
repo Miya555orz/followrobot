@@ -20,6 +20,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 namespace external_control_pkg {
 
@@ -101,6 +102,28 @@ public:
   }
 
 private:
+  static std::string normalize_safety_phrase(std::string text) {
+    const std::string ignored[] = {
+      " ", "\t", "\r", "\n", ",", ".", "!", "?", ";", ":",
+      "，", "。", "！", "？", "；", "：", "、", "　"
+    };
+    for (const auto& token : ignored) {
+      size_t position = 0;
+      while ((position = text.find(token, position)) != std::string::npos) {
+        text.erase(position, token.size());
+      }
+    }
+    return text;
+  }
+
+  static bool explicit_emergency_phrase(const std::string& raw_text) {
+    static const std::unordered_set<std::string> allowed = {
+      "急停", "紧急停车", "紧急停止", "立即急停", "执行急停",
+      "全局急停", "立即停车", "马上停车"
+    };
+    return allowed.count(normalize_safety_phrase(raw_text)) != 0U;
+  }
+
   static bool is_cinematic_action(const std::string& intent) {
     return intent == "start_orbit" || intent == "start_dolly" ||
            intent == "start_truck" || intent == "start_static_track";
@@ -168,6 +191,13 @@ private:
       return;
     }
     if (intent == "emergency_stop") {
+      if (!explicit_emergency_phrase(command.raw_text)) {
+        RCLCPP_ERROR(get_logger(),
+          "拒绝非白名单语音急停: raw_text='%s'", command.raw_text.c_str());
+        publish_for(command, index, target, false,
+                    "emergency_stop_phrase_not_explicit");
+        return;
+      }
       std_msgs::msg::Bool stop; stop.data = true; estop_pub_->publish(stop);
       publish_for(command, index, target, true, "emergency_stop_latched");
       return;

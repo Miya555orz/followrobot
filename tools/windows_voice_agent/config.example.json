@@ -13,13 +13,14 @@
   "asr": {
     "module_root": "D:/code/fcr_ros2/voice/server",
     "model": "Qwen/Qwen3-ASR-0.6B",
-    "device": "cuda",
+    "device": "auto",
     "offline": true
   },
   "classifier": {
     "enabled": true,
-    "project_root": "D:/code/fcr_ros2/classfier/fcr_speech_interpreter",
-    "bert_model": "xlx2673/classifier",
+    "project_root": "D:/code/fcr_ros2/classfier/eight/fcr_speech_interpreter",
+    "bert_model": "models/classifier_8class",
+    "embedding_model": "models/bge-base-zh-v1.5",
     "require_eight_labels": true
   },
   "extractor": {

@@ -24,6 +24,7 @@ cd D:\code\fcr_ros2\fcr_ros2_3\tools\windows_voice_agent
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 .\install_voice_agent.ps1
 Copy-Item config.example.json config.json -Force
+.\prepare_models.ps1
 ```
 
 编辑 `config.json`：
@@ -31,9 +32,10 @@ Copy-Item config.example.json config.json -Force
 1. `classifier.project_root` 指向 `classfier/fcr_speech_interpreter` 八分类工程；
 2. `asr.module_root` 指向 `voice/server`，语音代理从其 `listener` 包加载 Qwen3-ASR；
 3. `audio.device` 设为输入设备编号，或保留 `null` 使用默认麦克风；
-4. 有 NVIDIA CUDA 环境使用 `cuda`，否则设为 `cpu`；
-5. 首次下载 ASR、BERT 和 BGE 模型时把 `asr.offline` 临时设为 `false`，
-   下载完成并确认本机缓存齐全后恢复 `true`。
+4. `asr.device` 推荐保持 `auto`：CUDA 可用时使用 GPU，否则自动回退 CPU；
+5. 执行 `prepare_models.ps1`，将八分类 BERT 和 BGE 下载到本工具的
+   `models/` 目录；日常启动保持 `asr.offline=true`。Qwen ASR 若尚未缓存，
+   再临时改为 `false` 启动一次完成下载，随后恢复 `true`。
 6. 默认使用确定性数值解析，避免 LLM 故障时生成错误运动幅度。若实验性启用
    `extractor.enabled`，再安装 Ollama 并执行 `ollama pull qwen2.5:1.5b`；
    明确数值仍以原始语句的规则解析结果为准。
@@ -55,9 +57,23 @@ Copy-Item config.example.json config.json -Force
 ```powershell
 [Environment]::SetEnvironmentVariable(
   "FCR_VOICE_AUTH_TOKEN",
-  "替换成随机长令牌",
+  "替换成至少32位的ASCII随机令牌",
   "User"
 )
+```
+
+不要把中文占位文字本身当作令牌。可在 PowerShell 中生成并同时写入当前进程与
+用户环境变量：
+
+```powershell
+$rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$bytes = New-Object byte[] 32
+$rng.GetBytes($bytes)
+$token = [BitConverter]::ToString($bytes).Replace('-', '').ToLower()
+$rng.Dispose()
+$env:FCR_VOICE_AUTH_TOKEN = $token
+[Environment]::SetEnvironmentVariable("FCR_VOICE_AUTH_TOKEN", $token, "User")
+"Token ready, length=$($token.Length)"
 ```
 
 重新打开 PowerShell 后启动：
