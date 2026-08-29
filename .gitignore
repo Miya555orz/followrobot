@@ -1,0 +1,25 @@
+# Upstream source mirrors are reference inputs, not our project history.
+/upstream/
+
+# Temporary snapshots and interrupted downloads/clones.
+/fcr_ros2_3/
+/fcr_ros2_3_snapshot/
+/fcr_ros2_3_snapshot.zip
+
+# ROS 2 build outputs.
+/ros2_ws/build/
+/ros2_ws/install/
+/ros2_ws/log/
+
+# Local editor and OS files.
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# Runtime logs and captures.
+/logs/
+*.bag
+*.db3
+*.mcap
