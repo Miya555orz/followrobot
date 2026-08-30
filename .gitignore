@@ -1,4 +1,11 @@
-# Upstream source mirrors are reference inputs, not our project history.
+build/
+install/
+log/
+*.bag
+*.db3
+__pycache__/
+*.pyc
+.DS_Store# Upstream source mirrors are reference inputs, not our project history.
 /upstream/
 
 # Temporary snapshots and interrupted downloads/clones.
