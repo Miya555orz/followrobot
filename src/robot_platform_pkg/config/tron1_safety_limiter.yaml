@@ -1,0 +1,22 @@
+tron1_safety_limiter:
+  ros__parameters:
+    input_topic: "/fcr/cmd_vel_stamped"
+    output_topic: "/fcr_tron/cmd_vel"
+    estop_topic: "/safety/estop_state"
+
+    publish_rate_hz: 50.0
+    input_timeout_sec: 0.30
+
+    # First-test TRON1 EDU limits. Keep these low until the simulator and
+    # real robot have both passed stop-distance checks.
+    max_linear_x: 0.10
+    max_linear_y: 0.0
+    max_angular_z: 0.30
+
+    max_accel_x: 0.20
+    max_accel_y: 0.20
+    max_accel_yaw: 0.60
+
+    enable_motion: false
+    enable_lateral: false
+    stop_immediately_on_estop: true

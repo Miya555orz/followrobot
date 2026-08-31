@@ -18,6 +18,9 @@ def generate_launch_description():
         name="command_mux",
         output="screen",
         parameters=[config],
+        remappings=[
+            ("cmd_vel", LaunchConfiguration("cmd_vel_output_topic")),
+        ],
     )
     manual_jog = Node(
         package="teleop_control_pkg",
@@ -50,6 +53,11 @@ def generate_launch_description():
             "start_manual_jog",
             default_value="true",
             description="Start bounded MANUAL_JOG action manager.",
+        ),
+        DeclareLaunchArgument(
+            "cmd_vel_output_topic",
+            default_value="/cmd_vel",
+            description="Final TwistStamped velocity output topic.",
         ),
         mux,
         manual_jog,

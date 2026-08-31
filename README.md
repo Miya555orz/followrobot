@@ -4,6 +4,38 @@
 
 ---
 
+## TRON1 EDU 迁移状态（当前接手重点）
+
+本项目正在从原 LEKIWI 三全向轮底盘迁移到逐际动力 TRON1 EDU 双轮足底盘。当前 TRON1 仿真使用 `WF_TRON1A`，第一次实机计划硬件为 TRON1 EDU + DJI RS2 云台 + Orbbec Gemini 335 深度相机 + Jetson Orin Nano，暂时没有 Sony 相机。
+
+迁移说明、启动命令、安全限速测试和第一次实机 checklist 见：
+
+- [docs/tron1_migration.md](docs/tron1_migration.md)
+
+当前安全链路：
+
+```text
+FCR /fcr/cmd_vel_stamped (TwistStamped)
+  → robot_platform_pkg/tron1_safety_limiter_node
+  → /fcr_tron/cmd_vel (Twist)
+  → TRON1 官方 controller
+```
+
+进度：
+
+```text
+TRON1 仿真环境      ████████░░ 80%
+学长项目编译        ██████████ 100%
+Orbbec 深度相机     █████████░ 90%
+安全限速适配        ████████░░ 80%
+TRON1 仿真联调      ██████░░░░ 60%
+第一次实机准备      ████░░░░░░ 40%
+```
+
+安全提醒：不要让 TRON1 直接订阅旧 FCR `/cmd_vel`；第一次实机必须先经过 `tron1_safety_limiter`，并使用极低速度、超时停车和急停话题。
+
+---
+
 ## 项目当前阶段
 
 按照[四阶段渐进路线](https://github.com/cuiangA/fcr_ros2_3)（V1 MVP → V2 稳定化 → V3 混合视觉伺服 → V4 MPC优化），**当前处于 V2.5**：

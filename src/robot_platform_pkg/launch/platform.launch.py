@@ -30,6 +30,7 @@ def generate_launch_description():
     use_sim = LaunchConfiguration("use_sim")
     enable_imu = LaunchConfiguration("enable_imu")
     enable_chassis = LaunchConfiguration("enable_chassis")
+    enable_gimbal = LaunchConfiguration("enable_gimbal")
     can_interface = LaunchConfiguration("can_interface")
     gimbal_control_mode = LaunchConfiguration("gimbal_control_mode")
     gimbal_speed_control_byte = LaunchConfiguration("gimbal_speed_control_byte")
@@ -63,6 +64,7 @@ def generate_launch_description():
                         "control_mode": gimbal_control_mode,
                         "speed_control_byte": gimbal_speed_control_byte,
                     }],
+        condition=IfCondition(enable_gimbal),
     )
 
     # ── IMU 驱动节点 ──────────────────────────────────────────────
@@ -103,6 +105,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "enable_chassis", default_value="true",
             description="是否启动底盘驱动和里程计；纯云台测试应设为false"),
+        DeclareLaunchArgument(
+            "enable_gimbal", default_value="true",
+            description="是否启动DJI RS2云台驱动；TRON底盘桥接测试可设为false"),
         DeclareLaunchArgument(
             "can_interface", default_value="can0",
             description="DJI RS2云台使用的Linux SocketCAN接口"),

@@ -101,6 +101,15 @@ ament_target_dependencies(platform_manager_node
 target_link_libraries(platform_manager_node platform_qos)
 install(TARGETS platform_manager_node DESTINATION lib/${PROJECT_NAME})
 
+# ── TRON1 安全限速适配节点 ─────────────────────────────────────────
+add_executable(tron1_safety_limiter_node src/tron1_safety_limiter_node.cpp)
+target_include_directories(tron1_safety_limiter_node PRIVATE include)
+ament_target_dependencies(tron1_safety_limiter_node
+  rclcpp geometry_msgs std_msgs
+)
+target_link_libraries(tron1_safety_limiter_node platform_qos)
+install(TARGETS tron1_safety_limiter_node DESTINATION lib/${PROJECT_NAME})
+
 # ── 头文件 ────────────────────────────────────────────────────────
 install(DIRECTORY include/ DESTINATION include)
 

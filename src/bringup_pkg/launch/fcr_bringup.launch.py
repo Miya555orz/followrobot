@@ -62,6 +62,7 @@ def generate_launch_description():
             "use_sim": use_sim,
             "enable_imu": LaunchConfiguration("enable_imu"),
             "enable_chassis": LaunchConfiguration("enable_chassis"),
+            "enable_gimbal": LaunchConfiguration("enable_gimbal"),
             "can_interface": LaunchConfiguration("can_interface"),
             "gimbal_control_mode": LaunchConfiguration("gimbal_control_mode"),
             "gimbal_speed_control_byte": LaunchConfiguration(
@@ -90,7 +91,10 @@ def generate_launch_description():
     # 安全仲裁是执行器最终控制话题的唯一发布者。
     remote_control_launch = IncludeLaunchDescription(
         PathJoinSubstitution([teleop_share, "launch", "remote_control.launch.py"]),
-        launch_arguments={"start_keyboard": "false"}.items(),
+        launch_arguments={
+            "start_keyboard": "false",
+            "cmd_vel_output_topic": LaunchConfiguration("mux_cmd_vel_output_topic"),
+        }.items(),
     )
 
     # Mock和真实检测互斥；跟踪节点在两种模式下都可以运行。
@@ -155,6 +159,9 @@ def generate_launch_description():
         launch_arguments={
             "start_gemini": LaunchConfiguration("start_gemini"),
             "gemini_serial_number": LaunchConfiguration("gemini_serial_number"),
+            "gemini_depth_width": LaunchConfiguration("gemini_depth_width"),
+            "gemini_depth_height": LaunchConfiguration("gemini_depth_height"),
+            "gemini_depth_fps": LaunchConfiguration("gemini_depth_fps"),
             "calibration_file": LaunchConfiguration("fusion_calibration_file"),
             "publish_debug_image": LaunchConfiguration("fusion_publish_debug_image"),
         }.items(),
@@ -307,6 +314,18 @@ def generate_launch_description():
             description="可选的Gemini设备序列号",
         ),
         DeclareLaunchArgument(
+            "gemini_depth_width", default_value="848",
+            description="Gemini深度图宽度；低负载调试可设为424",
+        ),
+        DeclareLaunchArgument(
+            "gemini_depth_height", default_value="480",
+            description="Gemini深度图高度；低负载调试可设为240",
+        ),
+        DeclareLaunchArgument(
+            "gemini_depth_fps", default_value="10",
+            description="Gemini深度帧率",
+        ),
+        DeclareLaunchArgument(
             "fusion_calibration_file",
             default_value=PathJoinSubstitution(
                 [
@@ -356,6 +375,15 @@ def generate_launch_description():
                               description="是否使用合成检测器（绕过 YOLO）"),
         DeclareLaunchArgument("enable_sony_camera", default_value="true",
                               description="实机模式下是否启动Sony相机"),
+        DeclareLaunchArgument(
+            "enable_gimbal", default_value="true",
+            description="是否启动DJI RS2云台驱动；TRON底盘桥接测试可设为false",
+        ),
+        DeclareLaunchArgument(
+            "mux_cmd_vel_output_topic",
+            default_value="/cmd_vel",
+            description="command_mux最终TwistStamped速度输出话题；TRON适配时改为/fcr/cmd_vel_stamped",
+        ),
         DeclareLaunchArgument("sony_image_topic", default_value="/sony/image_raw",
                               description="2D检测使用的RGB图像话题"),
         DeclareLaunchArgument("sony_camera_index", default_value="1",
