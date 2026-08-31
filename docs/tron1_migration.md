@@ -24,6 +24,7 @@ TRON1 仿真联调      ██████░░░░ 60%
 - FCR 旧底盘链路输出是 `geometry_msgs/msg/TwistStamped`，不适合直接接 TRON1。
 - Orbbec Gemini 335 已在 USB 3.0 `5000M` 链路下跑通，推荐低负载模式 `424x240@10Hz`。
 - 当前没有 Sony 相机，所以第一次实机准备阶段不依赖 Sony；自主视觉跟拍需要后续把检测输入改到 Orbbec 彩色流或其它目标源。
+- 2026-08-31 已完成一次短时仿真冒烟测试：TRON1 Gazebo 启动到 `WheelfootController started`，`/fcr/cmd_vel_stamped` 输入经过限速器后，在 `/fcr_tron/cmd_vel` 看到 `geometry_msgs/msg/Twist` 输出。该测试验证了话题桥接和类型转换，不等价于完整视觉跟拍闭环验收。
 
 ## 工程结构速览
 
@@ -334,7 +335,7 @@ ros2 topic pub --once /safety/estop_state std_msgs/msg/Bool "{data: true}"
 
 ## 下一步工程任务
 
-1. 在 Gazebo 中完成端到端验证：FCR `/fcr/cmd_vel_stamped` → 限速器 → `/fcr_tron/cmd_vel` → TRON1 缓慢运动。
+1. 在 Gazebo 中继续做可视化运动验收：FCR `/fcr/cmd_vel_stamped` → 限速器 → `/fcr_tron/cmd_vel` → TRON1 缓慢运动，并记录停止距离。
 2. 给 RS2 云台做单独通信和低速姿态测试，确认不依赖 Sony。
 3. 决定无 Sony 时的目标来源：Orbbec 彩色流、外部检测节点、手动/模拟目标，三选一。
 4. 如果使用 Orbbec 彩色流，补充 YOLO 输入 remap 和相机内参/外参说明。
