@@ -62,8 +62,14 @@ class Tron1ChineseTeleop(Node):
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.VOLATILE,
         )
+        estop_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
         self.cmd_pub = self.create_publisher(TwistStamped, self.cmd_topic, qos)
-        self.estop_pub = self.create_publisher(Bool, self.estop_topic, qos)
+        self.estop_pub = self.create_publisher(Bool, self.estop_topic, estop_qos)
 
         self._lock = threading.Lock()
         self._current = Command()
@@ -115,19 +121,23 @@ class Tron1ChineseTeleop(Node):
             rclpy.shutdown()
             return
 
-        if any(word in text for word in ("急停", "急刹", "刹车", "危险")):
-            self._set_command(Command())
-            self.estop_pub.publish(Bool(data=True))
-            print("已发送急停：/safety/estop_state=true，输出应立即归零。")
-            return
-
         if any(word in text for word in ("解除急停", "恢复急停", "清除急停")):
             self.estop_pub.publish(Bool(data=False))
             print("已尝试解除限速器急停状态：/safety/estop_state=false。")
             return
 
+        if any(word in text for word in ("急停", "急刹", "刹车", "危险")):
+            self._set_command(Command())
+            for _ in range(5):
+                self.estop_pub.publish(Bool(data=True))
+                self._publish_current()
+            print("已发送急停：/safety/estop_state=true，输出应立即归零。")
+            return
+
         if text in {"停", "停止", "停车", "别动", "stop", "s"}:
             self._set_command(Command())
+            for _ in range(5):
+                self._publish_current()
             print("已停车：持续发布 0 速度。")
             return
 

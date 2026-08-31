@@ -20,3 +20,5 @@ tron1_safety_limiter:
     enable_motion: false
     enable_lateral: false
     stop_immediately_on_estop: true
+    stop_immediately_on_zero_cmd: true
+    stop_immediately_on_timeout: true

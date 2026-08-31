@@ -29,6 +29,14 @@ double step_toward(double current, double target, double max_step)
   return current + std::copysign(max_step, delta);
 }
 
+bool is_near_zero(const geometry_msgs::msg::Twist & cmd)
+{
+  constexpr double kEpsilon = 1e-6;
+  return std::abs(cmd.linear.x) < kEpsilon &&
+         std::abs(cmd.linear.y) < kEpsilon &&
+         std::abs(cmd.angular.z) < kEpsilon;
+}
+
 }  // namespace
 
 class Tron1SafetyLimiterNode : public rclcpp::Node
@@ -53,6 +61,10 @@ public:
     enable_motion_ = declare_parameter<bool>("enable_motion", false);
     enable_lateral_ = declare_parameter<bool>("enable_lateral", false);
     stop_immediately_on_estop_ = declare_parameter<bool>("stop_immediately_on_estop", true);
+    stop_immediately_on_zero_cmd_ =
+      declare_parameter<bool>("stop_immediately_on_zero_cmd", true);
+    stop_immediately_on_timeout_ =
+      declare_parameter<bool>("stop_immediately_on_timeout", true);
 
     if (publish_rate_hz_ <= 0.0 || input_timeout_sec_ <= 0.0 ||
       max_accel_x_ <= 0.0 || max_accel_y_ <= 0.0 || max_accel_yaw_ <= 0.0)
@@ -96,6 +108,10 @@ private:
     target_cmd_.angular.z = clamp_abs(msg->twist.angular.z, max_angular_z_);
     last_cmd_time_ = now();
     have_cmd_ = true;
+    if (stop_immediately_on_zero_cmd_ && is_near_zero(target_cmd_)) {
+      current_cmd_ = geometry_msgs::msg::Twist();
+      cmd_pub_->publish(current_cmd_);
+    }
   }
 
   void on_estop(const std_msgs::msg::Bool::ConstSharedPtr msg)
@@ -115,6 +131,13 @@ private:
     const auto fresh = have_cmd_ && ((now() - last_cmd_time_).seconds() <= input_timeout_sec_);
     if (enable_motion_ && fresh && !estop_active_) {
       requested = target_cmd_;
+    }
+    if ((!fresh && stop_immediately_on_timeout_) || estop_active_) {
+      target_cmd_ = geometry_msgs::msg::Twist();
+      current_cmd_ = geometry_msgs::msg::Twist();
+      cmd_pub_->publish(current_cmd_);
+      last_publish_time_ = now();
+      return;
     }
 
     const auto stamp = now();
@@ -148,6 +171,8 @@ private:
   bool enable_motion_ = false;
   bool enable_lateral_ = false;
   bool stop_immediately_on_estop_ = true;
+  bool stop_immediately_on_zero_cmd_ = true;
+  bool stop_immediately_on_timeout_ = true;
   double publish_rate_hz_ = 50.0;
   double input_timeout_sec_ = 0.30;
   double max_linear_x_ = 0.10;

@@ -39,6 +39,12 @@ def generate_launch_description():
                 "max_accel_x": LaunchConfiguration("max_accel_x"),
                 "max_accel_y": LaunchConfiguration("max_accel_y"),
                 "max_accel_yaw": LaunchConfiguration("max_accel_yaw"),
+                "stop_immediately_on_zero_cmd": LaunchConfiguration(
+                    "stop_immediately_on_zero_cmd"
+                ),
+                "stop_immediately_on_timeout": LaunchConfiguration(
+                    "stop_immediately_on_timeout"
+                ),
             },
         ],
     )
@@ -64,5 +70,7 @@ def generate_launch_description():
         DeclareLaunchArgument("max_accel_x", default_value="0.20"),
         DeclareLaunchArgument("max_accel_y", default_value="0.20"),
         DeclareLaunchArgument("max_accel_yaw", default_value="0.60"),
+        DeclareLaunchArgument("stop_immediately_on_zero_cmd", default_value="true"),
+        DeclareLaunchArgument("stop_immediately_on_timeout", default_value="true"),
         limiter,
     ])
