@@ -42,6 +42,7 @@ class Tron1ChineseTeleop(Node):
         self.declare_parameter("max_linear_x", 0.05)
         self.declare_parameter("max_angular_z", 0.15)
         self.declare_parameter("frame_id", "base_link")
+        self.declare_parameter("require_cmd_subscriber", True)
 
         self.cmd_topic = str(self.get_parameter("cmd_topic").value)
         self.estop_topic = str(self.get_parameter("estop_topic").value)
@@ -51,6 +52,9 @@ class Tron1ChineseTeleop(Node):
         self.max_x = abs(float(self.get_parameter("max_linear_x").value))
         self.max_yaw = abs(float(self.get_parameter("max_angular_z").value))
         self.frame_id = str(self.get_parameter("frame_id").value)
+        self.require_cmd_subscriber = bool(
+            self.get_parameter("require_cmd_subscriber").value
+        )
 
         qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
@@ -130,6 +134,14 @@ class Tron1ChineseTeleop(Node):
         cmd = self._parse_motion(text)
         if cmd is None:
             print("没听懂这句。输入“帮助”可以看示例。为了安全，当前命令不变。")
+            return
+        if self.require_cmd_subscriber and self.cmd_pub.get_subscription_count() == 0:
+            self._set_command(Command())
+            print(
+                f"没有检测到任何节点订阅 {self.cmd_topic}，运动命令已拒绝。\n"
+                "请先启动 tron1_safety_limiter；如果 Gazebo/限速器还没开，"
+                "这里输入“直走/后退/转弯”不会生效。"
+            )
             return
 
         self._set_command(cmd)
