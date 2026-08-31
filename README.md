@@ -11,6 +11,7 @@
 迁移说明、启动命令、安全限速测试和第一次实机 checklist 见：
 
 - [docs/tron1_migration.md](docs/tron1_migration.md)
+- [docs/tron1_sim_test_framework.md](docs/tron1_sim_test_framework.md)
 
 当前安全链路：
 

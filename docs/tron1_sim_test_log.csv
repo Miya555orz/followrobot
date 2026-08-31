@@ -1,0 +1,2 @@
+date,test_id,robot_type,rl_type,max_linear_x,max_angular_z,input,expected,result,notes
+2026-08-31,T2-00,WF_TRON1A,isaacgym,0.05,0.15,"x=0.03 yaw=0","TRON Gazebo starts and /fcr_tron/cmd_vel outputs Twist",PASS,"WheelfootController started; bridge output observed"

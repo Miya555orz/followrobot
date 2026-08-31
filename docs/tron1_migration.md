@@ -340,3 +340,5 @@ ros2 topic pub --once /safety/estop_state std_msgs/msg/Bool "{data: true}"
 3. 决定无 Sony 时的目标来源：Orbbec 彩色流、外部检测节点、手动/模拟目标，三选一。
 4. 如果使用 Orbbec 彩色流，补充 YOLO 输入 remap 和相机内参/外参说明。
 5. 第一次实机只测低速桥接和急停，不打开自主跟拍闭环。
+
+大量仿真测试按 [TRON1 仿真测试框架](tron1_sim_test_framework.md) 执行，并把结果记录到 [tron1_sim_test_log.csv](tron1_sim_test_log.csv)。
