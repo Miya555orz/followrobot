@@ -342,3 +342,5 @@ ros2 topic pub --once /safety/estop_state std_msgs/msg/Bool "{data: true}"
 5. 第一次实机只测低速桥接和急停，不打开自主跟拍闭环。
 
 大量仿真测试按 [TRON1 仿真测试框架](tron1_sim_test_framework.md) 执行，并把结果记录到 [tron1_sim_test_log.csv](tron1_sim_test_log.csv)。
+
+注意：FCR 侧代码已能单独上传到 `followrobot`，但 TRON 官方控制器的话题覆盖能力属于另一个仓库，见 [TRON1 官方仓库本地改动说明](tron1_external_repo_note.md)。

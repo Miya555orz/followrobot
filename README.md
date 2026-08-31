@@ -12,6 +12,7 @@
 
 - [docs/tron1_migration.md](docs/tron1_migration.md)
 - [docs/tron1_sim_test_framework.md](docs/tron1_sim_test_framework.md)
+- [docs/tron1_external_repo_note.md](docs/tron1_external_repo_note.md)
 
 当前安全链路：
 
