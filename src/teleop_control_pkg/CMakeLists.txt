@@ -50,6 +50,11 @@ install(PROGRAMS scripts/fcr_mode_console.py
   RENAME fcr_mode_console
 )
 
+install(PROGRAMS scripts/tron1_chinese_teleop.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME tron1_chinese_teleop
+)
+
 install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME}
 )

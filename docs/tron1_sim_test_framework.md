@@ -138,6 +138,32 @@ ros2 topic pub --rate 10 /fcr/cmd_vel_stamped geometry_msgs/msg/TwistStamped \
 - 停止终端 C 后，机器人应很快停止。
 - 终端 A 没有持续刷严重错误。
 
+如果不想手敲 `ros2 topic pub`，可以使用中文控制台：
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/follow_ws/install/setup.bash
+ros2 run teleop_control_pkg tron1_chinese_teleop
+```
+
+启动后可以直接输入：
+
+```text
+直走
+左转
+右转
+直走 左转
+速度 0.04
+左转 转速 0.12
+停
+急停
+解除急停
+帮助
+退出
+```
+
+这个工具只发布 `/fcr/cmd_vel_stamped`，仍然必须经过 `tron1_safety_limiter` 后才会到 TRON1。
+
 ## T3：运动模式与安全边界测试
 
 这一层专门测试“容易出事”的情况。
