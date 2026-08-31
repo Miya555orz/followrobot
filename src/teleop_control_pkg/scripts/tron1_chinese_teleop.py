@@ -69,11 +69,8 @@ class Tron1ChineseTeleop(Node):
         self.timer = self.create_timer(1.0 / self.rate_hz, self._publish_current)
 
         self.get_logger().warn(
-            "中文控制台已启动：发布 %s，急停 %s；最大 x=%.3f m/s, yaw=%.3f rad/s",
-            self.cmd_topic,
-            self.estop_topic,
-            self.max_x,
-            self.max_yaw,
+            f"中文控制台已启动：发布 {self.cmd_topic}，急停 {self.estop_topic}；"
+            f"最大 x={self.max_x:.3f} m/s, yaw={self.max_yaw:.3f} rad/s"
         )
         self._print_help()
 
