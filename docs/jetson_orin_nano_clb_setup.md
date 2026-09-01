@@ -138,6 +138,7 @@ Target Components:
 - 如果 CLB 套件带 NVMe SSD，优先刷 NVMe。
 - 如果是 eMMC 模组，选择对应 internal/eMMC。
 - 如果不确定，暂停，把 SDK Manager 的 storage 选项截图给我。
+- 不要误选 USB / `sda1`，除非你明确把一个可刷写的 USB 存储设备插在 Jetson 侧。主机电脑上 `lsblk` 看到的 `sda`、`nvme0n1` 是主机自己的硬盘，不是 Jetson 的目标盘。
 
 刷写完成后，断电重启 Jetson，接显示器/键鼠，完成首次 Ubuntu 用户配置。
 
@@ -162,6 +163,64 @@ sdkmanager --query interactive --product Jetson --login-type devzone
 ```
 
 这个命令会交互式询问产品、版本、目标硬件、刷机选项，并最终生成对应的安装命令。不要在不确定 Target Hardware / Storage Device 时直接确认；把终端输出贴给我，我再判断。
+
+### 2026-09-01 本机刷机记录
+
+用户的 Jetson Orin Nano CLB 已能进入 Recovery/APX 模式，主机可识别：
+
+```bash
+lsusb | grep -i nvidia
+# Bus xxx Device xxx: ID 0955:7523 NVIDIA Corp. APX
+```
+
+注意：在 APX 模式下，主机执行 `lsblk` 看到的是主机自己的磁盘，不是 Jetson 的 NVMe/SD 卡。不要据此选择或操作主机磁盘。
+
+一次失败日志显示：
+
+```text
+--external-device sda1
+External storage device (/dev/sda) might be unavailable or not work correctly.
+Flash failed: usb unavailable
+Error Code: 524
+```
+
+判断：SDK Manager 当时把 Jetson 侧目标存储设成了 USB/`sda1`，但 Jetson initrd 环境中没有对应 USB 存储，因此刷机失败。再次刷机时，在 `Storage Device` 页面应选择：
+
+```text
+2. NVMe
+```
+
+如果没有 NVMe，且实际使用 microSD，则选择：
+
+```text
+1. SD Card
+```
+
+不要选择：
+
+```text
+3. USB
+```
+
+失败后可用以下命令确认 SDK Manager 到底选择了哪个目标存储：
+
+```bash
+grep -R "external-device" ~/.nvsdkm/logs | tail -20
+```
+
+正确的 NVMe 目标应类似：
+
+```text
+--external-device nvme0n1p1
+```
+
+如果仍然看到：
+
+```text
+--external-device sda1
+```
+
+说明 Storage Device 仍然选错了。
 
 ## B0：Jetson 首次开机检查
 

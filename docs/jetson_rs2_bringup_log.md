@@ -112,8 +112,8 @@ TODO paste output here
 
 ## Conclusion
 
-- Jetson ROS 2 status: TODO
-- FCR workspace status: TODO
-- CAN adapter status: TODO
-- RS2 communication status: TODO
-- Blockers: TODO
+- Jetson ROS 2 status: pending; Jetson is still in JetPack flashing stage.
+- FCR workspace status: ready on laptop; Jetson clone/build pending after first boot.
+- CAN adapter status: pending; test after Jetson OS is installed.
+- RS2 communication status: pending; test after CAN interface appears.
+- Blockers: SDK Manager GUI crashes on host, CLI is being used. First direct flash attempt failed because the selected Jetson-side storage was USB/`sda1`; next attempt should choose NVMe in the SDK Manager `Storage Device` menu.
