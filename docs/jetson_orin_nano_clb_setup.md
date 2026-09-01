@@ -71,6 +71,23 @@ sdkmanager
 
 第一次启动会要求登录 NVIDIA Developer 账号。
 
+如果图形界面一打开就崩溃，但命令行可用，可以改走 CLI 路线。先检查：
+
+```bash
+sdkmanager --ver
+sdkmanager --help
+```
+
+如果这两个命令能输出版本和帮助，说明 SDK Manager 主程序可用，只是 GUI 崩溃。此时不用继续和图形界面纠缠，后续用：
+
+```bash
+sdkmanager --cli --login-type devzone
+```
+
+CLI 会显示一个 NVIDIA 登录链接和 user code。用浏览器打开它并登录 NVIDIA Developer 账号，登录完成后终端会继续。
+
+> 2026-09-01 本机记录：`sdkmanager` 版本 `2.4.1.13536`，`sdkmanager-gui` 会段错误，但 `sdkmanager --help` 和 CLI 登录流程可用。
+
 ## A2：Jetson 进入 Recovery Mode
 
 这一步以 CLB 开发者套件说明书为准。通常流程是：
@@ -123,6 +140,28 @@ Target Components:
 - 如果不确定，暂停，把 SDK Manager 的 storage 选项截图给我。
 
 刷写完成后，断电重启 Jetson，接显示器/键鼠，完成首次 Ubuntu 用户配置。
+
+## A3-CLI：GUI 崩溃时的命令行刷机路线
+
+先让 Jetson 进入 Recovery Mode，并确认主机能看到 NVIDIA APX：
+
+```bash
+lsusb | grep -i nvidia
+```
+
+然后查询 SDK Manager 识别到的 Jetson 设备：
+
+```bash
+sdkmanager --list-connected Jetson
+```
+
+查询可用 Jetson 安装选项：
+
+```bash
+sdkmanager --query interactive --product Jetson --login-type devzone
+```
+
+这个命令会交互式询问产品、版本、目标硬件、刷机选项，并最终生成对应的安装命令。不要在不确定 Target Hardware / Storage Device 时直接确认；把终端输出贴给我，我再判断。
 
 ## B0：Jetson 首次开机检查
 
