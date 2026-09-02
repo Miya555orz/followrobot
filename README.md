@@ -65,6 +65,19 @@ TRON1 仿真联调      ██████░░░░ 60%
 
 安全提醒：不要让 TRON1 直接订阅旧 FCR `/cmd_vel`；第一次实机必须先经过 `tron1_safety_limiter`，并使用极低速度（建议不超过 `0.03 m/s`、`0.10 rad/s`）、超时停车和急停话题。
 
+### ROS2 System Architecture Figure
+
+下图基于当前 `fcr_ros2_3` / `followrobot` 代码和本地 TRON1 官方 ROS2/SDK 工作区整理，重点展示从传感器、感知、跟随控制、命令仲裁、底盘接口到 TRON1 SDK/硬件的真实数据流，以及后续“换底盘 = 换 adapter package / launch / config”的目标架构。
+
+![followrobot ROS2 system architecture](docs/figures/system_architecture.svg)
+
+- 实线表示当前代码已经存在的数据流或依赖。
+- 虚线表示计划新增或重构后的底盘解耦路径。
+- 灰色模块表示准备逐步弱化的 legacy 三全向轮底盘链路。
+- 蓝色模块表示保留/复用的上层视觉、跟踪和跟随控制栈。
+- 绿色模块表示 `followrobot` 迁移中新增或计划抽出的接口/适配层。
+- 橙色模块表示 RS2 硬件链路与 TRON1 官方 ROS2/SDK 链路。
+
 ---
 
 ## 项目当前阶段

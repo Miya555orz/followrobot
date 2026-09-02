@@ -56,12 +56,13 @@ if [[ ${EUID} -ne 0 ]]; then
     echo "ERROR: run this script as root; sudo is not installed" >&2
     exit 1
   }
+  script_path="$(readlink -f "$0")"
   declare -a sudo_args=()
   if [[ -n "$REQUESTED_INTERFACE" ]]; then
     sudo_args=(--interface "$REQUESTED_INTERFACE")
   fi
   exec sudo --preserve-env=GIMBAL_CAN_INTERFACE,GIMBAL_CAN_BITRATE,GIMBAL_CAN_RESTART_MS,GIMBAL_CAN_TX_QUEUE_LEN \
-    "$0" "${sudo_args[@]}"
+    "$script_path" "${sudo_args[@]}"
 fi
 
 modprobe can

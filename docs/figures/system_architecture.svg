@@ -1,0 +1,256 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1450" viewBox="0 0 1800 1450" role="img" aria-labelledby="title desc">
+  <title id="title">followrobot layered ROS2 system architecture</title>
+  <desc id="desc">A TRON1-style layered architecture figure showing Jetson ROS2 compute boundary, robot body boundary, sensors, DJI RS2 gimbal, upper follow stack, base interface, legacy omni path, TRON1 official ROS2 backend, LimX SDK, and TRON1 EDU hardware.</desc>
+  <defs>
+    <style>
+      .bg { fill: #fbfcff; }
+      .compute { fill: #f4f7fd; stroke: #0f172a; stroke-width: 2.4; stroke-dasharray: 7 6; rx: 22; ry: 22; }
+      .body { fill: #f2f6fc; stroke: #0f172a; stroke-width: 2.4; rx: 22; ry: 22; }
+      .sub { fill: #ffffff; stroke: #111827; stroke-width: 1.9; rx: 14; ry: 14; }
+      .blue { fill: #e9f3ff; stroke: #2f7dbb; }
+      .blue2 { fill: #f1f7ff; stroke: #6b9fd0; }
+      .green { fill: #eaf8ef; stroke: #2f9e65; }
+      .orange { fill: #fff1dc; stroke: #dd8427; }
+      .gray { fill: #eef1f5; stroke: #8390a3; }
+      .red { fill: #fff1f2; stroke: #d1495b; }
+      .gold { fill: #d9b957; stroke: #4a3a0f; }
+      .topic { fill: #ffffff; stroke: #c6d0de; stroke-width: 1.3; rx: 10; ry: 10; }
+      .title { font-family: Inter, "Noto Sans CJK SC", "DejaVu Sans", Arial, sans-serif; font-size: 34px; font-weight: 850; fill: #0f172a; }
+      .subtitle { font-family: Inter, "Noto Sans CJK SC", "DejaVu Sans", Arial, sans-serif; font-size: 15px; fill: #536173; }
+      .zone-title { font-family: Inter, "Noto Sans CJK SC", "DejaVu Sans", Arial, sans-serif; font-size: 22px; font-weight: 850; fill: #111827; }
+      .h { font-family: Inter, "Noto Sans CJK SC", "DejaVu Sans", Arial, sans-serif; font-size: 16.5px; font-weight: 820; fill: #162235; }
+      .txt { font-family: Inter, "Noto Sans CJK SC", "DejaVu Sans", Arial, sans-serif; font-size: 13px; fill: #334155; }
+      .small { font-family: Inter, "Noto Sans CJK SC", "DejaVu Sans", Arial, sans-serif; font-size: 11.5px; fill: #475569; }
+      .mini { font-family: Inter, "Noto Sans CJK SC", "DejaVu Sans", Arial, sans-serif; font-size: 10.5px; fill: #64748b; }
+      .mono { font-family: "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace; font-size: 12.5px; fill: #243244; }
+      .mono-sm { font-family: "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace; font-size: 10.8px; fill: #334155; }
+      .white { fill: #ffffff; }
+      .tag { font-family: Inter, "Noto Sans CJK SC", "DejaVu Sans", Arial, sans-serif; font-size: 10.5px; font-weight: 850; fill: #ffffff; }
+      .weak { opacity: .56; }
+      .box { stroke-width: 1.8; rx: 12; ry: 12; }
+      .line { stroke: #111827; stroke-width: 2.1; fill: none; marker-end: url(#arrowDark); }
+      .blue-line { stroke: #2f75ae; stroke-width: 2.1; fill: none; marker-end: url(#arrowBlue); }
+      .orange-line { stroke: #c56b1d; stroke-width: 2.1; fill: none; marker-end: url(#arrowOrange); }
+      .green-line { stroke: #20945d; stroke-width: 2.2; fill: none; marker-end: url(#arrowGreen); }
+      .gray-line { stroke: #64748b; stroke-width: 1.8; fill: none; marker-end: url(#arrowGray); }
+      .dash { stroke-dasharray: 8 7; }
+      .thin { stroke-width: 1.5; }
+      .shadow { filter: url(#shadow); }
+    </style>
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="124%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0f172a" flood-opacity=".11"/>
+    </filter>
+    <marker id="arrowDark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#111827"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#2f75ae"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#20945d"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#c56b1d"/>
+    </marker>
+    <marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1800" height="1450"/>
+
+  <text class="title" x="96" y="66">followrobot / fcr_ros2_3 — Layered ROS2 System Architecture</text>
+  <text class="subtitle" x="98" y="96">TRON1-style compute/body overview. Solid arrows are current code paths; dashed arrows are the planned base-interface refactor.</text>
+
+  <g id="legend" class="shadow">
+    <rect class="sub" x="1278" y="38" width="426" height="136"/>
+    <text class="h" x="1304" y="70">Legend</text>
+    <line class="line" x1="1306" y1="96" x2="1388" y2="96"/>
+    <text class="small" x="1406" y="101">current data / dependency</text>
+    <line class="green-line dash" x1="1306" y1="122" x2="1388" y2="122"/>
+    <text class="small" x="1406" y="127">target adapter refactor</text>
+    <rect class="blue box" x="1308" y="143" width="24" height="15" rx="5"/>
+    <text class="small" x="1344" y="155">reused fcr_ros2_3</text>
+    <rect class="green box" x="1496" y="143" width="24" height="15" rx="5"/>
+    <text class="small" x="1532" y="155">followrobot NEW</text>
+  </g>
+
+  <!-- Compute boundary -->
+  <g id="compute">
+    <rect class="compute shadow" x="116" y="210" width="1568" height="694"/>
+    <text class="zone-title" x="144" y="252">Jetson Orin Nano / ROS2 Compute Boundary</text>
+    <text class="small" x="144" y="276">runtime: Ubuntu 22.04 + ROS2 Humble + JetPack 6.2.3. Upper follow stack is preserved; base-specific code is isolated below.</text>
+
+    <!-- Driver zone -->
+    <rect class="sub" x="150" y="318" width="428" height="246"/>
+    <text class="h" x="176" y="350">Layer 1–2 Drivers</text>
+    <text class="small" x="176" y="372">Camera / sensor and active vision I/O</text>
+
+    <rect class="blue box" x="178" y="402" width="174" height="66"/>
+    <text class="mono" x="194" y="426">orbbec_camera</text>
+    <text class="mono-sm" x="194" y="448">ob_camera_node</text>
+
+    <rect class="gray box weak" x="376" y="402" width="174" height="66"/>
+    <text class="mono" x="392" y="426">sony_camera_pkg</text>
+    <text class="mono-sm" x="392" y="448">legacy / skipped</text>
+
+    <rect class="orange box" x="178" y="486" width="372" height="58"/>
+    <text class="mono" x="194" y="510">robot_platform_pkg / gimbal_driver_node</text>
+    <text class="mono-sm" x="194" y="530">SocketCAN can0 ⇄ DJI RS2</text>
+
+    <!-- Upper stack zone -->
+    <rect class="sub" x="622" y="318" width="536" height="246"/>
+    <text class="h" x="648" y="350">Layer 3 Intelligence  🔒</text>
+    <text class="small" x="648" y="372">Reusable upper-level follow stack from fcr_ros2_3</text>
+
+    <rect class="blue box" x="652" y="402" width="136" height="64"/>
+    <text class="mono" x="668" y="426">perception_pkg</text>
+    <text class="mono-sm" x="668" y="448">detection</text>
+
+    <rect class="blue box" x="822" y="402" width="136" height="64"/>
+    <text class="mono" x="838" y="426">perception_pkg</text>
+    <text class="mono-sm" x="838" y="448">tracking/fusion</text>
+
+    <rect class="blue box" x="992" y="402" width="136" height="64"/>
+    <text class="mono" x="1008" y="426">servo_control</text>
+    <text class="mono-sm" x="1008" y="448">follow control</text>
+
+    <path class="blue-line" d="M788 434 L822 434"/>
+    <path class="blue-line" d="M958 434 L992 434"/>
+
+    <rect class="topic" x="686" y="492" width="406" height="42"/>
+    <text class="mono-sm" x="714" y="518">/perception/targets_3d → /auto/cmd_vel + /auto/cmd_gimbal</text>
+
+    <!-- Command/API zone -->
+    <rect class="sub" x="1202" y="318" width="428" height="246"/>
+    <text class="h" x="1228" y="350">Command Arbitration / API</text>
+    <text class="small" x="1228" y="372">Manual, autonomous and safety command contracts</text>
+
+    <rect class="blue box" x="1230" y="402" width="178" height="66"/>
+    <text class="mono" x="1246" y="426">teleop_control</text>
+    <text class="mono-sm" x="1246" y="448">command_mux_node</text>
+
+    <rect class="blue2 box" x="1426" y="402" width="176" height="66"/>
+    <text class="mono" x="1442" y="426">vision_servo_msgs</text>
+    <text class="mono-sm" x="1442" y="448">Target/Gimbal/State</text>
+
+    <rect class="green box" x="1230" y="486" width="372" height="58"/>
+    <text class="mono" x="1246" y="510">base_interface_pkg / BaseCommand API</text>
+    <text class="mono-sm" x="1246" y="530">NEW: timeout, e-stop, low-speed safety</text>
+    <rect x="1554" y="494" width="48" height="20" rx="6" fill="#2f9e65"/>
+    <text class="tag" x="1565" y="509">NEW</text>
+
+    <path class="blue-line" d="M1158 434 L1230 434"/>
+    <path class="green-line dash" d="M1320 468 L1320 486"/>
+
+    <!-- Base backend zone -->
+    <rect class="sub" x="150" y="620" width="1480" height="236"/>
+    <text class="h" x="176" y="652">Layer 4 Chassis Backend Selection</text>
+    <text class="small" x="176" y="674">The only layer that should change when replacing robot bases.</text>
+
+    <rect class="gray box weak" x="220" y="716" width="300" height="74"/>
+    <text class="mono" x="242" y="742">Omni Adapter / Legacy Path</text>
+    <text class="mono-sm" x="242" y="764">robot_platform_pkg/chassis_driver</text>
+
+    <rect class="green box" x="602" y="704" width="370" height="98"/>
+    <text class="mono" x="624" y="730">Unified Base Interface</text>
+    <text class="mono-sm" x="624" y="752">/fcr/base/cmd_vel_safe</text>
+    <text class="mono-sm" x="624" y="772">or BaseCommand → adapter</text>
+    <rect x="902" y="713" width="48" height="20" rx="6" fill="#2f9e65"/>
+    <text class="tag" x="913" y="728">NEW</text>
+
+    <rect class="green box" x="1052" y="716" width="230" height="74"/>
+    <text class="mono" x="1074" y="742">TRON1 Adapter</text>
+    <text class="mono-sm" x="1074" y="764">/fcr_tron/cmd_vel</text>
+
+    <rect class="orange box" x="1356" y="694" width="228" height="118"/>
+    <text class="mono" x="1378" y="720">TRON1 official</text>
+    <text class="mono-sm" x="1378" y="742">robot_hw/pointfoot_node</text>
+    <text class="mono-sm" x="1378" y="762">WheelfootController</text>
+    <text class="mono-sm" x="1378" y="782">limxsdk-lowlevel</text>
+
+    <path class="gray-line dash" d="M602 753 L520 753"/>
+    <path class="green-line dash" d="M972 753 L1052 753"/>
+    <path class="green-line dash" d="M1282 753 L1356 753"/>
+  </g>
+
+  <!-- Interface labels between compute and robot body -->
+  <g id="vertical-interfaces">
+    <line class="blue-line" x1="265" y1="904" x2="265" y2="1002"/>
+    <rect class="topic" x="166" y="928" width="198" height="42"/>
+    <text class="mono-sm" x="184" y="954">USB image/depth</text>
+
+    <line class="orange-line" x1="424" y1="904" x2="424" y2="1002"/>
+    <rect class="topic" x="336" y="928" width="176" height="42"/>
+    <text class="mono-sm" x="356" y="954">CAN can0 1Mbps</text>
+
+    <line class="orange-line" x1="1470" y1="856" x2="1470" y2="1002"/>
+    <rect class="topic" x="1318" y="914" width="304" height="56"/>
+    <text class="mono-sm" x="1340" y="938">Ethernet/IP, robot_ip=10.192.1.2</text>
+    <text class="mono-sm" x="1376" y="958">RobotCmd / RobotState</text>
+  </g>
+
+  <!-- Robot body boundary -->
+  <g id="robot-body">
+    <rect class="body shadow" x="116" y="1002" width="1568" height="356"/>
+    <text class="zone-title" x="144" y="1044">Robot Body / Hardware Boundary</text>
+    <text class="small" x="144" y="1068">Physical devices mounted on the robot. TRON1 body communication is through the official LimX SDK backend, not Jetson can0.</text>
+
+    <rect class="blue box" x="190" y="1126" width="202" height="74"/>
+    <text class="h" x="214" y="1154">Orbbec / Gemini</text>
+    <text class="mono-sm" x="214" y="1178">depth camera</text>
+
+    <rect class="orange box" x="470" y="1126" width="202" height="74"/>
+    <text class="h" x="494" y="1154">DJI RS2</text>
+    <text class="mono-sm" x="494" y="1178">active gimbal</text>
+
+    <rect class="gray box weak" x="210" y="1248" width="250" height="74"/>
+    <text class="h" x="234" y="1276">Legacy Omni Base</text>
+    <text class="mono-sm" x="234" y="1300">LEKIWI three-wheel</text>
+
+    <rect class="gold box" x="890" y="1114" width="548" height="90"/>
+    <text class="h" x="1080" y="1154">TRON1 Main Controller</text>
+    <text class="mono-sm" x="1032" y="1178">network endpoint: 10.192.1.2</text>
+
+    <rect class="orange box" x="852" y="1242" width="662" height="80"/>
+    <text class="h" x="1090" y="1270">TRON1 EDU Dual Wheel-Leg Chassis</text>
+    <text class="mono-sm" x="1002" y="1296">joint × 6 + wheel × 2, IMU, remote receiver, power manager</text>
+
+    <path class="orange-line" d="M1164 1204 L1164 1242"/>
+    <path class="gray-line weak" d="M370 856 C370 980 335 1110 335 1248"/>
+  </g>
+
+  <!-- Feedback / state return -->
+  <g id="feedback">
+    <path class="gray-line dash" d="M1560 1110 C1660 1034 1660 846 1584 794"/>
+    <rect class="topic" x="1488" y="942" width="230" height="50"/>
+    <text class="mono-sm" x="1512" y="963">RobotState / ImuData</text>
+    <text class="mono-sm" x="1512" y="983">diagnostics / odom</text>
+
+    <path class="gray-line dash" d="M592 1126 C760 1064 950 980 1134 856"/>
+    <rect class="topic" x="730" y="1032" width="234" height="42"/>
+    <text class="mono-sm" x="758" y="1058">/gimbal/status → state</text>
+  </g>
+
+  <!-- Main internal command flow labels -->
+  <g id="flow-labels">
+    <rect class="topic" x="610" y="584" width="316" height="38"/>
+    <text class="mono-sm" x="642" y="608">upper stack output: TwistStamped</text>
+    <path class="blue-line" d="M890 564 L890 620"/>
+
+    <rect class="red box" x="1012" y="584" width="280" height="38"/>
+    <text class="mono-sm" x="1036" y="608">e-stop / timeout / low speed</text>
+    <path class="green-line dash" d="M1320 544 L1180 620"/>
+  </g>
+
+  <!-- Footer callouts -->
+  <g id="footer">
+    <rect class="green box" x="210" y="1374" width="608" height="52"/>
+    <text class="h" x="234" y="1396">Decoupling principle</text>
+    <text class="small" x="234" y="1416">Freeze perception/tracking/follow logic; switch chassis via adapter package + launch + config.</text>
+
+    <rect class="red box" x="930" y="1374" width="660" height="52"/>
+    <text class="h" x="954" y="1396">Safety invariant</text>
+    <text class="small" x="954" y="1416">TRON1 real motion must never consume an unbounded naked /cmd_vel stream.</text>
+  </g>
+</svg>
