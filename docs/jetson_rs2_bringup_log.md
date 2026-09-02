@@ -257,3 +257,159 @@ Current result:
 - `/gimbal/status` feedback: PASS.
 - Minimal RS2 yaw command: PASS.
 - TRON1 real chassis motion: not started and remains disabled.
+
+## 2026-09-02 Orbbec depth, Sony check, and RS2 coexistence
+
+SSH access:
+
+- Passwordless SSH from the laptop to Jetson over Ethernet was configured with
+  `ssh-copy-id miya@172.31.178.242`.
+- Jetson host key over Ethernet matched the known post-flash Jetson key:
+  `SHA256:WBIdwRD+Z4G1sFCUDRLAVF/w/qF6Gw8ZG8pRfrHvtMQ`.
+
+Network/package caveat:
+
+- Jetson apt downloads over the campus network were intercepted by the SZU
+  captive portal (`net.szu.edu.cn/index_12.html`), causing package hash/size
+  failures.
+- A temporary SSH reverse proxy was opened from Jetson to the laptop Clash/Mihomo
+  HTTP proxy:
+
+```text
+Jetson 127.0.0.1:7892 -> laptop 127.0.0.1:7897
+```
+
+- This proxy was used to install missing ROS/OpenCV dependencies for Orbbec and
+  Sony package builds.
+
+Build/dependency recovery:
+
+- Installed missing standard dependencies:
+  - `ros-humble-cv-bridge`
+  - `ros-humble-image-transport`
+  - `ros-humble-camera-info-manager`
+  - `ros-humble-backward-ros`
+  - `ros-humble-image-publisher`
+  - `ros-humble-diagnostic-updater`
+  - `ros-humble-tf2-sensor-msgs`
+  - `ros-humble-camera-calibration`
+  - `libopencv`
+  - `libgflags-dev`
+  - `libgoogle-glog-dev`
+  - `nlohmann-json3-dev`
+  - `libssl-dev`
+  - `libgl1-mesa-dev`
+- `libopencv-dev` was present but incomplete without the NVIDIA `libopencv`
+  runtime package. Installing `libopencv` restored files such as:
+
+```text
+/usr/lib/libopencv_core.so.4.8.0
+/usr/lib/libopencv_core.so.408 -> libopencv_core.so.4.8.0
+```
+
+- Low-parallel build command:
+
+```bash
+cd ~/follow_ws
+source /opt/ros/humble/setup.bash
+MAKEFLAGS="-j1 -l1" colcon build --symlink-install --parallel-workers 1 \
+  --packages-up-to orbbec_camera sony_camera_pkg
+```
+
+Build result:
+
+- `orbbec_camera_msgs`: PASS.
+- `vision_servo_msgs`: PASS.
+- `orbbec_camera`: PASS.
+- `sony_camera_pkg`: package installed, but `sony_camera_node` was skipped
+  because Sony CRSDK is not staged at
+  `src/sony_camera_pkg/sdk`.
+
+Orbbec hardware enumeration:
+
+```text
+Bus 002 Device 003: ID 2bc5:0800 Orbbec 3D Technology International, Inc Orbbec Gemini 335
+usb connect type: USB3.2
+depth Frame - Width: 424 Height: 240 fps: 10 Format: Y16
+```
+
+Orbbec udev recovery:
+
+- Initial Orbbec launch failed with:
+
+```text
+Failed to initialize device usbEnumerator openUsbDevice failed! status:113
+```
+
+- The official `install_udev_rules.sh` script could not run directly because it
+  has CRLF line endings (`$'\r': command not found`).
+- The equivalent action was performed manually by installing:
+
+```text
+/etc/udev/rules.d/99-obsensor-libusb.rules
+```
+
+Orbbec low-load depth launch:
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/follow_ws/install/setup.bash
+ros2 launch orbbec_camera gemini_330_series_low_cpu.launch.py \
+  camera_name:=camera \
+  enable_color:=false \
+  enable_depth:=true \
+  depth_width:=424 \
+  depth_height:=240 \
+  depth_fps:=10 \
+  enable_left_ir:=false \
+  enable_right_ir:=false \
+  enable_point_cloud:=false \
+  enable_accel:=false \
+  enable_gyro:=false
+```
+
+Orbbec ROS2 result:
+
+```text
+/camera/depth/image_raw
+/camera/depth/camera_info
+/camera/depth/metadata
+/camera/depth_filters/status
+/camera/device_status
+```
+
+Measured depth rate:
+
+```text
+average rate: 9.994-10.001 Hz
+height: 240
+width: 424
+frame_id: camera_depth_optical_frame
+device_online: true
+connection_type: USB3.2
+```
+
+RS2 + Orbbec coexistence result:
+
+```text
+/gimbal/status connected: true
+/camera/depth/image_raw average rate: ~9.99 Hz
+can1 state: ERROR-ACTIVE
+can1 bitrate: 1000000
+can1 RX/TX errors: 0
+```
+
+Sony status:
+
+- `lsusb` did not show a Sony USB device during this check.
+- `/dev/video*` did not show a Sony UVC/video device.
+- `ros2 pkg executables sony_camera_pkg` returned no executable because the
+  Sony CRSDK is not staged, so `sony_camera_node` was not built.
+
+Current result:
+
+- Jetson + RS2 over USB-CAN `can1`: PASS.
+- Jetson + Orbbec Gemini 335 depth stream: PASS.
+- RS2 + Orbbec coexistence: PASS.
+- Sony ROS2 image stream: BLOCKED by missing Sony USB enumeration and missing
+  Sony CRSDK staging.
