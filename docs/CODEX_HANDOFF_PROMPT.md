@@ -69,7 +69,9 @@ ssh miya@172.31.178.242
 - `[VERIFIED]` RS2 ROS2 driver 可启动：`/gimbal/status connected=true`，极小 yaw 指令已确认云台会动，CAN/CRC/parse errors 为 0。
 - `[VERIFIED]` Orbbec Gemini 335 已在 USB3/5000M 下输出 `/camera/depth/image_raw`，424x240@10Hz。
 - `[VERIFIED]` RS2 + Orbbec 共存测试通过。
-- `[UNVERIFIED]` Sony 实流未验证。`sony_camera_pkg` 源码存在，但 Sony CRSDK 不在仓库中，`sony_camera_node` 当前未构建。
+- `[VERIFIED]` Sony ZV-E10M2 UVC 实流已验证：`/dev/video8` 可发布 `/sony/image_raw` 和 `/sony/camera_info`。
+- `[VERIFIED]` `perception_pkg sony_uvc_perception.launch.py` 已跑通 YOLOv8n CPU detection/tracking/aim smoke test；画面中有人时能检测到 `person`、生成 track 和 `/perception/aim_target_2d`。
+- `[UNVERIFIED]` Sony CRSDK 版 `sony_camera_node` 未验证；CRSDK 不在仓库中，节点当前未构建。
 - `[UNVERIFIED]` TRON1 真机以太网和真机运动尚未验证，不允许直接发实机运动命令。
 
 ## Start here

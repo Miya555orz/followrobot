@@ -411,5 +411,91 @@ Current result:
 - Jetson + RS2 over USB-CAN `can1`: PASS.
 - Jetson + Orbbec Gemini 335 depth stream: PASS.
 - RS2 + Orbbec coexistence: PASS.
-- Sony ROS2 image stream: BLOCKED by missing Sony USB enumeration and missing
-  Sony CRSDK staging.
+- Sony CRSDK image stream: BLOCKED by missing Sony CRSDK staging.
+
+## 2026-09-02 Sony UVC + perception smoke test
+
+After switching the Sony ZV-E10M2 USB mode/cable setup, Jetson detected the
+camera as a UVC video device:
+
+```text
+Bus 001 Device 007: ID 054c:0ee8 Sony Corp. ZV-E10M2
+video8 name=ZV-E10M2
+video9 name=ZV-E10M2
+```
+
+`/dev/video8` is the usable image stream. `/dev/video9` did not open in the
+OpenCV probe and appears to be an auxiliary node.
+
+OpenCV probe:
+
+```text
+/dev/video8 opened=True
+/dev/video8 frames=30/30 shape=(720, 1280, 3) approx_fps=24.05
+/dev/video9 opened=False
+```
+
+A lightweight UVC path was added to `perception_pkg/scripts/video_publisher.py`
+and exposed through `perception_pkg/launch/sony_uvc_perception.launch.py`.
+
+Smoke-test launch:
+
+```bash
+ros2 launch perception_pkg sony_uvc_perception.launch.py \
+  video_device:=/dev/video8 \
+  width:=1280 \
+  height:=720 \
+  fps:=15 \
+  inference_device:=cpu \
+  confidence_threshold:=0.10 \
+  model_path:=/home/miya/follow_ws/src/fcr_ros2_3/src/perception_pkg/models/yolov8n.onnx
+```
+
+Observed ROS2 graph:
+
+```text
+/sony_uvc_publisher
+/detection_node
+/tracking_node
+/face_aim_node
+
+/sony/image_raw
+/sony/camera_info
+/perception/detections
+/perception/tracks
+/perception/aim_target_2d
+/perception/debug_image
+```
+
+Sony image stream:
+
+```text
+/sony/image_raw average rate: ~23 Hz
+```
+
+YOLOv8n CPU detection:
+
+```text
+Validated ONNX output -> 8400x84 predictions
+Loaded YOLO model (12.26 MiB) in ~332 ms
+YOLO performance: processed=~4.3-5.0 FPS inference_avg=~200-230 ms
+```
+
+Person detection/tracking/aim result with Miya in the frame:
+
+```text
+DETECTED 2 [('person', 0.877, [373.0, 382.0], [1.0, 50.0, 745.0, 714.0], 744.0, 664.0), ...]
+BEST person 0.896 [373.5, 381.5] [1.0, 49.0, 746.0, 714.0] 745.0 665.0
+
+TRACKS 1 tracking_id 0 [(0, 'person', 0.936, 2, [282.0, 378.7])]
+AIM True 0 280.8 165.7 0.936 6
+```
+
+Interpretation:
+
+- Sony -> Jetson -> ROS2 image transport works through UVC.
+- `detection_node` loads YOLOv8n ONNX and detects `person`.
+- `tracking_node` creates a confirmed track.
+- `face_aim_node` publishes a valid `/perception/aim_target_2d`.
+- This still does not validate the proprietary `sony_camera_node`; the CRSDK
+  path remains a separate task.

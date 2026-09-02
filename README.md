@@ -38,14 +38,15 @@ Jetson Orin Nano + DJI RS2 云台 + Orbbec/Gemini 深度相机
 - RS2 over USB-CAN `can1` 已完成通信和极小角度 yaw 测试：`/gimbal/status connected=true`，CAN/CRC/parse error 均为 0。
 - Orbbec Gemini 335 已在 Jetson USB3.2 下跑通低负载深度流：`/camera/depth/image_raw` 424x240@10Hz，`/camera/depth/camera_info` 正常。
 - RS2 + Orbbec 深度相机共存测试已通过。
-- Sony 当前未完成：`lsusb` 未枚举到 Sony 设备，且 `sony_camera_node` 需要将 Sony CRSDK staged 到 `src/sony_camera_pkg/sdk` 后才能构建。
+- Sony ZV-E10M2 已通过 UVC 模式枚举为 `/dev/video8`，新增轻量 UVC publisher 可发布 `/sony/image_raw` 与 `/sony/camera_info`；YOLOv8n CPU detection/tracking/aim smoke test 已识别到画面中的 `person`。
+- Sony CRSDK 版 `sony_camera_node` 仍未启用：需要将 Sony CRSDK staged 到 `src/sony_camera_pkg/sdk` 后才能构建。
 - TRON1 安全限速链路已准备，默认 `enable_motion=false`，首次实机速度限制为 `0.03 m/s`、`0.10 rad/s`。
 
 下一步：
 
 1. 晚上进入 TRON1 官方 SDK/ROS2 通信链路梳理和 adapter 接口层设计。
 2. 不启动 TRON1 真机底盘运动，不让旧 FCR `/cmd_vel` 直连 TRON1。
-3. Sony 后续单独排查 USB3/相机 USB 模式/CRSDK staged 状态。
+3. Sony 后续继续优化 USB3 接口、正式 CRSDK 节点和完整跟拍闭环。
 
 迁移说明、启动命令、安全限速测试和第一次实机 checklist 见：
 

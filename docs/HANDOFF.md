@@ -52,7 +52,7 @@ Hardware roles:
 - `[VERIFIED]` Jetson Orin Nano CLB: headless onboard computer running ROS2 Humble, RS2 driver, Orbbec driver, follow/control nodes, and future TRON1 adapter.
 - `[VERIFIED]` DJI RS2: active-vision gimbal controlled by Jetson through external USB-CAN.
 - `[VERIFIED]` Orbbec Gemini 335: depth camera, currently verified as depth-only 424x240@10Hz.
-- `[UNVERIFIED]` Sony camera: original RGB camera path; source exists but proprietary CRSDK is not staged and real stream is not verified.
+- `[VERIFIED]` Sony ZV-E10M2: UVC mode enumerates as `/dev/video8`, publishes `/sony/image_raw`, and has passed YOLO/person detection, tracking, and aim-target smoke tests; proprietary CRSDK node is still not staged.
 - `[UNVERIFIED]` TRON1 EDU: target robot base; official SDK/ROS2 repos exist locally, but real robot control has not been tested in this migration.
 
 ## 2. Current code and directories
@@ -163,7 +163,7 @@ Currently visible USB devices on Jetson:
 
 - `[VERIFIED]` `2bc5:0800 Orbbec Gemini 335`, USB tree shows `5000M`.
 - `[VERIFIED]` `1d50:606f OpenMoko Geschwister Schneider CAN adapter`, USB tree shows driver `gs_usb`.
-- `[UNVERIFIED]` Sony camera was not confirmed in the last `lsusb` evidence.
+- `[VERIFIED]` Sony ZV-E10M2 was later confirmed as `054c:0ee8`, with usable UVC stream `/dev/video8` at 1280x720.
 
 ROS2 packages visible after sourcing `/opt/ros/humble/setup.bash` and `~/follow_ws/install/setup.bash`:
 
@@ -458,7 +458,9 @@ Current state:
 - `[VERIFIED]` Source package `src/sony_camera_pkg` exists.
 - `[VERIFIED]` CRSDK staging path is `src/sony_camera_pkg/sdk/` and is ignored by git.
 - `[VERIFIED]` `sony_camera_node` is not currently built because CRSDK is not staged.
-- `[UNVERIFIED]` Real Sony USB/image stream is not verified.
+- `[VERIFIED]` Sony UVC `/dev/video8` image stream is verified; `/dev/video9` did not open and appears auxiliary.
+- `[VERIFIED]` `perception_pkg/scripts/video_publisher.py --device /dev/video8` can publish `/sony/image_raw` and `/sony/camera_info`.
+- `[VERIFIED]` `perception_pkg/launch/sony_uvc_perception.launch.py` starts the UVC publisher plus the existing detection/tracking/aim pipeline.
 
 Check later:
 
@@ -469,6 +471,31 @@ source /opt/ros/humble/setup.bash
 source ~/follow_ws/install/setup.bash
 ros2 pkg executables sony_camera_pkg
 ```
+
+UVC perception smoke-test:
+
+```bash
+cd ~/follow_ws
+source /opt/ros/humble/setup.bash
+source ~/follow_ws/install/setup.bash
+
+ros2 launch perception_pkg sony_uvc_perception.launch.py \
+  video_device:=/dev/video8 \
+  width:=1280 \
+  height:=720 \
+  fps:=15 \
+  inference_device:=cpu \
+  confidence_threshold:=0.10 \
+  model_path:=/home/miya/follow_ws/src/fcr_ros2_3/src/perception_pkg/models/yolov8n.onnx
+```
+
+Verified result:
+
+- `[VERIFIED]` `/sony/image_raw` publishes at about 23 Hz.
+- `[VERIFIED]` YOLOv8n ONNX loads and runs about 4.3-5.0 FPS on CPU.
+- `[VERIFIED]` With a person in the frame, `/perception/detections` reports `person` with best confidence around 0.896.
+- `[VERIFIED]` `/perception/tracks` creates tracking id `0`.
+- `[VERIFIED]` `/perception/aim_target_2d` publishes `valid=true`.
 
 ### TRON1 EDU
 
@@ -510,10 +537,10 @@ Key packages:
 | `robot_platform_pkg` | RS2 driver, legacy chassis/platform code, `tron1_safety_limiter_node` | `[VERIFIED]` RS2; `[UNVERIFIED]` real base |
 | `teleop_control_pkg` | command mux, keyboard teleop, deadman/e-stop/mode logic | `[VERIFIED]` source/package |
 | `servo_control_pkg` | visual servo, PBVS/IBVS, velocity commander, follow logic | `[VERIFIED]` source; full real loop `[UNVERIFIED]` |
-| `perception_pkg` | detection/tracking/depth fusion/Sony-Gemini calibration | `[VERIFIED]` source; full real detector `[UNVERIFIED]` |
+| `perception_pkg` | detection/tracking/depth fusion/Sony-Gemini calibration; Sony UVC fallback publisher | `[VERIFIED]` Sony UVC image + YOLO/tracking/aim smoke test |
 | `bringup_pkg` | launch orchestration for FCR, RS2, TRON1 bridge | `[VERIFIED]` |
 | `orbbec_camera` | Orbbec ROS2 camera driver | `[VERIFIED]` depth stream |
-| `sony_camera_pkg` | Sony camera wrapper | `[UNVERIFIED]` real node/stream |
+| `sony_camera_pkg` | Sony CRSDK camera wrapper | `[UNVERIFIED]` CRSDK node/stream |
 
 Important topics:
 
@@ -549,7 +576,7 @@ Current `can0`/`can1` rule:
 [✓] RS2 + Orbbec coexistence verified.
 [~] TRON1 simulation and limiter path documented/tested in logs; re-run before use.
 [~] TRON1 official controller topic override patch exists locally.
-[!] Sony camera blocked by missing CRSDK / unverified USB stream.
+[~] Sony camera UVC stream and perception smoke test verified; CRSDK node still unbuilt.
 [ ] Jetson <-> TRON1 real Ethernet not verified.
 [ ] TRON1 real safe motion not started.
 [ ] Full perception -> follow -> gimbal -> base chain not completed on real robot.
