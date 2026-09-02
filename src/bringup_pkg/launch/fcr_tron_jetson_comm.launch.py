@@ -93,7 +93,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "rs2_can_interface",
-            default_value="can1",
+            default_value="can0",
             description="SocketCAN interface for DJI RS2; verify with ip/link stats before real tests.",
         ),
         DeclareLaunchArgument(

@@ -131,3 +131,16 @@ TODO paste output here
 - CAN adapter status: pending; Jetson built-in `can0` is present as `mttcan` but DOWN/STOPPED. Configure at 1 Mbit/s only after confirming the RS2 CAN wiring/transceiver path.
 - RS2 communication status: pending; test after CAN interface appears.
 - Blockers: none for OS boot or ROS 2 core. Next risk area is CAN/RS2 wiring and depth-camera package/udev setup on Jetson.
+
+## 2026-09-02 session notes
+
+- Today’s hardware target is Jetson Orin Nano CLB + board CAN `can0` + DJI RS2
+  + Orbbec/Gemini depth camera.
+- `can0` is the correct real interface for today; it is Jetson `mttcan`, not an
+  external `gs_usb` USB-CAN adapter.
+- Sony camera is unavailable today and must not be treated as a blocker.
+- TRON1 real chassis motion remains disabled/out of scope.
+- Codex cannot currently run Jetson commands over SSH because passwordless SSH
+  is not configured. The old SSH host key for `192.168.55.1` was removed after
+  the Jetson reflash and the new key was accepted, but authentication still
+  requires the user’s password or key setup.

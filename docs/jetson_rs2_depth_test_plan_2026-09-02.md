@@ -69,7 +69,7 @@ orbbec_camera launch
   -> /camera/depth/camera_info
 ```
 
-Do not start the Sony-based detector/tracker chain tomorrow unless a separate
+Do not start the Sony-based detector/tracker chain today unless a separate
 RGB input is prepared. Without Sony, `depth_fusion_node` cannot complete the
 production `/perception/tracks + Gemini depth -> /perception/targets_3d` chain,
 because current fusion parameters expect:
@@ -81,7 +81,7 @@ because current fusion parameters expect:
 /sony/camera_info
 ```
 
-For tomorrow, depth-camera success means: the camera is visible on USB, the
+For today, depth-camera success means: the camera is visible on USB, the
 Orbbec node starts, and depth image plus depth CameraInfo publish at a stable
 rate.
 
@@ -337,7 +337,7 @@ Pass criteria:
 
 ### T7 — before TRON1 simulation or later real chassis test
 
-Do not start real TRON1 hardware tomorrow. Preparation-only check:
+Do not start real TRON1 hardware today. Preparation-only check:
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -374,7 +374,7 @@ Expected `/fcr_tron/cmd_vel` is all zero because `enable_motion=false`.
 3. `candump` may show no RS2 traffic until the ROS gimbal driver sends query
    frames. Judge by driver status and counters, not by bare listen alone.
 4. Sony is unavailable, so production perception tracking/fusion is not a
-   success criterion tomorrow.
+   success criterion today.
 5. Do not start TRON1 real motion. The heavy chassis must later be tested with
    `enable_motion=false` first, then tiny limits, physical protection, and a
    human watching power/estop.

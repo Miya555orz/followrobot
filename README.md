@@ -28,7 +28,7 @@ Jetson Orin Nano + DJI RS2 云台 + Orbbec/Gemini 深度相机
 
 下一步：
 
-1. 明天先按 `docs/jetson_rs2_depth_test_plan_2026-09-02.md` 跑 T0-T6。
+1. 今天先按 `docs/jetson_rs2_depth_test_plan_2026-09-02.md` 跑 T0-T6。
 2. 先验证 Jetson `can0`、RS2 CAN 通信、`/gimbal/status`。
 3. 再验证 Orbbec/Gemini 深度相机 `/camera/depth/image_raw` 和 `/camera/depth/camera_info`。
 4. 不启动 Sony 相关功能，不启动 TRON1 真机底盘运动。
@@ -201,7 +201,7 @@ base_wz      =  Kb · q_yaw        (追云台偏角，不追图像误差)
 |------|------|------|
 | 三轮全向运动学 | ✅ 完成 | 120° 对称布局，正/逆运动学矩阵预计算 |
 | 底盘驱动 (LEKIWI) | ⚠️ 仿真完成 | 真实串口通信为 TODO |
-| 云台驱动 (DJI RS2) | 🚧 Jetson 实机验收中 | SocketCAN + DJI R SDK 协议实现已在代码中；明天重点验证 Jetson `can0` 到 RS2 |
+| 云台驱动 (DJI RS2) | 🚧 Jetson 实机验收中 | SocketCAN + DJI R SDK 协议实现已在代码中；今天重点验证 Jetson `can0` 到 RS2 |
 | IMU 驱动 (BNO055) | ⚠️ 仿真完成 | 真实 I2C 通信为 TODO |
 | 里程计 | ✅ 完成 | 轮式里程计 + IMU 融合 |
 | PlatformManager | ✅ 完成 | 聚合底盘/云台/IMU 状态为 PlatformState |

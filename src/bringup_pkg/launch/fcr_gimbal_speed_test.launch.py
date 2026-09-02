@@ -22,7 +22,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        DeclareLaunchArgument("can_interface", default_value="can1"),
+        DeclareLaunchArgument("can_interface", default_value="can0"),
         DeclareLaunchArgument(
             "speed_control_byte",
             default_value="128",

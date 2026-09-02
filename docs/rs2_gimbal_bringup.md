@@ -2,6 +2,11 @@
 
 本文记录当前项目中 DJI RS2 云台的实机接入结论、控制方案、关键参数和最小验证流程。内容基于当前仓库代码和 Jetson Orin Nano Developer Kit 上的实机验证。
 
+> 2026-09-02 当前测试以 `~/follow_ws`、Jetson Orin Nano CLB 板载
+> `mttcan`/`can0`、`robot_platform_pkg` + `teleop_control_pkg` 最小链路为准。
+> 旧的 `~/ros2_ws`、`external_control_pkg`、`command_router_node` 说明仅作为历史
+> RS2 调试记录参考；今天不依赖 Sony 相机，也不要求启动语音/路由链路。
+
 ## 1. 当前结论
 
 当前云台硬件链路已经打通：
