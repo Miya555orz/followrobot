@@ -220,6 +220,25 @@ grep -R "external-device" ~/.nvsdkm/logs | tail -20
 --external-device sda1
 ```
 
+说明仍误选了 USB 存储，需要返回 Storage Device 页面改选 NVMe。
+
+### 2026-09-01 首次开机确认
+
+用户最终选择 NVMe 后，Jetson Orin Nano CLB 已成功启动进入 Ubuntu 22.04.5：
+
+```text
+hostname: ubuntu
+Kernel: 5.15.199-tegra aarch64
+L4T: R36.5.2
+Root filesystem: /dev/nvme0n1p1
+Root usage: 233G total, 6.6G used, 214G available
+USB gadget IP: 192.168.55.1
+RJ45 IP: 172.31.178.242
+```
+
+结论：direct flash 到 NVMe 成功，后续进入 post-flash ROS2 / CAN / RS2 / Gemini 配置。
+```
+
 说明 Storage Device 仍然选错了。
 
 ## B0：Jetson 首次开机检查

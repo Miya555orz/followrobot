@@ -20,6 +20,7 @@ class ServoChainMockSource(Node):
         self.declare_parameter("camera_info_topic", "/sony/camera_info")
         self.declare_parameter("target_topic", "/perception/targets_3d")
         self.declare_parameter("target_mode", "3d")
+        self.declare_parameter("camera_frame_id", "camera_optical_link")
         self.declare_parameter("platform_yaw", 0.0)
 
         rate = float(self.get_parameter("publish_rate_hz").value)
@@ -55,6 +56,7 @@ class ServoChainMockSource(Node):
         self.start_delay = float(self.get_parameter("start_delay_sec").value)
         self.active_duration = float(self.get_parameter("active_duration_sec").value)
         self.target_mode = str(self.get_parameter("target_mode").value).lower()
+        self.camera_frame_id = str(self.get_parameter("camera_frame_id").value)
         self.platform_yaw = float(self.get_parameter("platform_yaw").value)
         if self.target_mode not in ("2d", "3d"):
             raise ValueError("target_mode must be '2d' or '3d'")
@@ -70,7 +72,7 @@ class ServoChainMockSource(Node):
         now = self.get_clock().now().to_msg()
         camera = CameraInfo()
         camera.header.stamp = now
-        camera.header.frame_id = "camera_optical_link"
+        camera.header.frame_id = self.camera_frame_id
         camera.width = 640
         camera.height = 480
         camera.distortion_model = "plumb_bob"
@@ -104,7 +106,7 @@ class ServoChainMockSource(Node):
 
         targets = TargetArray()
         targets.header.stamp = now
-        targets.header.frame_id = "camera_optical_link"
+        targets.header.frame_id = self.camera_frame_id
         targets.tracking_id = 1
         target = Target()
         target.header = targets.header
@@ -138,7 +140,7 @@ class ServoChainMockSource(Node):
         """Keep publishing a LOST track to prove it cannot refresh servo timeout."""
         targets = TargetArray()
         targets.header.stamp = stamp
-        targets.header.frame_id = "camera_optical_link"
+        targets.header.frame_id = self.camera_frame_id
         targets.tracking_id = 1
         target = Target()
         target.header = targets.header

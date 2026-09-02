@@ -8,13 +8,40 @@
 
 本项目正在从原 LEKIWI 三全向轮底盘迁移到逐际动力 TRON1 EDU 双轮足底盘。当前 TRON1 仿真使用 `WF_TRON1A`，第一次实机计划硬件为 TRON1 EDU + DJI RS2 云台 + Orbbec Gemini 335 深度相机 + Jetson Orin Nano，暂时没有 Sony 相机。
 
+### 当前所在步骤（2026-09-02）
+
+当前不进入 TRON1 真机运动测试。项目处在：
+
+```text
+Jetson Orin Nano + DJI RS2 云台 + Orbbec/Gemini 深度相机
+本地通信链路 bring-up / 实机验收准备阶段
+```
+
+已完成：
+
+- Jetson Orin Nano CLB 已刷入 JetPack 6.2.3 / Jetson Linux R36.5.2，并从 NVMe 启动。
+- Jetson 上 ROS 2 Humble 可用，`ros2 topic list` 正常返回 `/parameter_events` 和 `/rosout`。
+- Jetson 工作区 `~/follow_ws` 中已能识别核心包：`vision_servo_msgs`、`robot_platform_pkg`、`teleop_control_pkg`。
+- Jetson 板载 CAN `can0` 已确认存在，驱动为 `mttcan`；当前需在测试前配置为 `1 Mbit/s`。
+- RS2 最小控制链路已准备：`/cmd_gimbal -> gimbal_driver_node -> SocketCAN can0 -> DJI RS2`。
+- TRON1 安全限速链路已准备，默认 `enable_motion=false`，首次实机速度限制为 `0.03 m/s`、`0.10 rad/s`。
+
+下一步：
+
+1. 明天先按 `docs/jetson_rs2_depth_test_plan_2026-09-02.md` 跑 T0-T6。
+2. 先验证 Jetson `can0`、RS2 CAN 通信、`/gimbal/status`。
+3. 再验证 Orbbec/Gemini 深度相机 `/camera/depth/image_raw` 和 `/camera/depth/camera_info`。
+4. 不启动 Sony 相关功能，不启动 TRON1 真机底盘运动。
+
 迁移说明、启动命令、安全限速测试和第一次实机 checklist 见：
 
 - [docs/tron1_migration.md](docs/tron1_migration.md)
+- [docs/tron1_jetson_comm_bringup.md](docs/tron1_jetson_comm_bringup.md)
 - [docs/tron1_sim_test_framework.md](docs/tron1_sim_test_framework.md)
 - [docs/tron1_external_repo_note.md](docs/tron1_external_repo_note.md)
 - [docs/jetson_rs2_bringup_log.md](docs/jetson_rs2_bringup_log.md)
 - [docs/jetson_orin_nano_clb_setup.md](docs/jetson_orin_nano_clb_setup.md)
+- [docs/jetson_rs2_depth_test_plan_2026-09-02.md](docs/jetson_rs2_depth_test_plan_2026-09-02.md)
 
 当前安全链路：
 
@@ -36,7 +63,7 @@ TRON1 仿真联调      ██████░░░░ 60%
 第一次实机准备      ████░░░░░░ 40%
 ```
 
-安全提醒：不要让 TRON1 直接订阅旧 FCR `/cmd_vel`；第一次实机必须先经过 `tron1_safety_limiter`，并使用极低速度、超时停车和急停话题。
+安全提醒：不要让 TRON1 直接订阅旧 FCR `/cmd_vel`；第一次实机必须先经过 `tron1_safety_limiter`，并使用极低速度（建议不超过 `0.03 m/s`、`0.10 rad/s`）、超时停车和急停话题。
 
 ---
 
@@ -174,7 +201,7 @@ base_wz      =  Kb · q_yaw        (追云台偏角，不追图像误差)
 |------|------|------|
 | 三轮全向运动学 | ✅ 完成 | 120° 对称布局，正/逆运动学矩阵预计算 |
 | 底盘驱动 (LEKIWI) | ⚠️ 仿真完成 | 真实串口通信为 TODO |
-| 云台驱动 (DJI RS2) | ⚠️ 仿真完成 | 真实 CAN 总线通信为 TODO |
+| 云台驱动 (DJI RS2) | 🚧 Jetson 实机验收中 | SocketCAN + DJI R SDK 协议实现已在代码中；明天重点验证 Jetson `can0` 到 RS2 |
 | IMU 驱动 (BNO055) | ⚠️ 仿真完成 | 真实 I2C 通信为 TODO |
 | 里程计 | ✅ 完成 | 轮式里程计 + IMU 融合 |
 | PlatformManager | ✅ 完成 | 聚合底盘/云台/IMU 状态为 PlatformState |
@@ -293,7 +320,7 @@ ros2 topic echo /cmd_gimbal
 
 ### 中优先级
 
-- **真实硬件驱动** — LEKIWI 底盘串口、DJI RS2 云台 CAN 总线、BNO055 IMU I2C 通信均为 TODO
+- **真实硬件驱动** — DJI RS2 云台 CAN 驱动已进入 Jetson 实机验收；LEKIWI 底盘串口、BNO055 IMU I2C 和后续 TRON1 实机链路仍需分阶段验证
 - **架构拆分** — 按 V3 规划将 TF 变换、IBVS/PBVS 控制器拆分为独立节点
 - **`velocity_commander_node` 完善** — 当前仅处理 Twist linear 分量，角速度读取为 TODO
 

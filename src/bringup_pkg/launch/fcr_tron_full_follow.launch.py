@@ -21,11 +21,16 @@ def generate_launch_description():
         ]),
         launch_arguments={
             "enable_chassis": "false",
+            "can_interface": LaunchConfiguration("can_interface"),
+            "gimbal_control_mode": LaunchConfiguration("gimbal_control_mode"),
+            "gimbal_speed_control_byte": LaunchConfiguration(
+                "gimbal_speed_control_byte"
+            ),
             "enable_gimbal": LaunchConfiguration("enable_gimbal"),
             "enable_detection": LaunchConfiguration("enable_detection"),
             "enable_tracking": LaunchConfiguration("enable_tracking"),
             "enable_sony_camera": LaunchConfiguration("enable_sony_camera"),
-            "enable_depth_fusion": "true",
+            "enable_depth_fusion": LaunchConfiguration("enable_depth_fusion"),
             "start_gemini": LaunchConfiguration("start_gemini"),
             "enable_mvp": LaunchConfiguration("enable_mvp"),
             "gemini_depth_width": LaunchConfiguration("gemini_depth_width"),
@@ -75,6 +80,17 @@ def generate_launch_description():
             description="Start the DJI RS2 gimbal driver. Keep false for base-only migration.",
         ),
         DeclareLaunchArgument(
+            "can_interface",
+            default_value="can1",
+            description="Linux SocketCAN interface used by the DJI RS2 gimbal.",
+        ),
+        DeclareLaunchArgument(
+            "gimbal_control_mode",
+            default_value="incremental_position",
+            description="RS2 command mode for communication bring-up: speed or incremental_position.",
+        ),
+        DeclareLaunchArgument("gimbal_speed_control_byte", default_value="128"),
+        DeclareLaunchArgument(
             "enable_detection",
             default_value="false",
             description="Start YOLO detection. Keep false for first TRON bridge checks.",
@@ -88,6 +104,11 @@ def generate_launch_description():
             "enable_sony_camera",
             default_value="false",
             description="Start Sony RGB camera. Keep false for first TRON bridge checks.",
+        ),
+        DeclareLaunchArgument(
+            "enable_depth_fusion",
+            default_value="true",
+            description="Start Gemini depth, calibrated TF, and /perception/targets_3d fusion.",
         ),
         DeclareLaunchArgument(
             "enable_mvp",
@@ -108,9 +129,9 @@ def generate_launch_description():
             description="Forward FCR linear.y to TRON. false is safer for first tests.",
         ),
         DeclareLaunchArgument("input_timeout_sec", default_value="0.25"),
-        DeclareLaunchArgument("max_linear_x", default_value="0.05"),
+        DeclareLaunchArgument("max_linear_x", default_value="0.03"),
         DeclareLaunchArgument("max_linear_y", default_value="0.03"),
-        DeclareLaunchArgument("max_angular_z", default_value="0.15"),
+        DeclareLaunchArgument("max_angular_z", default_value="0.10"),
         DeclareLaunchArgument("use_foxglove", default_value="false"),
         fcr,
         TimerAction(period=1.0, actions=[tron1_safety_limiter]),

@@ -34,6 +34,7 @@ def generate_launch_description():
         parameters=[{
             "start_delay_sec": 2.0,
             "active_duration_sec": ParameterValue(active_duration, value_type=float),
+            "camera_frame_id": "sony_camera_optical_frame",
         }],
     )
 

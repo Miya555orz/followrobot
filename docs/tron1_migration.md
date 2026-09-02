@@ -100,8 +100,8 @@ TRON1 仿真或真机
 
 - 输入：`/fcr/cmd_vel_stamped`，类型 `geometry_msgs/msg/TwistStamped`
 - 输出：`/fcr_tron/cmd_vel`，类型 `geometry_msgs/msg/Twist`
-- `linear.x` 限制到 `±0.10 m/s`
-- `angular.z` 限制到 `±0.30 rad/s`
+- `linear.x` 限制到 `±0.03 m/s`
+- `angular.z` 限制到 `±0.10 rad/s`
 - `linear.y` 默认强制为 `0`
 - 50Hz 持续发布
 - 0.30s 没有新输入则自动停车
@@ -295,7 +295,7 @@ TRON1 底盘
 - [ ] 确认没有旧的 `rqt_robot_steering`、`ros2 topic pub`、Gazebo、旧 FCR 底盘节点残留。
 - [ ] 确认 TRON 控制器订阅的是 `/fcr_tron/cmd_vel`，不是裸 `/cmd_vel`。
 - [ ] 确认 `tron1_safety_limiter` 已启动，`enable_motion` 初始为 `false`。
-- [ ] 确认 `max_linear_x <= 0.05`、`max_angular_z <= 0.15` 再允许第一次非零输出。
+- [ ] 确认 `max_linear_x <= 0.03`、`max_angular_z <= 0.10` 再允许第一次非零输出。
 - [ ] 确认停止输入后 0.30s 内 `/fcr_tron/cmd_vel` 会回 0。
 - [ ] 确认 `/safety/estop_state` 发布 `true` 后输出立即为 0。
 

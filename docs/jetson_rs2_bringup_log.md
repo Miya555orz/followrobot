@@ -24,7 +24,19 @@ ros2 --version
 Result:
 
 ```text
-TODO paste output here
+hostname: ubuntu
+Ubuntu: 22.04.5 LTS
+Kernel: 5.15.199-tegra aarch64
+L4T: R36 (release), REVISION: 5.2, GCID: 46426093, BOARD: generic
+Root filesystem: /dev/nvme0n1p1, 233G total, 214G available
+Network:
+  wlP1p1s0 DOWN
+  can0 DOWN
+  enP8p1s0 UP 172.31.178.242/24
+  l4tbr0 UP 192.168.55.1/24
+Storage:
+  nvme0n1 238.5G
+  nvme0n1p1 mounted at /
 ```
 
 ## Step J1: run read-only preflight
@@ -112,8 +124,10 @@ TODO paste output here
 
 ## Conclusion
 
-- Jetson ROS 2 status: pending; Jetson is still in JetPack flashing stage.
-- FCR workspace status: ready on laptop; Jetson clone/build pending after first boot.
-- CAN adapter status: pending; test after Jetson OS is installed.
+- Jetson flash status: PASS; JetPack 6.2.3 / L4T R36.5.2 booted successfully from NVMe.
+- Jetson network status: PASS; USB gadget SSH works at 192.168.55.1, RJ45 received 172.31.178.242/24.
+- Jetson ROS 2 status: PASS; `/opt/ros/humble/bin/ros2` is available and `ros2 topic list` returns `/parameter_events` and `/rosout`.
+- FCR Jetson core package status: PASS for `vision_servo_msgs`, `robot_platform_pkg`, and `teleop_control_pkg`. `bringup_pkg` is optional for the minimum RS2 test and failed only because broad runtime packages were not yet built.
+- CAN adapter status: pending; Jetson built-in `can0` is present as `mttcan` but DOWN/STOPPED. Configure at 1 Mbit/s only after confirming the RS2 CAN wiring/transceiver path.
 - RS2 communication status: pending; test after CAN interface appears.
-- Blockers: SDK Manager GUI crashes on host, CLI is being used. First direct flash attempt failed because the selected Jetson-side storage was USB/`sda1`; next attempt should choose NVMe in the SDK Manager `Storage Device` menu.
+- Blockers: none for OS boot or ROS 2 core. Next risk area is CAN/RS2 wiring and depth-camera package/udev setup on Jetson.

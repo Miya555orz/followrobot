@@ -7,15 +7,16 @@ tron1_safety_limiter:
     publish_rate_hz: 50.0
     input_timeout_sec: 0.30
 
-    # First-test TRON1 EDU limits. Keep these low until the simulator and
-    # real robot have both passed stop-distance checks.
-    max_linear_x: 0.10
+    # First-test TRON1 EDU limits. Keep these extremely low until the simulator
+    # and real robot have both passed stop-distance checks. TRON1 is heavy and
+    # can become unsafe quickly if a joystick or autonomy path bypasses limits.
+    max_linear_x: 0.03
     max_linear_y: 0.0
-    max_angular_z: 0.30
+    max_angular_z: 0.10
 
-    max_accel_x: 0.20
-    max_accel_y: 0.20
-    max_accel_yaw: 0.60
+    max_accel_x: 0.06
+    max_accel_y: 0.06
+    max_accel_yaw: 0.20
 
     enable_motion: false
     enable_lateral: false

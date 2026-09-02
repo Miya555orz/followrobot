@@ -52,12 +52,12 @@ public:
 
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 50.0);
     input_timeout_sec_ = declare_parameter<double>("input_timeout_sec", 0.30);
-    max_linear_x_ = declare_parameter<double>("max_linear_x", 0.10);
+    max_linear_x_ = declare_parameter<double>("max_linear_x", 0.03);
     max_linear_y_ = declare_parameter<double>("max_linear_y", 0.0);
-    max_angular_z_ = declare_parameter<double>("max_angular_z", 0.30);
-    max_accel_x_ = declare_parameter<double>("max_accel_x", 0.20);
-    max_accel_y_ = declare_parameter<double>("max_accel_y", 0.20);
-    max_accel_yaw_ = declare_parameter<double>("max_accel_yaw", 0.60);
+    max_angular_z_ = declare_parameter<double>("max_angular_z", 0.10);
+    max_accel_x_ = declare_parameter<double>("max_accel_x", 0.06);
+    max_accel_y_ = declare_parameter<double>("max_accel_y", 0.06);
+    max_accel_yaw_ = declare_parameter<double>("max_accel_yaw", 0.20);
     enable_motion_ = declare_parameter<bool>("enable_motion", false);
     enable_lateral_ = declare_parameter<bool>("enable_lateral", false);
     stop_immediately_on_estop_ = declare_parameter<bool>("stop_immediately_on_estop", true);
@@ -175,12 +175,12 @@ private:
   bool stop_immediately_on_timeout_ = true;
   double publish_rate_hz_ = 50.0;
   double input_timeout_sec_ = 0.30;
-  double max_linear_x_ = 0.10;
+  double max_linear_x_ = 0.03;
   double max_linear_y_ = 0.0;
-  double max_angular_z_ = 0.30;
-  double max_accel_x_ = 0.20;
-  double max_accel_y_ = 0.20;
-  double max_accel_yaw_ = 0.60;
+  double max_angular_z_ = 0.10;
+  double max_accel_x_ = 0.06;
+  double max_accel_y_ = 0.06;
+  double max_accel_yaw_ = 0.20;
 };
 
 int main(int argc, char ** argv)

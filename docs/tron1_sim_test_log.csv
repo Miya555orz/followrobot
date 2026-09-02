@@ -1,2 +1,12 @@
 date,test_id,robot_type,rl_type,max_linear_x,max_angular_z,input,expected,result,notes
 2026-08-31,T2-00,WF_TRON1A,isaacgym,0.05,0.15,"x=0.03 yaw=0","TRON Gazebo starts and /fcr_tron/cmd_vel outputs Twist",PASS,"WheelfootController started; bridge output observed"
+2026-09-01,T1-00,N/A,N/A,N/A,N/A,"mock 3D target via PBVS","FCR servo chain publishes motion then stops within 0.30s",PASS,"Fixed acceptance mock camera_frame_id to sony_camera_optical_frame; stop_latency_ms=294.3"
+2026-09-01,T1-01,N/A,N/A,0.05,0.15,"x=1.0 y=1.0 yaw=2.0","/fcr_tron/cmd_vel clamps x/yaw, forces y=0, returns zero on timeout",PASS,"Output ramped to x=0.05 yaw=0.15; y stayed 0; timeout output returned to zero"
+2026-09-01,T2-01,WF_TRON1A,isaacgym,0.05,0.15,"x=0.03 yaw=0","TRON Gazebo subscribes to /fcr_tron/cmd_vel and receives limiter output",PASS,"pointfoot_hw_sim started; WheelfootController cmd_vel topic=/fcr_tron/cmd_vel; topic info showed robot_hw_node subscriber"
+2026-09-01,T3-02,WF_TRON1A,isaacgym,0.05,0.15,"x=-0.03 yaw=0","/fcr_tron/cmd_vel follows reverse command then returns zero",PASS,"Gazebo bridge active; output x=-0.03 y=0 yaw=0 then zero"
+2026-09-01,T3-03,WF_TRON1A,isaacgym,0.05,0.15,"x=0 yaw=0.10","/fcr_tron/cmd_vel follows turn command then returns zero",PASS,"Output yaw=0.10 with x/y=0 then zero"
+2026-09-01,T3-05,WF_TRON1A,isaacgym,0.05,0.15,"x=1.0 y=1.0 yaw=2.0","Limiter clamps x/yaw and rejects lateral command",PASS,"Output clamped to x=0.05 y=0 yaw=0.15 then zero"
+2026-09-01,T3-07,WF_TRON1A,isaacgym,0.05,0.15,"motion command then /safety/estop_state=true","Limiter outputs zero while command publisher remains active",PASS,"Output stayed zero after estop"
+2026-09-01,T3-04,WF_TRON1A,isaacgym,0.03,0.10,"x=0.02 yaw=0.05","/fcr_tron/cmd_vel follows tiny arc command then returns zero",PASS,"Output x=0.02 y=0 yaw=0.05; after publisher timeout output returned to zero"
+2026-09-01,T3-08,WF_TRON1A,isaacgym,0.03,0.10,"x=1.0 y=1.0 yaw=2.0","Strict limiter clamps large input to first-real-test limits",PASS,"Topic info showed publisher/subscriber connected; output clamped to x=0.03 y=0 yaw=0.10"
+2026-09-01,T3-09,WF_TRON1A,isaacgym,0.03,0.10,"enable_motion=false with x=1.0 y=1.0 yaw=2.0","Safety gate forces zero output even with large command input",PASS,"Limiter launched enable_motion=false; /fcr_tron/cmd_vel remained all zero"

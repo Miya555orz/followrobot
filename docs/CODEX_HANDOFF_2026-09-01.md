@@ -118,7 +118,7 @@ ros2 run teleop_control_pkg tron1_chinese_teleop --ros-args \
 
 ## Jetson Orin Nano CLB 当前状态
 
-用户现在正在给 Jetson Orin Nano CLB 开发者套件刷 JetPack。
+Jetson Orin Nano CLB 已完成 JetPack 6.2.3 / Jetson Linux R36.5.2 direct flash，且根文件系统确认位于 NVMe。
 
 重要背景：
 
@@ -126,7 +126,7 @@ ros2 run teleop_control_pkg tron1_chinese_teleop --ros-args \
 - CLI 可用；
 - 当前 SDK Manager 版本：`2.4.1.13536`；
 - 用户已经能让 Jetson 进入 Recovery/APX 模式；
-- 主机可看到：
+- 主机曾可看到：
 
 ```bash
 lsusb | grep -i nvidia
@@ -146,7 +146,7 @@ Error Code: 524
 
 判断：SDK Manager/用户选择把 Jetson 侧目标存储设成了 USB/`sda1`，但 Jetson initrd 环境中没有可用 `/dev/sda`，因此失败。不是电脑没识别 APX，也不是一定没电。
 
-最新用户界面已经出现：
+后来 SDK Manager 界面出现：
 
 ```text
 Storage Device:
@@ -156,13 +156,37 @@ Storage Device:
 4. Custom
 ```
 
-已建议用户选择：
+已建议用户选择并完成：
 
 ```text
 2. NVMe
 ```
 
-下一位 Codex 请继续从这里跟进。如果用户刷机继续失败，优先看最新 flash 日志，确认是否仍然是 `--external-device sda1`；正确 NVMe 路径应变为类似 `--external-device nvme0n1p1`。
+2026-09-01 首次 SSH 检查结果：
+
+```text
+hostname: ubuntu
+L4T: R36 (release), REVISION: 5.2, GCID: 46426093, BOARD: generic
+Kernel: 5.15.199-tegra aarch64
+Root filesystem: /dev/nvme0n1p1, 233G total, 214G available
+Jetson USB gadget: l4tbr0 = 192.168.55.1/24
+RJ45 Ethernet: enP8p1s0 = 172.31.178.242/24
+Wi-Fi: wlP1p1s0 DOWN
+CAN: can0 DOWN
+ROS 2: Humble available at /opt/ros/humble/bin/ros2; `ros2 topic list` returns /parameter_events and /rosout
+```
+
+2026-09-02 追加状态：
+
+```text
+Jetson workspace: ~/follow_ws
+Jetson visible packages: vision_servo_msgs, robot_platform_pkg, teleop_control_pkg
+bringup_pkg: not required for the minimum RS2 test; failed only because its launch-only package declares broad runtime deps that are not built yet
+CAN: can0 exists as Jetson mttcan, DOWN/STOPPED until configured
+Sony camera: unavailable for tomorrow's test; keep Sony-dependent launch/node paths disabled
+```
+
+结论：JetPack / L4T 已刷入并从 NVMe 启动，ROS 2 Humble 基础环境已确认可用，RS2 最小控制所需的 `robot_platform_pkg` 已能被 ROS 2 识别。下一步应在 Jetson 上做 can0 bring-up、RS2 CAN/ROS 节点验证、Orbbec/Gemini 深度相机验证。不要再重复刷机，除非后续发现 BSP/硬件驱动严重不匹配。
 
 ## Jetson 刷机 CLI 命令记录
 
@@ -199,8 +223,21 @@ grep -R "external-device" ~/.nvsdkm/logs | tail -20
 
 ## 下一步建议
 
-1. 先完成 Jetson 刷机。
-2. Jetson 首次开机后，在 Jetson 本机执行：
+1. Jetson 刷机已完成，不要重复刷机。
+2. Jetson 首次开机基础检查已完成，当前可通过以下地址 SSH：
+
+```bash
+ssh miya@192.168.55.1       # USB gadget 管理网口
+ssh miya@172.31.178.242     # RJ45 网线口，取决于办公室网络是否可路由
+```
+
+3. 明天早上优先按这份 runbook 执行：
+
+```text
+docs/jetson_rs2_depth_test_plan_2026-09-02.md
+```
+
+4. 在 Jetson 上继续执行 T0 系统检查：
 
 ```bash
 hostname
@@ -212,47 +249,37 @@ free -h
 ip -brief address
 ```
 
-3. 在 Jetson 上安装基础环境：
-
-```bash
-cd ~
-git clone -b main https://github.com/Miya555orz/followrobot.git
-cd ~/followrobot
-bash tools/tron1_bringup/jetson_post_flash_setup.sh
-```
-
-4. 建立 ROS 工作区：
+5. 如需继续补全工作区，使用低并发构建。不要清理 `build/`、`install/`、`log/`，除非 CMake 缓存确实损坏：
 
 ```bash
 mkdir -p ~/follow_ws/src
 cd ~/follow_ws/src
-git clone -b main https://github.com/Miya555orz/followrobot.git fcr_ros2_3
+test -d fcr_ros2_3/.git || git clone -b main https://github.com/Miya555orz/followrobot.git fcr_ros2_3
 source /opt/ros/humble/setup.bash
 cd ~/follow_ws
 rosdep update
-rosdep install --from-paths src --ignore-src -r -y
 MAKEFLAGS="-j1 -l1" colcon build --symlink-install --parallel-workers 1 \
-  --packages-select robot_platform_pkg teleop_control_pkg bringup_pkg
+  --packages-up-to orbbec_camera
 ```
 
-5. Jetson + RS2 CAN 检查：
+6. Jetson + RS2 CAN 检查。明天使用 Jetson 板载 `mttcan` can0 时，不要套用 USB-CAN/`gs_usb` 专用流程：
 
 ```bash
 cd ~/follow_ws/src/fcr_ros2_3
-bash tools/tron1_bringup/jetson_rs2_preflight.sh
-ip -details link show
-ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
-dmesg --ctime | tail -120
+bash tools/tron1_bringup/setup_jetson_mttcan_can0.sh
+bash tools/tron1_bringup/rs2_can_preflight.sh can0
 ```
 
-6. 如果出现 `can0`，再配置 CAN：
+7. RS2 ROS 2 节点最小启动，不依赖 `bringup_pkg`：
 
 ```bash
-sudo ip link set can0 down
-sudo ip link set can0 type can bitrate 1000000
-sudo ip link set can0 up
-ip -details link show can0
-candump can0
+cd ~/follow_ws
+source /opt/ros/humble/setup.bash
+source ~/follow_ws/install/setup.bash
+ros2 launch robot_platform_pkg gimbal_bringup.launch.py \
+  use_sim:=false \
+  can_interface:=can0 \
+  control_mode:=incremental_position
 ```
 
 ## 安全提醒
