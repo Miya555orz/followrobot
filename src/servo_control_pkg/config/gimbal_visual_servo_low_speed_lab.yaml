@@ -1,0 +1,54 @@
+gimbal_visual_servo:
+  ros__parameters:
+    # First real-hardware Sony -> RS2 lab profile.
+    # Keep motion deliberately tiny until direction, latency, and safety are verified.
+    control_rate_hz: 30.0
+    diagnostics_rate_hz: 5.0
+
+    # Keep a person slightly above image center for a head/torso composition.
+    desired_u_ratio: 0.50
+    desired_v_ratio: 0.38
+
+    # Direction signs verified/adjusted during RS2 lab tests.
+    yaw_direction: 1.0
+    pitch_direction: -1.0
+
+    # Low gains for a first closed-loop test on the real RS2.
+    yaw_kp: 0.45
+    pitch_kp: 0.32
+    gain_small_scale: 0.50
+    gain_large_scale: 0.85
+    gain_small_error_rad: 0.015
+    gain_large_error_rad: 0.18
+
+    # Very conservative rate and acceleration limits.
+    # 0.04 rad/s ≈ 2.3 deg/s, enough to verify tracking without sudden motion.
+    max_yaw_rate: 0.04
+    max_pitch_rate: 0.035
+    max_yaw_acceleration: 0.18
+    max_pitch_acceleration: 0.16
+    min_effective_rate: 0.003
+
+    # CPU YOLO on Jetson runs only a few FPS, so allow stale observations a
+    # little longer than the production profile while still timing out safely.
+    rs2_latency_seconds: 0.05
+    max_prediction_seconds: 0.10
+    covariance_reference_px: 20.0
+    min_confidence: 0.15
+    normal_age_seconds: 0.25
+    degraded_age_seconds: 0.55
+    prediction_age_seconds: 0.90
+    platform_timeout_seconds: 0.50
+
+    static_enter_yaw_rad: 0.008
+    static_enter_pitch_rad: 0.009
+    static_exit_yaw_rad: 0.016
+    static_exit_pitch_rad: 0.018
+    static_enter_cycles: 5
+
+    # Keep the same software soft limits as the normal profile.
+    yaw_soft_limit_rad: 1.40
+    yaw_limit_margin_rad: 0.08
+    pitch_min_rad: -0.75
+    pitch_max_rad: 0.55
+    pitch_limit_margin_rad: 0.06

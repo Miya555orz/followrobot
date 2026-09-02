@@ -39,6 +39,8 @@ Jetson Orin Nano + DJI RS2 云台 + Orbbec/Gemini 深度相机
 - Orbbec Gemini 335 已在 Jetson USB3.2 下跑通低负载深度流：`/camera/depth/image_raw` 424x240@10Hz，`/camera/depth/camera_info` 正常。
 - RS2 + Orbbec 深度相机共存测试已通过。
 - Sony ZV-E10M2 已通过 UVC 模式枚举为 `/dev/video8`，新增轻量 UVC publisher 可发布 `/sony/image_raw` 与 `/sony/camera_info`；YOLOv8n CPU detection/tracking/aim smoke test 已识别到画面中的 `person`。
+- Sony UVC 人像识别 + DJI RS2 低速闭环跟随已在 Jetson 实机跑通：`/sony/image_raw -> /perception/debug_image -> /perception/aim_target_2d -> gimbal_visual_servo_node -> /auto/cmd_gimbal -> command_mux -> /cmd_gimbal -> gimbal_driver_node -> can1 -> RS2`。首次实机配置使用 `gimbal_visual_servo_low_speed_lab.yaml`，云台 yaw/pitch 限速约 `0.04 rad/s`。
+- Jetson 轻量网页预览已可用：`tools/visualization/ros_image_mjpeg_viewer.py` 可在电脑浏览器打开 `http://<JETSON_IP>:8088/` 同时查看 Sony 原始图和 OpenCV debug 图。
 - Sony CRSDK 版 `sony_camera_node` 仍未启用：需要将 Sony CRSDK staged 到 `src/sony_camera_pkg/sdk` 后才能构建。
 - TRON1 安全限速链路已准备，默认 `enable_motion=false`，首次实机速度限制为 `0.03 m/s`、`0.10 rad/s`。
 
@@ -74,7 +76,8 @@ TRON1 仿真环境      ████████░░ 80%
 学长项目编译        ██████████ 100%
 RS2 云台 CAN        ██████████ 100%
 Orbbec 深度相机     ██████████ 100%
-Sony 相机链路       ██░░░░░░░░ 20%
+Sony UVC + 识别跟随 ████████░░ 80%
+Sony CRSDK 相机链路 ██░░░░░░░░ 20%
 安全限速适配        ████████░░ 80%
 TRON1 仿真联调      ██████░░░░ 60%
 第一次实机准备      █████░░░░░ 50%

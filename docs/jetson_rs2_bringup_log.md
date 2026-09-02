@@ -499,3 +499,71 @@ Interpretation:
 - `face_aim_node` publishes a valid `/perception/aim_target_2d`.
 - This still does not validate the proprietary `sony_camera_node`; the CRSDK
   path remains a separate task.
+
+## 2026-09-02 Sony UVC person detection + RS2 low-speed follow
+
+Goal:
+
+- Run the live Sony UVC perception stream and use the existing 2D gimbal visual
+  servo to command DJI RS2 yaw/pitch.
+- Keep the test strictly gimbal-only. Do not publish real TRON1/base motion.
+
+Active hardware path:
+
+```text
+Sony ZV-E10M2 UVC /dev/video8
+  -> /sony/image_raw + /sony/camera_info
+  -> detection_node / tracking_node / face_aim_node
+  -> /perception/aim_target_2d
+  -> gimbal_visual_servo_node
+  -> /auto/cmd_gimbal
+  -> command_mux
+  -> /cmd_gimbal
+  -> gimbal_driver_node
+  -> SocketCAN can1 / gs_usb
+  -> DJI RS2
+```
+
+Low-speed field-test profile added:
+
+```text
+src/servo_control_pkg/config/gimbal_visual_servo_low_speed_lab.yaml
+max_yaw_rate: 0.04 rad/s
+max_pitch_rate: 0.035 rad/s
+```
+
+Live viewer added:
+
+```text
+tools/visualization/ros_image_mjpeg_viewer.py
+http://172.31.178.242:8088/
+
+Streams:
+- /snapshot/sony_raw.jpg
+- /snapshot/opencv_debug.jpg
+```
+
+Observed verification:
+
+```text
+platform gimbal_connected=True emergency_stop=False
+/auto/cmd_gimbal sample: yaw_rate about -0.006 to -0.036 rad/s, pitch small
+can1 state: ERROR-ACTIVE
+can1 bitrate: 1000000
+can1 RX/TX errors: 0
+```
+
+User-visible result:
+
+- The RS2 physically followed Miya in the camera frame.
+- Browser preview served both the raw Sony stream and OpenCV perception debug
+  stream from the Jetson.
+
+Notes:
+
+- The 2D visual loop is intentionally conservative and may briefly HOLD when
+  CPU YOLO observations become stale.
+- This is acceptable for first bring-up. For smoother follow, next steps are
+  TensorRT/GPU acceleration, lower camera resolution, or tuning the observation
+  freshness gates after confirming safety.
+- This test still does not validate the proprietary Sony CRSDK node.

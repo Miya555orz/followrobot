@@ -52,7 +52,8 @@ Hardware roles:
 - `[VERIFIED]` Jetson Orin Nano CLB: headless onboard computer running ROS2 Humble, RS2 driver, Orbbec driver, follow/control nodes, and future TRON1 adapter.
 - `[VERIFIED]` DJI RS2: active-vision gimbal controlled by Jetson through external USB-CAN.
 - `[VERIFIED]` Orbbec Gemini 335: depth camera, currently verified as depth-only 424x240@10Hz.
-- `[VERIFIED]` Sony ZV-E10M2: UVC mode enumerates as `/dev/video8`, publishes `/sony/image_raw`, and has passed YOLO/person detection, tracking, and aim-target smoke tests; proprietary CRSDK node is still not staged.
+- `[VERIFIED]` Sony ZV-E10M2: UVC mode enumerates as `/dev/video8`, publishes `/sony/image_raw`, and has passed YOLO/person detection, tracking, aim-target smoke tests, and low-speed RS2 closed-loop follow; proprietary CRSDK node is still not staged.
+- `[VERIFIED]` Lightweight live viewer: `tools/visualization/ros_image_mjpeg_viewer.py` serves Sony raw and OpenCV debug images at `http://<JETSON_IP>:8088/`.
 - `[UNVERIFIED]` TRON1 EDU: target robot base; official SDK/ROS2 repos exist locally, but real robot control has not been tested in this migration.
 
 ## 2. Current code and directories
@@ -576,7 +577,7 @@ Current `can0`/`can1` rule:
 [✓] RS2 + Orbbec coexistence verified.
 [~] TRON1 simulation and limiter path documented/tested in logs; re-run before use.
 [~] TRON1 official controller topic override patch exists locally.
-[~] Sony camera UVC stream and perception smoke test verified; CRSDK node still unbuilt.
+[✓] Sony camera UVC stream, perception smoke test, and low-speed RS2 follow verified; CRSDK node still unbuilt.
 [ ] Jetson <-> TRON1 real Ethernet not verified.
 [ ] TRON1 real safe motion not started.
 [ ] Full perception -> follow -> gimbal -> base chain not completed on real robot.

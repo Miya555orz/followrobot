@@ -71,6 +71,8 @@ ssh miya@172.31.178.242
 - `[VERIFIED]` RS2 + Orbbec 共存测试通过。
 - `[VERIFIED]` Sony ZV-E10M2 UVC 实流已验证：`/dev/video8` 可发布 `/sony/image_raw` 和 `/sony/camera_info`。
 - `[VERIFIED]` `perception_pkg sony_uvc_perception.launch.py` 已跑通 YOLOv8n CPU detection/tracking/aim smoke test；画面中有人时能检测到 `person`、生成 track 和 `/perception/aim_target_2d`。
+- `[VERIFIED]` Sony UVC 人像识别 + DJI RS2 低速闭环跟随已跑通：`/perception/aim_target_2d -> gimbal_visual_servo_node -> /auto/cmd_gimbal -> command_mux -> /cmd_gimbal -> gimbal_driver_node -> can1 -> RS2`。
+- `[VERIFIED]` `tools/visualization/ros_image_mjpeg_viewer.py` 可在 `http://<JETSON_IP>:8088/` 显示 Sony 原始图和 OpenCV debug 图。
 - `[UNVERIFIED]` Sony CRSDK 版 `sony_camera_node` 未验证；CRSDK 不在仓库中，节点当前未构建。
 - `[UNVERIFIED]` TRON1 真机以太网和真机运动尚未验证，不允许直接发实机运动命令。
 
