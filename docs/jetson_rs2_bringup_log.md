@@ -524,12 +524,14 @@ Sony ZV-E10M2 UVC /dev/video8
   -> DJI RS2
 ```
 
-Low-speed field-test profile added:
+Low-speed field-test profile added, then tuned one step faster after direction
+was verified normal:
 
 ```text
 src/servo_control_pkg/config/gimbal_visual_servo_low_speed_lab.yaml
-max_yaw_rate: 0.04 rad/s
-max_pitch_rate: 0.035 rad/s
+final max_yaw_rate: 0.12 rad/s
+final max_pitch_rate: 0.075 rad/s
+final max_yaw_acceleration: 0.55 rad/s^2
 ```
 
 Live viewer added:
@@ -548,6 +550,7 @@ Observed verification:
 ```text
 platform gimbal_connected=True emergency_stop=False
 /auto/cmd_gimbal sample: yaw_rate about -0.006 to -0.036 rad/s, pitch small
+after speed-up: max_abs_yaw observed about 0.12 rad/s, CAN errors still 0
 can1 state: ERROR-ACTIVE
 can1 bitrate: 1000000
 can1 RX/TX errors: 0
@@ -556,8 +559,12 @@ can1 RX/TX errors: 0
 User-visible result:
 
 - The RS2 physically followed Miya in the camera frame.
+- Direction was reported normal, and the second speed-up was reported good
+  enough to finish the day.
 - Browser preview served both the raw Sony stream and OpenCV perception debug
   stream from the Jetson.
+- All lab processes were stopped at end of day; no perception/gimbal/viewer
+  processes remained running.
 
 Notes:
 

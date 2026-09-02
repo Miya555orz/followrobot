@@ -13,20 +13,23 @@ gimbal_visual_servo:
     yaw_direction: 1.0
     pitch_direction: -1.0
 
-    # Low gains for a first closed-loop test on the real RS2.
-    yaw_kp: 0.45
-    pitch_kp: 0.32
+    # Conservative gains for early closed-loop tests on the real RS2.
+    # Direction has been verified; this is one step faster than the first
+    # bring-up profile, but still intentionally below the normal profile.
+    yaw_kp: 0.90
+    pitch_kp: 0.58
     gain_small_scale: 0.50
     gain_large_scale: 0.85
     gain_small_error_rad: 0.015
     gain_large_error_rad: 0.18
 
-    # Very conservative rate and acceleration limits.
-    # 0.04 rad/s ≈ 2.3 deg/s, enough to verify tracking without sudden motion.
-    max_yaw_rate: 0.04
-    max_pitch_rate: 0.035
-    max_yaw_acceleration: 0.18
-    max_pitch_acceleration: 0.16
+    # Conservative-medium lab limits.
+    # 0.12 rad/s ≈ 6.9 deg/s: faster than the initial safety profile, still
+    # far below the normal profile (0.35 rad/s) for first-day lab bring-up.
+    max_yaw_rate: 0.12
+    max_pitch_rate: 0.075
+    max_yaw_acceleration: 0.55
+    max_pitch_acceleration: 0.36
     min_effective_rate: 0.003
 
     # CPU YOLO on Jetson runs only a few FPS, so allow stale observations a
@@ -35,9 +38,9 @@ gimbal_visual_servo:
     max_prediction_seconds: 0.10
     covariance_reference_px: 20.0
     min_confidence: 0.15
-    normal_age_seconds: 0.25
-    degraded_age_seconds: 0.55
-    prediction_age_seconds: 0.90
+    normal_age_seconds: 0.30
+    degraded_age_seconds: 0.70
+    prediction_age_seconds: 1.00
     platform_timeout_seconds: 0.50
 
     static_enter_yaw_rad: 0.008

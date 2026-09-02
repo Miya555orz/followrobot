@@ -52,7 +52,8 @@ Hardware roles:
 - `[VERIFIED]` Jetson Orin Nano CLB: headless onboard computer running ROS2 Humble, RS2 driver, Orbbec driver, follow/control nodes, and future TRON1 adapter.
 - `[VERIFIED]` DJI RS2: active-vision gimbal controlled by Jetson through external USB-CAN.
 - `[VERIFIED]` Orbbec Gemini 335: depth camera, currently verified as depth-only 424x240@10Hz.
-- `[VERIFIED]` Sony ZV-E10M2: UVC mode enumerates as `/dev/video8`, publishes `/sony/image_raw`, and has passed YOLO/person detection, tracking, aim-target smoke tests, and low-speed RS2 closed-loop follow; proprietary CRSDK node is still not staged.
+- `[VERIFIED]` Sony ZV-E10M2: UVC mode enumerates as `/dev/video8`, publishes `/sony/image_raw`, and has passed YOLO/person detection, tracking, aim-target smoke tests, and conservative-medium RS2 closed-loop follow; proprietary CRSDK node is still not staged.
+- `[VERIFIED]` Final 2026-09-02 Sony->RS2 lab profile used `gimbal_visual_servo_low_speed_lab.yaml` with yaw `0.12 rad/s` and pitch `0.075 rad/s` limits after direction was confirmed normal. All related lab processes were stopped at end of day.
 - `[VERIFIED]` Lightweight live viewer: `tools/visualization/ros_image_mjpeg_viewer.py` serves Sony raw and OpenCV debug images at `http://<JETSON_IP>:8088/`.
 - `[UNVERIFIED]` TRON1 EDU: target robot base; official SDK/ROS2 repos exist locally, but real robot control has not been tested in this migration.
 
