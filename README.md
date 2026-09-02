@@ -4,6 +4,17 @@
 
 ---
 
+## 当前交接入口
+
+如果你正在从一个新的 Codex 会话或一台新机器接手，请先读：
+
+- [`docs/HANDOFF.md`](docs/HANDOFF.md)：完整工程现场说明书，包含硬件连接、网络/SSH、RS2/Orbbec/TRON1 状态、已踩坑和下一步。
+- [`docs/CODEX_HANDOFF_PROMPT.md`](docs/CODEX_HANDOFF_PROMPT.md)：可直接复制给新 Codex 的启动 Prompt。
+
+当前活跃 GitHub 仓库是：<https://github.com/Miya555orz/followrobot>。上游学长原仓库仍保留为 `origin=https://github.com/cuiangA/fcr_ros2_3.git`，迁移工作默认推送到 `followrobot/main`。
+
+---
+
 ## TRON1 EDU 迁移状态（当前接手重点）
 
 本项目正在从原 LEKIWI 三全向轮底盘迁移到逐际动力 TRON1 EDU 双轮足底盘。当前 TRON1 仿真使用 `WF_TRON1A`，第一次实机计划硬件为 TRON1 EDU + DJI RS2 云台 + Orbbec Gemini 335 深度相机 + Jetson Orin Nano；Sony 相机链路单独处理，不能作为 TRON1 安全迁移的前置阻塞项。
