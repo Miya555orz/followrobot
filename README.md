@@ -6,7 +6,7 @@
 
 ## TRON1 EDU 迁移状态（当前接手重点）
 
-本项目正在从原 LEKIWI 三全向轮底盘迁移到逐际动力 TRON1 EDU 双轮足底盘。当前 TRON1 仿真使用 `WF_TRON1A`，第一次实机计划硬件为 TRON1 EDU + DJI RS2 云台 + Orbbec Gemini 335 深度相机 + Jetson Orin Nano，暂时没有 Sony 相机。
+本项目正在从原 LEKIWI 三全向轮底盘迁移到逐际动力 TRON1 EDU 双轮足底盘。当前 TRON1 仿真使用 `WF_TRON1A`，第一次实机计划硬件为 TRON1 EDU + DJI RS2 云台 + Orbbec Gemini 335 深度相机 + Jetson Orin Nano；Sony 相机链路单独处理，不能作为 TRON1 安全迁移的前置阻塞项。
 
 ### 当前所在步骤（2026-09-02）
 
@@ -22,16 +22,19 @@ Jetson Orin Nano + DJI RS2 云台 + Orbbec/Gemini 深度相机
 - Jetson Orin Nano CLB 已刷入 JetPack 6.2.3 / Jetson Linux R36.5.2，并从 NVMe 启动。
 - Jetson 上 ROS 2 Humble 可用，`ros2 topic list` 正常返回 `/parameter_events` 和 `/rosout`。
 - Jetson 工作区 `~/follow_ws` 中已能识别核心包：`vision_servo_msgs`、`robot_platform_pkg`、`teleop_control_pkg`。
-- Jetson 板载 CAN `can0` 已确认存在，驱动为 `mttcan`；当前需在测试前配置为 `1 Mbit/s`。
-- RS2 最小控制链路已准备：`/cmd_gimbal -> gimbal_driver_node -> SocketCAN can0 -> DJI RS2`。
+- Jetson 板载 CAN `can0` 已确认存在，驱动为 `mttcan`；但 CLB 板载 CAN 需要走金手指连接，当前 RS2 实测改用 USB-CAN。
+- RS2 当前实测链路：`/cmd_gimbal -> gimbal_driver_node -> SocketCAN can1 -> USB-CAN gs_usb -> DJI RS2`。
+- RS2 over USB-CAN `can1` 已完成通信和极小角度 yaw 测试：`/gimbal/status connected=true`，CAN/CRC/parse error 均为 0。
+- Orbbec Gemini 335 已在 Jetson USB3.2 下跑通低负载深度流：`/camera/depth/image_raw` 424x240@10Hz，`/camera/depth/camera_info` 正常。
+- RS2 + Orbbec 深度相机共存测试已通过。
+- Sony 当前未完成：`lsusb` 未枚举到 Sony 设备，且 `sony_camera_node` 需要将 Sony CRSDK staged 到 `src/sony_camera_pkg/sdk` 后才能构建。
 - TRON1 安全限速链路已准备，默认 `enable_motion=false`，首次实机速度限制为 `0.03 m/s`、`0.10 rad/s`。
 
 下一步：
 
-1. 今天先按 `docs/jetson_rs2_depth_test_plan_2026-09-02.md` 跑 T0-T6。
-2. 先验证 Jetson `can0`、RS2 CAN 通信、`/gimbal/status`。
-3. 再验证 Orbbec/Gemini 深度相机 `/camera/depth/image_raw` 和 `/camera/depth/camera_info`。
-4. 不启动 Sony 相关功能，不启动 TRON1 真机底盘运动。
+1. 晚上进入 TRON1 官方 SDK/ROS2 通信链路梳理和 adapter 接口层设计。
+2. 不启动 TRON1 真机底盘运动，不让旧 FCR `/cmd_vel` 直连 TRON1。
+3. Sony 后续单独排查 USB3/相机 USB 模式/CRSDK staged 状态。
 
 迁移说明、启动命令、安全限速测试和第一次实机 checklist 见：
 
@@ -57,10 +60,12 @@ FCR /fcr/cmd_vel_stamped (TwistStamped)
 ```text
 TRON1 仿真环境      ████████░░ 80%
 学长项目编译        ██████████ 100%
-Orbbec 深度相机     █████████░ 90%
+RS2 云台 CAN        ██████████ 100%
+Orbbec 深度相机     ██████████ 100%
+Sony 相机链路       ██░░░░░░░░ 20%
 安全限速适配        ████████░░ 80%
 TRON1 仿真联调      ██████░░░░ 60%
-第一次实机准备      ████░░░░░░ 40%
+第一次实机准备      █████░░░░░ 50%
 ```
 
 安全提醒：不要让 TRON1 直接订阅旧 FCR `/cmd_vel`；第一次实机必须先经过 `tron1_safety_limiter`，并使用极低速度（建议不超过 `0.03 m/s`、`0.10 rad/s`）、超时停车和急停话题。
@@ -77,6 +82,67 @@ TRON1 仿真联调      ██████░░░░ 60%
 - 蓝色模块表示保留/复用的上层视觉、跟踪和跟随控制栈。
 - 绿色模块表示 `followrobot` 迁移中新增或计划抽出的接口/适配层。
 - 橙色模块表示 RS2 硬件链路与 TRON1 官方 ROS2/SDK 链路。
+
+---
+
+## 新 Jetson / 新机器复现说明
+
+GitHub 仓库保存的是源码、launch、config、脚本、文档和必要的第三方可再分发 SDK 文件；不保存 `build/`、`install/`、`log/` 这些本机生成物。换一台 Jetson 时应重新安装系统依赖并本地编译。
+
+基础恢复流程：
+
+```bash
+cd ~/follow_ws/src/fcr_ros2_3
+
+# 正常网络可直接运行；如果 Jetson apt 被校园网认证页劫持，可先通过 SSH 反向代理提供 APT_PROXY。
+bash tools/tron1_bringup/install_jetson_camera_deps.sh
+
+cd ~/follow_ws
+source /opt/ros/humble/setup.bash
+MAKEFLAGS="-j1 -l1" colcon build --symlink-install --parallel-workers 1 \
+  --packages-up-to orbbec_camera sony_camera_pkg
+source ~/follow_ws/install/setup.bash
+```
+
+RS2 USB-CAN 启动：
+
+```bash
+cd ~/follow_ws/src/fcr_ros2_3
+bash tools/can/setup_gimbal_can.sh
+
+cd ~/follow_ws
+source /opt/ros/humble/setup.bash
+source ~/follow_ws/install/setup.bash
+ros2 launch robot_platform_pkg gimbal_bringup.launch.py \
+  use_sim:=false \
+  can_interface:=can1 \
+  control_mode:=incremental_position
+```
+
+Orbbec 低负载深度相机启动：
+
+```bash
+source /opt/ros/humble/setup.bash
+source ~/follow_ws/install/setup.bash
+ros2 launch orbbec_camera gemini_330_series_low_cpu.launch.py \
+  camera_name:=camera \
+  enable_color:=false \
+  enable_depth:=true \
+  depth_width:=424 \
+  depth_height:=240 \
+  depth_fps:=10 \
+  enable_left_ir:=false \
+  enable_right_ir:=false \
+  enable_point_cloud:=false \
+  enable_accel:=false \
+  enable_gyro:=false
+```
+
+Sony 注意事项：
+
+- `src/sony_camera_pkg/sdk/` 被 `.gitignore` 排除，因为 Sony Camera Remote SDK 是专有 SDK，不能直接随仓库发布。
+- 新机器若要构建 `sony_camera_node`，需要先按 `src/sony_camera_pkg/scripts/install_crsdk.py` 的说明把 Sony CRSDK 放入本地 `src/sony_camera_pkg/sdk/`。
+- 如果 `lsusb` 看不到 Sony，先排查相机 USB 模式、线材和是否接在支持数据/高速的 USB 口上。
 
 ---
 
