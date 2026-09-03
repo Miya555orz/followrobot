@@ -17,6 +17,7 @@ https://github.com/Miya555orz/followrobot
 - [docs/HANDOFF.md](docs/HANDOFF.md)：完整工程交接
 - [docs/CODEX_HANDOFF_PROMPT.md](docs/CODEX_HANDOFF_PROMPT.md)：给下一位 Codex 的启动 Prompt
 - [docs/TRON1_REMOTE_AND_SIM_SAFETY.md](docs/TRON1_REMOTE_AND_SIM_SAFETY.md)：TRON1 遥控器、急停/阻尼和仿真优先说明
+- [docs/TRON1_REMOTE_CONTROLLER_MANUAL.md](docs/TRON1_REMOTE_CONTROLLER_MANUAL.md)：TRON1 开发者模式遥控器操作手册
 - [docs/TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md](docs/TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md)：TRON1 安全验收清单
 - [docs/base_interface_tron1_adapter_design.md](docs/base_interface_tron1_adapter_design.md)：`base_interface + tron1_adapter` 设计
 - [docs/ai/OPENCODE_USAGE.md](docs/ai/OPENCODE_USAGE.md)：OpenCode 命令行与使用指南

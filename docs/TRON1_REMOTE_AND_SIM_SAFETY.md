@@ -1,38 +1,38 @@
-# TRON1 Remote Controller and Simulation-First Safety Notes
+# TRON1 遥控器与仿真优先安全说明
 
-Date: 2026-09-03
+日期：2026-09-03
 
-Scope: TRON1 EDU / WF_TRON1A, local PC `/home/miya/follow_ws` + `/home/miya/limx_ws`.
+适用范围：TRON1 EDU / `WF_TRON1A`，本地 PC `/home/miya/follow_ws` + `/home/miya/limx_ws`。
 
-This note records the real-robot observations from the first developer-mode bring-up and defines the next safe path: use simulation and remote-controller monitoring first; do not continue free-running real motion.
+本文记录第一次开发者模式实机 bringup 的观测结果，并定义下一步安全路线：优先使用仿真和遥控器监视，不继续让真机自由运动。
 
-## Current conclusion
+## 当前结论
 
-Real TRON1 bring-up was stronger and faster than expected. The project should pause real motion tests and return to simulation plus remote-controller familiarization.
+第一次 TRON1 实机启动比预期更猛、更快。当前项目应暂停真实运动测试，退回到 Gazebo 仿真和遥控器熟悉阶段。
 
-Current status:
+当前状态：
 
 ```text
-[✓] PC <-> TRON1 Ethernet link works.
-[✓] TRON1 default IP 10.192.1.2 is reachable through enp0s31f6.
-[✓] Official robot_hw can connect to TRON1.
-[✓] Remote controller axes and buttons are visible through LimX SDK SensorJoy.
-[✓] L1 + triangle/Y starts WheelfootController.
-[✓] Physical motor switch / hardware action can put motors into damping mode.
-[!] L1 + X is software stopController + abort, not motor damping / torque release.
-[!] Real motion felt too aggressive for this stage.
-[ ] Continue in Gazebo/simulation before more real movement.
+[✓] PC <-> TRON1 Ethernet 链路可用。
+[✓] TRON1 默认 IP 10.192.1.2 可通过 enp0s31f6 访问。
+[✓] 官方 robot_hw 可以连接 TRON1。
+[✓] LimX SDK SensorJoy 可以看到遥控器 axes/buttons。
+[✓] L1 + triangle/Y 会启动 WheelfootController。
+[✓] 物理 motor switch / 硬件动作可以让电机进入 damping mode。
+[!] L1 + X 是软件 stopController + abort，不是电机阻尼 / 泄力。
+[!] 真实运动体感对当前阶段过于激进。
+[ ] 下一步继续 Gazebo / 仿真，不再直接扩大真机运动。
 ```
 
-## Remote controller mapping observed
+## 已观测遥控器映射
 
-Official config file:
+官方配置文件：
 
 ```text
 /home/miya/limx_ws/src/tron1-rl-deploy-ros2/robot_hw/config/joystick.yaml
 ```
 
-Observed/official mapping:
+已观测/官方映射：
 
 ```text
 A      = button 0
@@ -52,35 +52,37 @@ Right  = button 15
 MENU   = button 16
 ```
 
-Axes:
+摇杆轴：
 
 ```text
-left stick horizontal  = axes[0]
-left stick vertical    = axes[1]
-right stick horizontal = axes[2]
-right stick vertical   = axes[3]
+左摇杆水平 = axes[0]
+左摇杆垂直 = axes[1]
+右摇杆水平 = axes[2]
+右摇杆垂直 = axes[3]
 ```
 
-Official ROS behavior:
+官方 ROS 行为：
 
 ```text
 L1 + Y/△ = startController(WheelfootController)
-L1 + X   = stopController(WheelfootController), then abort()
+L1 + X   = stopController(WheelfootController)，随后 abort()
 ```
 
-Important: `L1 + X` is not a damping/zero-torque command. It stops the official controller process path. Hardware damping was observed through the physical motor switch/hardware action, not through `L1 + X`.
+重要：`L1 + X` 不是 damping / zero-torque 命令。它停止的是官方控制器进程路径。当前已观测到的 hardware damping 来自物理 motor switch / 硬件动作，不是 `L1 + X`。
 
-## Read-only remote monitor
+更完整的遥控器操作手册见：[docs/TRON1_REMOTE_CONTROLLER_MANUAL.md](TRON1_REMOTE_CONTROLLER_MANUAL.md)。
 
-A local SDK helper was added in:
+## 只读遥控器监视
+
+本地已添加 SDK 辅助工具：
 
 ```text
 /home/miya/limx_ws/src/limxsdk-lowlevel/examples/pf_sensorjoy_monitor.cpp
 ```
 
-It only subscribes to `SensorJoy` and prints axes/buttons. It does not publish `RobotCmd` and does not send motor commands.
+它只订阅 `SensorJoy` 并打印 axes/buttons，不发布 `RobotCmd`，不会发送电机命令。
 
-Build:
+构建：
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -88,7 +90,7 @@ cd /home/miya/limx_ws
 MAKEFLAGS="-j1 -l1" colcon build --symlink-install --parallel-workers 1 --packages-select limxsdk_lowlevel
 ```
 
-Run:
+运行：
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -97,24 +99,24 @@ export ROBOT_TYPE=WF_TRON1A
 ros2 run limxsdk_lowlevel pf_sensorjoy_monitor 10.192.1.2
 ```
 
-Expected output while pressing buttons:
+按键时的期望输出示例：
 
 ```text
 buttons[..., 4:1, ...]       # L1
-buttons[..., 3:1, ...]       # Y / triangle
-buttons[..., 2:1, ...]       # X
-buttons[..., 4:1, 3:1, ...]  # L1 + Y/triangle
+buttons[..., 3:1, ...]       # Y / 三角
+buttons[..., 2:1, ...]       # X / 叉
+buttons[..., 4:1, 3:1, ...]  # L1 + Y/三角
 ```
 
-## Real-robot log evidence from first activation
+## 第一次实机启动日志证据
 
-During first activation, logs showed the controller was already active:
+第一次启动过程中，日志显示控制器已经处于 active：
 
 ```text
 Controller 'WheelfootController' is already active. Skipping start.
 ```
 
-After the physical switch/hardware action, logs showed:
+按下物理 switch / 硬件动作后，日志显示：
 
 ```text
 Ethercat code: -1, msg: Motor in damping mode
@@ -122,13 +124,13 @@ Controller 'WheelfootController' stopped.
 pointfoot_node exited with code -6
 ```
 
-Interpretation: the physical switch/hardware action successfully moved the motor side into damping mode. The official ROS node then treated this as fatal, stopped the controller, and exited.
+解释：物理开关/硬件动作确实让电机侧进入 damping mode。随后官方 ROS 节点把它视作 fatal 状态，停止控制器并退出。
 
-## Simulation-first next path
+## 仿真优先路线
 
-Do not continue real motion until the operator is comfortable with remote-controller start/stop behavior and the simulation path has been re-tested.
+在操作员熟悉遥控器启停行为、并重新测试仿真路径之前，不继续真实运动。
 
-Recommended next step:
+推荐下一步：
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -144,7 +146,7 @@ ros2 launch robot_hw pointfoot_hw_sim.launch.py \
   start_steering_gui:=false
 ```
 
-Then test the FCR limiter separately:
+然后单独测试 FCR limiter：
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -157,16 +159,16 @@ ros2 launch robot_platform_pkg tron1_safety_limiter.launch.py \
   input_timeout_sec:=0.25
 ```
 
-Only after simulation behavior is understood should real tests resume.
+只有理解仿真行为后，才继续恢复真实运动测试。
 
-## Real motion pause rule
+## 真实运动暂停规则
 
-Until further notice:
+直到进一步确认前：
 
 ```text
-Do not run real TRON1 with enable_motion=true.
-Do not rely on L1+X as damping or torque release.
-Do not start full person-following on TRON1.
-Use the physical motor switch/hardware stop as the primary emergency action.
-Use simulation to learn controller behavior first.
+不要以 enable_motion=true 运行真实 TRON1。
+不要把 L1+X 当作阻尼或泄力。
+不要启动 TRON1 全链路真人跟拍。
+把物理 motor switch / 硬件停止作为首要 emergency action。
+先用仿真学习控制器行为。
 ```

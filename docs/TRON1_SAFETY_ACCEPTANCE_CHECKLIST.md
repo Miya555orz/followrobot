@@ -1,116 +1,117 @@
-# TRON1 Safety Acceptance Checklist
+# TRON1 安全验收清单
 
-Purpose: move TRON1 work from “it can move” back to “it is controllable, stoppable, and safety evidence exists.”
+目标：把 TRON1 工作从“能动”退回到“可控、可停、可证明安全”。
 
-Scope: TRON1 EDU / `WF_TRON1A`, PC or Jetson ROS 2 Humble, official LimX controller, FCR safety limiter.
+适用范围：TRON1 EDU / `WF_TRON1A`、PC 或 Jetson ROS 2 Humble、LimX 官方控制器、FCR safety limiter。
 
-Current rule: do not run real TRON1 motion until this checklist is green. Gazebo pose drift is a known official sim-policy/physics blocker, so simulation is used for topic safety and controller wiring, not for proving real stopping distance.
+当前规则：在本清单通过前，不再进行 TRON1 实机运动。Gazebo 中零命令漂移是已知的官方仿真策略/物理 blocker，所以仿真只用于验证 topic 安全和控制链路，不用来证明真实停止距离。
 
-## Safety architecture
+## 安全架构
 
 ```text
 PC / Jetson
-  -> FCR command source
+  -> FCR 命令来源
   -> /fcr/cmd_vel_stamped              geometry_msgs/TwistStamped
   -> tron1_safety_limiter
   -> /fcr_tron/cmd_vel                 geometry_msgs/Twist
-  -> TRON1 official controller
+  -> TRON1 官方控制器
   -> TRON1
 ```
 
-Hard rule:
+硬规则：
 
-- TRON1 official controller must subscribe to `/fcr_tron/cmd_vel`.
-- Nothing should drive TRON1 through bare `/cmd_vel`.
-- `tron1_safety_limiter` is the only allowed publisher of `/fcr_tron/cmd_vel`.
-- Real-robot default is `enable_motion=false`.
+- TRON1 官方控制器必须订阅 `/fcr_tron/cmd_vel`。
+- 不允许任何链路通过裸 `/cmd_vel` 直接驱动 TRON1。
+- `tron1_safety_limiter` 必须是 `/fcr_tron/cmd_vel` 唯一允许的发布者。
+- 真机默认必须是 `enable_motion=false`。
 
-## Stage A: safety baseline, no motion goal
+## 阶段 A：安全基线，不追求运动
 
-Run:
+运行：
 
 ```bash
 cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/tron1_safety_acceptance_check.sh
 ```
 
-Acceptance:
+验收标准：
 
-| ID | Check | PASS |
+| ID | 检查项 | PASS 标准 |
 | --- | --- | --- |
-| A-01 | No stale `gazebo`, `pointfoot_node`, `tron1_safety_limiter`, or raw `ros2 topic pub` process before testing | no unexpected process |
-| A-02 | `/fcr_tron/cmd_vel` has exactly one publisher | publisher is `tron1_safety_limiter` |
-| A-03 | TRON controller subscribes `/fcr_tron/cmd_vel` | subscriber is `robot_hw_node` / official controller |
-| A-04 | No bare `/cmd_vel` path is used for TRON1 | official controller is launched with `fcr_cmd_vel_topic:=/fcr_tron/cmd_vel` |
-| A-05 | `enable_motion=false` forces zero output | nonzero upstream command still gives zero `/fcr_tron/cmd_vel` |
-| A-06 | `enable_motion=true` clamps output | max `linear.x <= 0.03`, `linear.y == 0`, max `angular.z <= 0.10` |
-| A-07 | lost command timeout | output returns zero after input stops |
-| A-08 | `/safety/estop_state=true` | output immediately becomes zero |
-| A-09 | limiter shutdown | SIGINT/SIGTERM publishes zero burst |
-| A-10 | limiter or publisher crash | official controller watchdog/hardware stop behavior is understood before real motion |
+| A-01 | 测试前没有残留 `gazebo`、`pointfoot_node`、`tron1_safety_limiter` 或裸 `ros2 topic pub` 进程 | 没有非预期进程 |
+| A-02 | `/fcr_tron/cmd_vel` 只有一个发布者 | 发布者是 `tron1_safety_limiter` |
+| A-03 | TRON 控制器订阅 `/fcr_tron/cmd_vel` | 订阅者是 `robot_hw_node` / 官方控制器 |
+| A-04 | TRON1 不使用裸 `/cmd_vel` 路径 | 官方控制器以 `fcr_cmd_vel_topic:=/fcr_tron/cmd_vel` 启动 |
+| A-05 | `enable_motion=false` 强制输出 0 | 上游输入非零时，`/fcr_tron/cmd_vel` 仍为 0 |
+| A-06 | `enable_motion=true` 时输出被限幅 | `linear.x <= 0.03`，`linear.y == 0`，`angular.z <= 0.10` |
+| A-07 | 输入丢失 timeout | 输入停止后输出自动回到 0 |
+| A-08 | `/safety/estop_state=true` | 输出立即回到 0 |
+| A-09 | limiter 正常关闭 | SIGINT/SIGTERM 时发布零速度 burst |
+| A-10 | limiter 或命令发布者崩溃 | 实机前必须理解官方控制器 watchdog / 硬件停止行为 |
 
-Notes:
+备注：
 
-- A-01 to A-09 can be validated in simulation/topic-level tests.
-- A-10 is the real blocker before true low-speed robot motion.
-- `L1 + X` is software stop/abort, not proven damping.
-- Physical motor switch / hardware action was observed to produce `Motor in damping mode`.
+- A-01 到 A-09 可以先在仿真/topic 级测试中验证。
+- A-10 是进入真实低速运动前的关键 blocker。
+- `L1 + X` 是软件停止/中止，不是已证明的阻尼/泄力。
+- 物理 motor switch / 硬件动作曾被观察到触发 `Motor in damping mode`。
 
-## Stage B: official controller and remote state machine
+## 阶段 B：官方控制器和遥控器状态机
 
-Read-only questions to answer before more real motion:
+继续实机运动前，先只读回答这些问题：
 
-- What state does `WheelfootController` enter after start?
-- Is zero `/cmd_vel` dynamic balancing, braking, damping, or only zero velocity intent?
-- Which remote key combinations start/stop controller?
-- Is there an official damping / lock / sit / zero-torque API?
-- What happens if `/fcr_tron/cmd_vel` publisher disappears?
-- What happens if the SDK process dies?
+- `WheelfootController` 启动后进入什么状态？
+- 零 `/cmd_vel` 表示动态平衡、刹停、阻尼，还是仅仅表示“期望速度为零”？
+- 哪些遥控器组合键会启动/停止控制器？
+- 官方是否提供 damping / lock / sit / zero-torque API？
+- `/fcr_tron/cmd_vel` 发布者消失时会发生什么？
+- SDK 进程死亡时会发生什么？
 
-Evidence files:
+证据文件：
 
 - `/home/miya/limx_ws/src/tron1-rl-deploy-ros2/robot_hw/src/PointfootHardwareNode.cpp`
 - `/home/miya/limx_ws/src/tron1-rl-deploy-ros2/robot_controllers/src/WheelfootController.cpp`
+- [docs/TRON1_REMOTE_CONTROLLER_MANUAL.md](TRON1_REMOTE_CONTROLLER_MANUAL.md)
 - [docs/TRON1_REMOTE_AND_SIM_SAFETY.md](TRON1_REMOTE_AND_SIM_SAFETY.md)
 - [docs/tron1_external_repo_note.md](tron1_external_repo_note.md)
 
-## Stage C: interface isolation
+## 阶段 C：接口隔离
 
-Before reconnecting follow logic, all upper-level code should see only a unified base command interface. TRON1 details stay below the adapter/limiter boundary.
+重新连接跟拍逻辑前，上层代码只能看到统一底盘命令接口。TRON1 细节必须留在 adapter / limiter / bringup 边界以下。
 
-Required:
+要求：
 
-- follow/tracking code publishes one generic base command topic.
-- TRON1 adapter converts generic command to `/fcr/cmd_vel_stamped` or directly to limiter input.
-- `tron1_safety_limiter` remains the hard gate.
-- launch/config selects `omni` or `tron1`; perception and tracking do not contain TRON1-specific logic.
+- follow / tracking 代码只发布一个通用底盘命令 topic。
+- TRON1 adapter 将通用命令转换为 `/fcr/cmd_vel_stamped`，或直接转换为 limiter 输入。
+- `tron1_safety_limiter` 仍然是硬门控。
+- launch/config 选择 `omni` 或 `tron1`；perception 和 tracking 不包含 TRON1 专用逻辑。
 
-Design doc:
+设计文档：
 
 - [docs/base_interface_tron1_adapter_design.md](base_interface_tron1_adapter_design.md)
 
-## Stage D: real robot, lowest risk only
+## 阶段 D：真机最低风险运动
 
-Only after A/B/C are green:
+只有 A/B/C 通过后才允许：
 
-1. Real robot supported or wheels off ground.
-2. Confirm hardware damping / emergency action is reachable.
-3. Start with `enable_motion=false`.
-4. Confirm `/fcr_tron/cmd_vel` remains zero under nonzero upstream input.
-5. Enable motion only for a short pulse:
+1. 真机被可靠支撑，或轮子离地。
+2. 确认硬件阻尼 / 急停动作可立即触达。
+3. 先以 `enable_motion=false` 启动。
+4. 确认上游输入非零时，`/fcr_tron/cmd_vel` 仍保持 0。
+5. 只允许一次短脉冲：
    - `linear.x = 0.01~0.02 m/s`
-   - duration `0.3~0.5 s`
-6. Stop input and verify stop.
-7. Test software estop.
-8. Test physical stop/damping.
-9. Only then test tiny yaw:
+   - 持续 `0.3~0.5 s`
+6. 停止输入并验证停止。
+7. 测试软件 estop。
+8. 测试物理停止/阻尼。
+9. 最后才测试极小 yaw：
    - `angular.z = 0.03~0.05 rad/s`
 
-Do not start with Sony + RS2 + TRON full follow.
+不要从 Sony + RS2 + TRON 全链路跟拍开始。
 
-## Current conclusion
+## 当前结论
 
 ```text
-RS2 + Sony visual following is already working.
-TRON1 is not yet a follow base; it is a safety-controlled base interface under bringup.
+RS2 + Sony 视觉跟随已经成功。
+TRON1 还不是跟拍底盘；它现在是处于 bringup 阶段的安全受控底盘接口。
 ```
