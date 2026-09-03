@@ -9,6 +9,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -30,20 +31,21 @@ def generate_launch_description():
                 "input_topic": LaunchConfiguration("input_topic"),
                 "output_topic": LaunchConfiguration("output_topic"),
                 "estop_topic": LaunchConfiguration("estop_topic"),
-                "enable_motion": LaunchConfiguration("enable_motion"),
-                "enable_lateral": LaunchConfiguration("enable_lateral"),
-                "input_timeout_sec": LaunchConfiguration("input_timeout_sec"),
-                "max_linear_x": LaunchConfiguration("max_linear_x"),
-                "max_linear_y": LaunchConfiguration("max_linear_y"),
-                "max_angular_z": LaunchConfiguration("max_angular_z"),
-                "max_accel_x": LaunchConfiguration("max_accel_x"),
-                "max_accel_y": LaunchConfiguration("max_accel_y"),
-                "max_accel_yaw": LaunchConfiguration("max_accel_yaw"),
-                "stop_immediately_on_zero_cmd": LaunchConfiguration(
-                    "stop_immediately_on_zero_cmd"
+                "motion_authorized_topic": LaunchConfiguration("motion_authorized_topic"),
+                "enable_motion": ParameterValue(LaunchConfiguration("enable_motion"), value_type=bool),
+                "enable_lateral": ParameterValue(LaunchConfiguration("enable_lateral"), value_type=bool),
+                "input_timeout_sec": ParameterValue(LaunchConfiguration("input_timeout_sec"), value_type=float),
+                "max_linear_x": ParameterValue(LaunchConfiguration("max_linear_x"), value_type=float),
+                "max_linear_y": ParameterValue(LaunchConfiguration("max_linear_y"), value_type=float),
+                "max_angular_z": ParameterValue(LaunchConfiguration("max_angular_z"), value_type=float),
+                "max_accel_x": ParameterValue(LaunchConfiguration("max_accel_x"), value_type=float),
+                "max_accel_y": ParameterValue(LaunchConfiguration("max_accel_y"), value_type=float),
+                "max_accel_yaw": ParameterValue(LaunchConfiguration("max_accel_yaw"), value_type=float),
+                "stop_immediately_on_zero_cmd": ParameterValue(
+                    LaunchConfiguration("stop_immediately_on_zero_cmd"), value_type=bool
                 ),
-                "stop_immediately_on_timeout": LaunchConfiguration(
-                    "stop_immediately_on_timeout"
+                "stop_immediately_on_timeout": ParameterValue(
+                    LaunchConfiguration("stop_immediately_on_timeout"), value_type=bool
                 ),
             },
         ],
@@ -53,6 +55,9 @@ def generate_launch_description():
         DeclareLaunchArgument("input_topic", default_value="/fcr/cmd_vel_stamped"),
         DeclareLaunchArgument("output_topic", default_value="/fcr_tron/cmd_vel"),
         DeclareLaunchArgument("estop_topic", default_value="/safety/estop_state"),
+        DeclareLaunchArgument(
+            "motion_authorized_topic", default_value="/tron1/motion_authorized"
+        ),
         DeclareLaunchArgument(
             "enable_motion",
             default_value="false",

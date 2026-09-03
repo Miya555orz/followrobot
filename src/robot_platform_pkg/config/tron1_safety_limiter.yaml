@@ -3,6 +3,7 @@ tron1_safety_limiter:
     input_topic: "/fcr/cmd_vel_stamped"
     output_topic: "/fcr_tron/cmd_vel"
     estop_topic: "/safety/estop_state"
+    motion_authorized_topic: "/tron1/motion_authorized"
 
     publish_rate_hz: 50.0
     input_timeout_sec: 0.25

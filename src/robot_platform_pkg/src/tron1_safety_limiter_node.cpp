@@ -50,6 +50,8 @@ public:
     const auto output_topic = declare_parameter<std::string>(
       "output_topic", "/fcr_tron/cmd_vel");
     estop_topic_ = declare_parameter<std::string>("estop_topic", "/safety/estop_state");
+    motion_authorized_topic_ =
+      declare_parameter<std::string>("motion_authorized_topic", "/tron1/motion_authorized");
 
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 50.0);
     input_timeout_sec_ = declare_parameter<double>("input_timeout_sec", 0.30);
@@ -82,6 +84,9 @@ public:
     estop_sub_ = create_subscription<std_msgs::msg::Bool>(
       estop_topic_, rclcpp::QoS(1).reliable().transient_local(),
       std::bind(&Tron1SafetyLimiterNode::on_estop, this, std::placeholders::_1));
+    motion_authorized_sub_ = create_subscription<std_msgs::msg::Bool>(
+      motion_authorized_topic_, rclcpp::QoS(1).reliable().transient_local(),
+      std::bind(&Tron1SafetyLimiterNode::on_motion_authorized, this, std::placeholders::_1));
 
     const auto period = std::chrono::duration<double>(1.0 / publish_rate_hz_);
     timer_ = create_wall_timer(
@@ -93,10 +98,11 @@ public:
     RCLCPP_WARN(
       get_logger(),
       "TRON1 safety limiter: %s -> %s, enable_motion=%s, lateral=%s, "
-      "limits x=%.3f y=%.3f yaw=%.3f, timeout=%.2fs",
+      "motion_authorized_topic=%s, limits x=%.3f y=%.3f yaw=%.3f, timeout=%.2fs",
       input_topic.c_str(), output_topic.c_str(),
       enable_motion_ ? "true" : "false",
       enable_lateral_ ? "true" : "false",
+      motion_authorized_topic_.c_str(),
       max_linear_x_, enable_lateral_ ? max_linear_y_ : 0.0,
       max_angular_z_, input_timeout_sec_);
   }
@@ -144,14 +150,25 @@ private:
     }
   }
 
+  void on_motion_authorized(const std_msgs::msg::Bool::ConstSharedPtr msg)
+  {
+    motion_authorized_ = msg->data;
+    if (!motion_authorized_) {
+      target_cmd_ = geometry_msgs::msg::Twist();
+      current_cmd_ = geometry_msgs::msg::Twist();
+      cmd_pub_->publish(current_cmd_);
+      RCLCPP_WARN(get_logger(), "TRON1 motion authorization is false; output zeroed");
+    }
+  }
+
   void publish_limited_cmd()
   {
     auto requested = geometry_msgs::msg::Twist();
     const auto fresh = have_cmd_ && ((now() - last_cmd_time_).seconds() <= input_timeout_sec_);
-    if (enable_motion_ && fresh && !estop_active_) {
+    if (enable_motion_ && motion_authorized_ && fresh && !estop_active_) {
       requested = target_cmd_;
     }
-    if ((!fresh && stop_immediately_on_timeout_) || estop_active_) {
+    if ((!fresh && stop_immediately_on_timeout_) || estop_active_ || !motion_authorized_) {
       target_cmd_ = geometry_msgs::msg::Twist();
       current_cmd_ = geometry_msgs::msg::Twist();
       cmd_pub_->publish(current_cmd_);
@@ -177,6 +194,7 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr motion_authorized_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   geometry_msgs::msg::Twist target_cmd_;
@@ -185,9 +203,11 @@ private:
   rclcpp::Time last_publish_time_{0, 0, RCL_ROS_TIME};
 
   std::string estop_topic_;
+  std::string motion_authorized_topic_;
   bool have_cmd_ = false;
   bool estop_active_ = false;
   bool enable_motion_ = false;
+  bool motion_authorized_ = false;
   bool enable_lateral_ = false;
   bool stop_immediately_on_estop_ = true;
   bool stop_immediately_on_zero_cmd_ = true;
