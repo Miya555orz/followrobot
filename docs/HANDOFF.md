@@ -665,7 +665,7 @@ Rule: no direct `/cmd_vel` to TRON1. Use safety limiter, physical protection, ti
 - `[VERIFIED]` `tron1_safety_limiter` publishes a zero burst during SIGINT/SIGTERM shutdown; topic tail was confirmed zero.
 - `[VERIFIED]` TRON official controller local watchdog logs `cmd_vel timeout 0.250s exceeded; zeroing velocity command` after `/fcr_tron/cmd_vel` input disappears.
 - `[VERIFIED]` Official sim launch now has `start_steering_gui:=false` by default, so `rqt_robot_steering` is not started during safety-chain tests.
-- `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo still drifts at zero velocity command. A hard hold/damping safe-stop experiment made the model unstable and was withdrawn. Do not run real TRON1 motion until the official SDK/controller/hardware stop path is verified.
+- `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo still drifts at zero velocity command, and pure yaw commands produce lateral translation. On 2026-09-03, lightweight controller wheel-hold, URDF friction/contact, micro-yaw, and `RL_TYPE=isaaclab` checks did not solve it; the experimental changes were withdrawn/restored. Treat this as an official sim-policy/physics blocker, not an FCR limiter bug. Do not run real TRON1 motion until the official SDK/controller/hardware stop path is verified.
 
 ## 10. Next work
 

@@ -21,7 +21,7 @@ https://github.com/Miya555orz/followrobot
 
 ## 当前最新状态
 
-TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过猛；当前策略改为：真机运动暂停，先回 Gazebo 仿真和遥控器熟悉。
+TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过猛；当前策略改为：真机运动暂停，先回 Gazebo 仿真、遥控器熟悉和安全链路复核。
 
 已确认的关键事实：
 
@@ -37,6 +37,7 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - `L1 + X` 是软件 `stopController()` + `abort()`，不是泄力/阻尼。
 - 物理 motor switch / hardware action 会触发 `Motor in damping mode`。
 - TRON1 不允许裸接旧 `/cmd_vel`；安全链路必须是 `/fcr/cmd_vel_stamped -> tron1_safety_limiter -> /fcr_tron/cmd_vel`。
+- `WF_TRON1A + isaacgym` 官方 Gazebo pose 仍有零命令漂移/纯 yaw 横移；FCR topic safety 已 PASS，但 Gazebo pose 不作为真机运动 PASS 条件。
 
 ## 模块级进度
 
@@ -78,8 +79,8 @@ TRON1 SDK / 控制器
 TRON1 仿真
   Gazebo / official sim launch   ████████░░  80%  可启动，rqt steering 默认关闭
   /fcr_tron/cmd_vel 控制链       ███████░░░  70%  可驱动，可归零
-  基础动作                       ██████░░░░  60%  forward/stop/back/turn 跑过，需复核
-  仿真安全验收                   █████░░░░░  50%  limiter PASS，controller/hard-stop 仍需理解
+  基础动作                       ██████░░░░  60%  forward/back 可控，纯 yaw 有横移
+  仿真安全验收                   ██████░░░░  60%  limiter PASS；官方 Gazebo pose 漂移仍是 blocker
 
 TRON1 真机
   PC <-> TRON Ethernet           ██████████ 100%  10.192.1.2 ping 通
@@ -106,9 +107,19 @@ TRON1 真机
 
 ### OpenCode 低风险辅助
 
+第一次只需要登录 DeepSeek API key：
+
+```bash
+/home/miya/.opencode/bin/opencode auth login --provider deepseek
+/home/miya/.opencode/bin/opencode auth list
+/home/miya/.opencode/bin/opencode models deepseek
+```
+
+之后默认使用 DeepSeek V4 Flash：
+
 ```bash
 cd /home/miya/follow_ws/src/fcr_ros2_3
-OPENCODE_MODEL=opencode/mimo-v2.5-free ./scripts/opencode-fallback.sh "只读检查当前项目状态，不启动 ROS，不接触真机运动。"
+./scripts/opencode-fallback.sh "只读检查当前项目状态，不启动 ROS，不接触真机运动。"
 ```
 
 ### TRON1 只读预检
@@ -160,6 +171,7 @@ ros2 launch bringup_pkg fcr_bringup.launch.py \
 ## 安全原则
 
 - 真机 TRON1 当前暂停运动；先回 Gazebo。
+- Gazebo 只用于验证 launch、topic safety、limiter、timeout 和基础方向；`WF_TRON1A + isaacgym` pose 漂移尚未解决，不能替代真机低速安全验收。
 - 不让 TRON1 订阅旧 `/cmd_vel`。
 - 默认 `enable_motion=false`。
 - `L1 + X` 不是泄力；物理 motor switch / hardware action 才观察到 damping。

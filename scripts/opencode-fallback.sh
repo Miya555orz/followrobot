@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="/home/miya/follow_ws/src/fcr_ros2_3"
 OPENCODE_BIN="${OPENCODE_BIN:-/home/miya/.opencode/bin/opencode}"
+OPENCODE_MODEL="${OPENCODE_MODEL:-deepseek/deepseek-v4-flash}"
 
 if [ "$#" -lt 1 ]; then
   echo "Usage: $0 \"task for OpenCode\""
@@ -51,8 +52,4 @@ CONSTRAINTS:
 EOF
 )
 
-if [ -n "${OPENCODE_MODEL:-}" ]; then
-  exec "$OPENCODE_BIN" run --dir "$PROJECT_ROOT" --model "$OPENCODE_MODEL" "$PROMPT"
-fi
-
-exec "$OPENCODE_BIN" run --dir "$PROJECT_ROOT" "$PROMPT"
+exec "$OPENCODE_BIN" run --dir "$PROJECT_ROOT" --model "$OPENCODE_MODEL" "$PROMPT"
