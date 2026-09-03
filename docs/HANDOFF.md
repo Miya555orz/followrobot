@@ -1,6 +1,6 @@
 # followrobot / fcr_ros2_3 -> TRON1 EDU 工程交接文档
 
-Last updated: 2026-09-02, Asia/Shanghai
+Last updated: 2026-09-03, Asia/Shanghai
 
 Active GitHub repo: <https://github.com/Miya555orz/followrobot>
 
@@ -55,7 +55,7 @@ Hardware roles:
 - `[VERIFIED]` Sony ZV-E10M2: UVC mode enumerates as `/dev/video8`, publishes `/sony/image_raw`, and has passed YOLO/person detection, tracking, aim-target smoke tests, and conservative-medium RS2 closed-loop follow; proprietary CRSDK node is still not staged.
 - `[VERIFIED]` Final 2026-09-02 Sony->RS2 lab profile used `gimbal_visual_servo_low_speed_lab.yaml` with yaw `0.12 rad/s` and pitch `0.075 rad/s` limits after direction was confirmed normal. All related lab processes were stopped at end of day.
 - `[VERIFIED]` Lightweight live viewer: `tools/visualization/ros_image_mjpeg_viewer.py` serves Sony raw and OpenCV debug images at `http://<JETSON_IP>:8088/`.
-- `[UNVERIFIED]` TRON1 EDU: target robot base; official SDK/ROS2 repos exist locally, but real robot control has not been tested in this migration.
+- `[PARTIAL]` TRON1 EDU: target robot base. PC Ethernet, SDK connection, remote-controller input, and controller activation were observed on 2026-09-03, but real motion is paused because activation felt too strong/fast for this stage. Continue in simulation first.
 
 ## 2. Current code and directories
 
@@ -106,6 +106,8 @@ Active checkout:
         ├── install_jetson_camera_deps.sh
         ├── jetson_post_flash_setup.sh
         ├── jetson_rs2_preflight.sh
+        ├── pc_jetson_network_preflight.sh
+        ├── tron1_real_motion_path_preflight.sh
         ├── rs2_can_preflight.sh
         ├── setup_jetson_mttcan_can0.sh
         ├── depth_camera_preflight.sh
@@ -561,7 +563,8 @@ Important topics:
 Current `can0`/`can1` rule:
 
 - `[VERIFIED]` Current RS2 bench setup uses `can1`.
-- `[VERIFIED]` Some launch defaults and older docs still say `can0`. Override them with `can_interface:=can1` or `rs2_can_interface:=can1`.
+- `[VERIFIED]` TRON1/FCR communication launch defaults have been aligned to `can1` in `fcr_tron_full_follow.launch.py` and `fcr_tron_jetson_comm.launch.py`.
+- `[VERIFIED]` Jetson board `can0` remains documented separately; only override back to `can0` after `ip link`/wiring verification.
 
 ## 8. Current progress checklist
 
@@ -576,11 +579,21 @@ Current `can0`/`can1` rule:
 [✓] RS2 tiny yaw control verified.
 [✓] Orbbec Gemini 335 depth-only stream verified at about 10 Hz.
 [✓] RS2 + Orbbec coexistence verified.
-[~] TRON1 simulation and limiter path documented/tested in logs; re-run before use.
-[~] TRON1 official controller topic override patch exists locally.
+[✓] TRON1 simulation and limiter path re-checked locally on 2026-09-03.
+[✓] TRON1 official controller topic override patch exists locally and exposes `fcr_cmd_vel_topic`.
+[✓] TRON1 official sim launch no longer auto-starts `rqt_robot_steering`; use `start_steering_gui:=true` only for manual GUI tests.
+[✓] FCR limiter clamp/acceleration/timeout/estop and clean-shutdown zero-burst pass at topic-output level.
+[✓] TRON1 real-motion path preflight script added; it is read-only and sends no velocity commands.
+[!] TRON controller watchdog clears stale velocity intent, but zero-command behavior still drifts in `WF_TRON1A + isaacgym` Gazebo. This remains a real-motion blocker.
+[✓] PC reached TRON1 default IP `10.192.1.2` through `enp0s31f6` after the Ethernet link came up.
+[✓] TRON1 official `pointfoot_node` connected to the real robot, loaded `WF_TRON1A` / `isaacgym`, and subscribed to `/fcr_tron/cmd_vel`.
+[✓] Remote controller axes/buttons were observed through SDK `SensorJoy`; `L1 + Y/triangle` starts `WheelfootController`.
+[✓] Physical motor switch/hardware action produced `Motor in damping mode`; official node then stopped the controller and exited.
+[!] `L1 + X` is software `stopController()` + `abort()`, not damping/torque release.
+[!] Real motion is paused. Continue with remote-controller familiarization and Gazebo/simulation first. See `docs/TRON1_REMOTE_AND_SIM_SAFETY.md`.
 [✓] Sony camera UVC stream, perception smoke test, and low-speed RS2 follow verified; CRSDK node still unbuilt.
 [ ] Jetson <-> TRON1 real Ethernet not verified.
-[ ] TRON1 real safe motion not started.
+[ ] TRON1 controlled low-speed real motion not accepted; first activation was too aggressive for this stage.
 [ ] Full perception -> follow -> gimbal -> base chain not completed on real robot.
 ```
 
@@ -646,6 +659,14 @@ Risk: TRON1 is heavy; uncontrolled speed is dangerous.
 
 Rule: no direct `/cmd_vel` to TRON1. Use safety limiter, physical protection, tiny speeds, and e-stop.
 
+2026-09-03 update:
+
+- `[VERIFIED]` FCR-side `tron1_safety_limiter` clamp / lost-command timeout / estop paths output zero in simulation.
+- `[VERIFIED]` `tron1_safety_limiter` publishes a zero burst during SIGINT/SIGTERM shutdown; topic tail was confirmed zero.
+- `[VERIFIED]` TRON official controller local watchdog logs `cmd_vel timeout 0.250s exceeded; zeroing velocity command` after `/fcr_tron/cmd_vel` input disappears.
+- `[VERIFIED]` Official sim launch now has `start_steering_gui:=false` by default, so `rqt_robot_steering` is not started during safety-chain tests.
+- `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo still drifts at zero velocity command. A hard hold/damping safe-stop experiment made the model unstable and was withdrawn. Do not run real TRON1 motion until the official SDK/controller/hardware stop path is verified.
+
 ## 10. Next work
 
 Before working:
@@ -661,14 +682,16 @@ Then:
 
 1. Re-run RS2 + Orbbec coexistence after a fresh boot.
    - Acceptance: `/gimbal/status connected=true`, `can1 ERROR-ACTIVE`, depth topic about 10 Hz.
-2. Clean up/clarify `can0` vs `can1` in current launch/docs.
-   - Acceptance: current USB-CAN path consistently says `can1`; board `can0` documented separately.
-3. Design `base_interface` before large refactor.
+2. Design `base_interface` before large refactor.
    - Acceptance: stable command API, message/topic choices, adapter boundaries, and safety path are documented.
+3. Continue TRON1 controller/SDK stop investigation before real motion.
+   - Acceptance: with `/fcr_tron/cmd_vel` publisher lost or limiter killed, controller/SDK/hardware path demonstrably stops or enters a documented safe state. Gazebo-only zero-command drift is not enough for real-motion PASS.
 4. Verify Jetson <-> TRON1 Ethernet topology using official SDK and real hardware, without motor command.
-   - Acceptance: confirmed cabling, IPs, ping/SDK connection.
-5. Re-run TRON1 simulation + limiter with current code.
-   - Acceptance: `/fcr/cmd_vel_stamped` clamps to `/fcr_tron/cmd_vel`; lateral is disabled; timeout/e-stop output zero.
+   - Acceptance: `tools/tron1_bringup/pc_jetson_network_preflight.sh` reports Ethernet carrier, route not captured by Mihomo/TUN, and SSH `SSH_OK`.
+5. Re-run RS2 + Orbbec coexistence after a fresh boot if hardware is connected.
+   - Acceptance: `/gimbal/status connected=true`, `can1 ERROR-ACTIVE`, depth topic about 10 Hz.
+6. Prepare first TRON1 real-motion checklist, but keep real motion disabled until Ethernet/SDK/no-bare-`/cmd_vel` checks pass.
+   - Acceptance: controller-side timeout/watchdog, motion gate, timeout/e-stop, tiny speed, physical support/open area, and rollback commands documented.
 
 Commit/push migration work to:
 

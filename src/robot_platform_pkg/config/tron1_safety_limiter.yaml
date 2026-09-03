@@ -5,7 +5,7 @@ tron1_safety_limiter:
     estop_topic: "/safety/estop_state"
 
     publish_rate_hz: 50.0
-    input_timeout_sec: 0.30
+    input_timeout_sec: 0.25
 
     # First-test TRON1 EDU limits. Keep these extremely low until the simulator
     # and real robot have both passed stop-distance checks. TRON1 is heavy and

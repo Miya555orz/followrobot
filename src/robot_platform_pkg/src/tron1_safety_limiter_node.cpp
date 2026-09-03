@@ -5,6 +5,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include <geometry_msgs/msg/twist.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
@@ -87,6 +88,7 @@ public:
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
       std::bind(&Tron1SafetyLimiterNode::publish_limited_cmd, this));
     last_publish_time_ = now();
+    rclcpp::on_shutdown([this]() { publish_zero_burst(); });
 
     RCLCPP_WARN(
       get_logger(),
@@ -99,7 +101,24 @@ public:
       max_angular_z_, input_timeout_sec_);
   }
 
+  ~Tron1SafetyLimiterNode() override
+  {
+    publish_zero_burst();
+  }
+
 private:
+  void publish_zero_burst()
+  {
+    if (!cmd_pub_) {
+      return;
+    }
+    current_cmd_ = geometry_msgs::msg::Twist();
+    for (int i = 0; i < 5; ++i) {
+      cmd_pub_->publish(current_cmd_);
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+  }
+
   void on_cmd(const geometry_msgs::msg::TwistStamped::ConstSharedPtr msg)
   {
     target_cmd_.linear.x = clamp_abs(msg->twist.linear.x, max_linear_x_);

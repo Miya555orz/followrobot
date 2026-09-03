@@ -1,0 +1,139 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "github:JEF1056/harness#main"
+  ],
+  "command": {
+    "harness": {
+      "description": "Trigger the Harness multi-agent workflow. Do not use for real robot motion without human approval.",
+      "argumentHint": "[optional instructions]",
+      "template": "/harness {{arguments}}"
+    },
+    "plan": {
+      "description": "Create a strategic plan artifact for this project.",
+      "argumentHint": "<request>",
+      "template": "/plan {{arguments}}"
+    },
+    "map": {
+      "description": "Generate or refresh the Harness codebase map.",
+      "argumentHint": "[optional scope]",
+      "template": "/map {{arguments}}"
+    },
+    "debug": {
+      "description": "Run Harness diagnostic repair flow on provided logs or error context.",
+      "argumentHint": "<target or error>",
+      "template": "/debug {{arguments}}"
+    }
+  },
+  "permission": {
+    "*": "ask",
+    "read": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "list": "allow",
+    "skill": "allow",
+    "edit": "ask",
+    "bash": {
+      "*": "ask",
+      "pwd": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git remote*": "allow",
+      "rg *": "allow",
+      "find *": "allow",
+      "ls *": "allow",
+      "sed *": "allow",
+      "cat *": "allow",
+      "ros2 topic pub *": "ask",
+      "ros2 launch *": "ask",
+      "sudo *": "deny",
+      "rm -rf *": "deny",
+      "git reset *": "deny",
+      "git checkout *": "ask"
+    },
+    "external_directory": {
+      "*": "ask",
+      "/home/miya/follow_ws/**": "allow",
+      "/home/miya/limx_ws/**": "allow",
+      "/home/miya/.config/opencode/**": "ask",
+      "/home/miya/.codex/**": "ask"
+    }
+  },
+  "agent": {
+    "planner": {
+      "mode": "subagent",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "ask",
+          "pwd": "allow",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "rg *": "allow",
+          "find *": "allow",
+          "ls *": "allow",
+          "sed *": "allow"
+        }
+      }
+    },
+    "coder": {
+      "mode": "subagent",
+      "permission": {
+        "edit": "ask",
+        "bash": {
+          "*": "ask",
+          "pwd": "allow",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "rg *": "allow",
+          "find *": "allow",
+          "ls *": "allow",
+          "sed *": "allow"
+        }
+      }
+    },
+    "reviewer": {
+      "mode": "subagent",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "ask",
+          "pwd": "allow",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "git log*": "allow",
+          "rg *": "allow",
+          "find *": "allow",
+          "ls *": "allow",
+          "sed *": "allow"
+        }
+      }
+    },
+    "challenger": {
+      "mode": "subagent",
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "ask",
+          "pwd": "allow",
+          "git status*": "allow",
+          "git diff*": "allow",
+          "rg *": "allow",
+          "find *": "allow",
+          "ls *": "allow",
+          "sed *": "allow"
+        }
+      }
+    },
+    "researcher": {
+      "mode": "subagent",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask",
+        "webfetch": "ask",
+        "websearch": "ask"
+      }
+    }
+  }
+}

@@ -4,7 +4,7 @@ Start only the gimbal driver path for RS2 bring-up and debugging.
 
 Examples:
   ros2 launch robot_platform_pkg gimbal_bringup.launch.py use_sim:=true
-  ros2 launch robot_platform_pkg gimbal_bringup.launch.py use_sim:=false can_interface:=can0
+  ros2 launch robot_platform_pkg gimbal_bringup.launch.py use_sim:=false can_interface:=can1
   ros2 launch robot_platform_pkg gimbal_bringup.launch.py control_mode:=speed
 """
 
@@ -57,8 +57,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "can_interface",
-            default_value="can0",
-            description="Linux SocketCAN interface used by the RS2 gimbal.",
+            default_value="can1",
+            description=(
+                "Linux SocketCAN interface used by the RS2 gimbal. Current "
+                "verified bench wiring uses external USB-CAN can1."
+            ),
         ),
         DeclareLaunchArgument(
             "control_mode",

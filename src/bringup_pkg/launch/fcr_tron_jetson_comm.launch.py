@@ -93,8 +93,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "rs2_can_interface",
-            default_value="can0",
-            description="SocketCAN interface for DJI RS2; verify with ip/link stats before real tests.",
+            default_value="can1",
+            description=(
+                "SocketCAN interface for DJI RS2. Current verified bench wiring "
+                "uses external USB-CAN can1; override only after ip/link verification."
+            ),
         ),
         DeclareLaunchArgument(
             "gimbal_control_mode",

@@ -109,8 +109,8 @@ def generate_launch_description():
             "enable_gimbal", default_value="true",
             description="是否启动DJI RS2云台驱动；TRON底盘桥接测试可设为false"),
         DeclareLaunchArgument(
-            "can_interface", default_value="can0",
-            description="DJI RS2云台使用的Linux SocketCAN接口"),
+            "can_interface", default_value="can1",
+            description="DJI RS2云台使用的Linux SocketCAN接口；当前实测USB-CAN为can1"),
         DeclareLaunchArgument(
             "gimbal_control_mode", default_value="incremental_position",
             description="云台命令模式：speed 或 incremental_position"),

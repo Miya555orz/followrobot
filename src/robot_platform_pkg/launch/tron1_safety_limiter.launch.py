@@ -63,7 +63,7 @@ def generate_launch_description():
             default_value="false",
             description="false forces linear.y to zero for TRON1 first tests.",
         ),
-        DeclareLaunchArgument("input_timeout_sec", default_value="0.30"),
+        DeclareLaunchArgument("input_timeout_sec", default_value="0.25"),
         DeclareLaunchArgument("max_linear_x", default_value="0.03"),
         DeclareLaunchArgument("max_linear_y", default_value="0.0"),
         DeclareLaunchArgument("max_angular_z", default_value="0.10"),

@@ -1,4 +1,4 @@
-"""Minimal real-hardware manual test: can0 gimbal driver plus command mux."""
+"""Minimal real-hardware manual test: can1 gimbal driver plus command mux."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
@@ -29,7 +29,7 @@ def generate_launch_description():
         launch_arguments={"start_keyboard": "false"}.items(),
     )
     return LaunchDescription([
-        DeclareLaunchArgument("can_interface", default_value="can0"),
+        DeclareLaunchArgument("can_interface", default_value="can1"),
         DeclareLaunchArgument("control_mode", default_value="incremental_position"),
         DeclareLaunchArgument("speed_control_byte", default_value="128"),
         gimbal,

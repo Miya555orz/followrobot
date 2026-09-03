@@ -81,8 +81,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "can_interface",
-            default_value="can0",
-            description="Linux SocketCAN interface used by the DJI RS2 gimbal.",
+            default_value="can1",
+            description=(
+                "Linux SocketCAN interface used by the DJI RS2 gimbal. Current "
+                "verified bench wiring uses external USB-CAN can1."
+            ),
         ),
         DeclareLaunchArgument(
             "gimbal_control_mode",

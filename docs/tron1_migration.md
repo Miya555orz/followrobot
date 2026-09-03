@@ -25,6 +25,9 @@ TRON1 仿真联调      ██████░░░░ 60%
 - Orbbec Gemini 335 已在 USB 3.0 `5000M` 链路下跑通，推荐低负载模式 `424x240@10Hz`。
 - 当前没有 Sony 相机，所以第一次实机准备阶段不依赖 Sony；自主视觉跟拍需要后续把检测输入改到 Orbbec 彩色流或其它目标源。
 - 2026-08-31 已完成一次短时仿真冒烟测试：TRON1 Gazebo 启动到 `WheelfootController started`，`/fcr/cmd_vel_stamped` 输入经过限速器后，在 `/fcr_tron/cmd_vel` 看到 `geometry_msgs/msg/Twist` 输出。该测试验证了话题桥接和类型转换，不等价于完整视觉跟拍闭环验收。
+- 2026-09-03 环境复查：FCR 侧 `robot_platform_pkg teleop_control_pkg bringup_pkg` 编译通过，TRON1 官方侧 `robot_controllers robot_hw` 编译通过；`pointfoot_hw_sim.launch.py` 已确认支持 `fcr_cmd_vel_topic` 参数。
+- 2026-09-03 仿真安全复查：在已有 Gazebo 仿真中，`robot_hw_node` 订阅 `/fcr_tron/cmd_vel`；`tron1_safety_limiter` 在 `enable_motion=false` 时会强制输出全 0，在 `enable_motion=true` 时会将过大输入限幅，并在输入停止后自动回 0。
+- 2026-09-03 一致性修正：当前 RS2 实测链路是外置 USB-CAN `can1`，TRON1/FCR 通信 launch 默认值已从旧的 `can0` 改为 `can1`。
 
 ## 工程结构速览
 
@@ -104,7 +107,7 @@ TRON1 仿真或真机
 - `angular.z` 限制到 `±0.10 rad/s`
 - `linear.y` 默认强制为 `0`
 - 50Hz 持续发布
-- 0.30s 没有新输入则自动停车
+- 0.25s 没有新输入则自动停车
 - `enable_motion=false` 时永远输出 0，用于安全检查
 - 订阅 `/safety/estop_state`，急停时立即输出 0
 
@@ -203,7 +206,7 @@ ros2 topic echo /fcr_tron/cmd_vel
 - `linear.y` 始终为 `0`
 - `angular.z` 不超过设置的 `max_angular_z`
 - 输出会逐渐变化，不会突然跳变
-- 停止输入后约 0.30s 自动回到 0
+- 停止输入后约 0.25s 自动回到 0
 
 急停测试：
 
@@ -296,7 +299,7 @@ TRON1 底盘
 - [ ] 确认 TRON 控制器订阅的是 `/fcr_tron/cmd_vel`，不是裸 `/cmd_vel`。
 - [ ] 确认 `tron1_safety_limiter` 已启动，`enable_motion` 初始为 `false`。
 - [ ] 确认 `max_linear_x <= 0.03`、`max_angular_z <= 0.10` 再允许第一次非零输出。
-- [ ] 确认停止输入后 0.30s 内 `/fcr_tron/cmd_vel` 会回 0。
+- [ ] 确认停止输入后 0.25s 内 `/fcr_tron/cmd_vel` 会回 0。
 - [ ] 确认 `/safety/estop_state` 发布 `true` 后输出立即为 0。
 
 真机终端 A：TRON 官方真机控制。

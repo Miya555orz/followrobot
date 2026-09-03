@@ -75,7 +75,11 @@ ssh miya@172.31.178.242
 - `[VERIFIED]` 2026-09-02 收工时已停止所有相机/识别/云台跟随/viewer 进程。
 - `[VERIFIED]` `tools/visualization/ros_image_mjpeg_viewer.py` 可在 `http://<JETSON_IP>:8088/` 显示 Sony 原始图和 OpenCV debug 图。
 - `[UNVERIFIED]` Sony CRSDK 版 `sony_camera_node` 未验证；CRSDK 不在仓库中，节点当前未构建。
-- `[UNVERIFIED]` TRON1 真机以太网和真机运动尚未验证，不允许直接发实机运动命令。
+- `[PARTIAL]` TRON1 PC-side Ethernet and SDK connection were verified on 2026-09-03. `pointfoot_node` connected to `10.192.1.2`, loaded `WF_TRON1A` / `isaacgym`, and subscribed to `/fcr_tron/cmd_vel`.
+- `[VERIFIED]` LimX SDK `SensorJoy` received remote axes/buttons. `L1 + Y/triangle` activated `WheelfootController`.
+- `[VERIFIED]` Physical motor switch/hardware action produced `Motor in damping mode`; official node stopped the controller and exited.
+- `[IMPORTANT]` `L1 + X` is software `stopController()` + `abort()`, not damping/torque release.
+- `[PAUSED]` TRON1 real motion is paused because the first activation felt too strong/fast. Continue in Gazebo/simulation and remote-controller familiarization first. See `docs/TRON1_REMOTE_AND_SIM_SAFETY.md`.
 
 ## Start here
 

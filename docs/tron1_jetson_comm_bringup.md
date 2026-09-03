@@ -36,7 +36,7 @@ ros2 launch bringup_pkg fcr_tron_jetson_comm.launch.py \
   start_tron_hw:=false \
   enable_motion:=false \
   enable_gimbal:=true \
-  rs2_can_interface:=can0 \
+  rs2_can_interface:=can1 \
   start_depth_camera:=true \
   enable_depth_fusion:=true \
   use_foxglove:=true
@@ -56,7 +56,7 @@ ros2 topic echo /camera/depth/camera_info --once
 RS2 CAN 预检：
 
 ```bash
-ip -details -statistics link show can0
+ip -details -statistics link show can1
 ```
 
 要求：
@@ -81,7 +81,7 @@ ros2 launch bringup_pkg fcr_tron_jetson_comm.launch.py \
   tron_rl_type:=isaacgym \
   enable_motion:=false \
   enable_gimbal:=true \
-  rs2_can_interface:=can0 \
+  rs2_can_interface:=can1 \
   start_depth_camera:=true \
   enable_depth_fusion:=true
 ```
@@ -153,7 +153,7 @@ Gemini depth camera
   -> /camera/depth/camera_info
   -> depth_fusion_node
 
-DJI RS2 over SocketCAN can0
+DJI RS2 over SocketCAN can1
   <-> gimbal_driver
   -> /gimbal/status
   <- /cmd_gimbal

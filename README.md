@@ -19,13 +19,12 @@
 
 本项目正在从原 LEKIWI 三全向轮底盘迁移到逐际动力 TRON1 EDU 双轮足底盘。当前 TRON1 仿真使用 `WF_TRON1A`，第一次实机计划硬件为 TRON1 EDU + DJI RS2 云台 + Orbbec Gemini 335 深度相机 + Jetson Orin Nano；Sony 相机链路单独处理，不能作为 TRON1 安全迁移的前置阻塞项。
 
-### 当前所在步骤（2026-09-02）
+### 当前所在步骤（2026-09-03）
 
-当前不进入 TRON1 真机运动测试。项目处在：
+当前已完成一次 TRON1 真机通信/遥控器/controller 激活观察，但不继续实机运动。项目处在：
 
 ```text
-Jetson Orin Nano + DJI RS2 云台 + Orbbec/Gemini 深度相机
-本地通信链路 bring-up / 实机验收准备阶段
+TRON1 遥控器熟悉 + Gazebo 仿真优先阶段
 ```
 
 已完成：
@@ -43,12 +42,18 @@ Jetson Orin Nano + DJI RS2 云台 + Orbbec/Gemini 深度相机
 - Jetson 轻量网页预览已可用：`tools/visualization/ros_image_mjpeg_viewer.py` 可在电脑浏览器打开 `http://<JETSON_IP>:8088/` 同时查看 Sony 原始图和 OpenCV debug 图。
 - Sony CRSDK 版 `sony_camera_node` 仍未启用：需要将 Sony CRSDK staged 到 `src/sony_camera_pkg/sdk` 后才能构建。
 - TRON1 安全限速链路已准备，默认 `enable_motion=false`，首次实机速度限制为 `0.03 m/s`、`0.10 rad/s`。
+- PC 到 TRON1 默认 IP `10.192.1.2` 的 Ethernet 链路已验证可通。
+- 官方 `pointfoot_node` 已验证能连接 TRON1、加载 `WF_TRON1A` / `isaacgym` ONNX，并订阅安全话题 `/fcr_tron/cmd_vel`。
+- 遥控器 axes/buttons 已通过 LimX SDK `SensorJoy` 读到；`L1 + 三角/Y` 会启动 `WheelfootController`。
+- 物理 motor switch / hardware action 已观察到 `Motor in damping mode`，官方节点随后停止 controller 并退出。
+- 重要修正：`L1 + X` 只是软件 `stopController()` + `abort()`，不是泄力/阻尼。
 
 下一步：
 
-1. 晚上进入 TRON1 官方 SDK/ROS2 通信链路梳理和 adapter 接口层设计。
-2. 不启动 TRON1 真机底盘运动，不让旧 FCR `/cmd_vel` 直连 TRON1。
-3. Sony 后续继续优化 USB3 接口、正式 CRSDK 节点和完整跟拍闭环。
+1. 暂停 TRON1 真机运动；先在 Gazebo 中熟悉 controller 启动、stop、timeout、limiter 输出和漂移行为。
+2. 不让旧 FCR `/cmd_vel` 直连 TRON1；TRON1 只走 `/fcr_tron/cmd_vel` 安全链。
+3. 下一次实机前必须先完成遥控器 stop/物理 damping/安全空间 checklist。
+4. Sony 后续继续优化 USB3 接口、正式 CRSDK 节点和完整跟拍闭环。
 
 迁移说明、启动命令、安全限速测试和第一次实机 checklist 见：
 
@@ -56,6 +61,7 @@ Jetson Orin Nano + DJI RS2 云台 + Orbbec/Gemini 深度相机
 - [docs/tron1_jetson_comm_bringup.md](docs/tron1_jetson_comm_bringup.md)
 - [docs/tron1_sim_test_framework.md](docs/tron1_sim_test_framework.md)
 - [docs/tron1_external_repo_note.md](docs/tron1_external_repo_note.md)
+- [docs/TRON1_REMOTE_AND_SIM_SAFETY.md](docs/TRON1_REMOTE_AND_SIM_SAFETY.md)
 - [docs/jetson_rs2_bringup_log.md](docs/jetson_rs2_bringup_log.md)
 - [docs/jetson_orin_nano_clb_setup.md](docs/jetson_orin_nano_clb_setup.md)
 - [docs/jetson_rs2_depth_test_plan_2026-09-02.md](docs/jetson_rs2_depth_test_plan_2026-09-02.md)
@@ -80,10 +86,20 @@ Sony UVC + 识别跟随 ████████░░ 80%
 Sony CRSDK 相机链路 ██░░░░░░░░ 20%
 安全限速适配        ████████░░ 80%
 TRON1 仿真联调      ██████░░░░ 60%
-第一次实机准备      █████░░░░░ 50%
+PC 控 TRON 通信链路 ████████░░ 80%
+TRON1 真机低速运动  ███░░░░░░░ 30%  # 能激活，但暂停继续实机运动
+Jetson 控 TRON      █████░░░░░ 50%  # 架构/命令链 ready，Jetson<->TRON 实网未验
+Jetson 控云台跟拍   █████████░ 90%  # 已实测 Sony UVC + RS2 跟拍
+云台+TRON 全链跟拍  ████░░░░░░ 40%  # TRON 需先回仿真消化
 ```
 
-安全提醒：不要让 TRON1 直接订阅旧 FCR `/cmd_vel`；第一次实机必须先经过 `tron1_safety_limiter`，并使用极低速度（建议不超过 `0.03 m/s`、`0.10 rad/s`）、超时停车和急停话题。
+距离目标的工程判断：
+
+- Jetson 控 TRON：还差 Jetson <-> TRON Ethernet 实网、Jetson 侧 `/fcr_tron/cmd_vel` 图检查、仿真 stop/timeout 复核、实机极低速脉冲验收。架构已经接近，安全验收还没到。
+- Jetson 控云台跟拍：已经很近，Sony UVC + RS2 over `can1` 跟拍已实测；CRSDK 是后续增强项，不阻塞 UVC 版跟拍。
+- Jetson 控云台跟拍 + TRON：还不能直接上真机。先在 Gazebo 中把 TRON controller/stop/damping/timeout 行为摸清楚，再让底盘只做低速长期 yaw/距离补偿，避免云台和底盘抢同一个误差。
+
+安全提醒：不要让 TRON1 直接订阅旧 FCR `/cmd_vel`；下一次实机必须先经过 `tron1_safety_limiter`，并使用极低速度（建议先 `0.01 m/s`、`0.03 rad/s`）、超时停车和物理 damping/急停准备。
 
 ### ROS2 System Architecture Figure
 
