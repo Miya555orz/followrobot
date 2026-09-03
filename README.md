@@ -17,6 +17,8 @@ https://github.com/Miya555orz/followrobot
 - [docs/HANDOFF.md](docs/HANDOFF.md)：完整工程交接
 - [docs/CODEX_HANDOFF_PROMPT.md](docs/CODEX_HANDOFF_PROMPT.md)：给下一位 Codex 的启动 Prompt
 - [docs/TRON1_REMOTE_AND_SIM_SAFETY.md](docs/TRON1_REMOTE_AND_SIM_SAFETY.md)：TRON1 遥控器、急停/阻尼和仿真优先说明
+- [docs/TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md](docs/TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md)：TRON1 安全验收清单
+- [docs/base_interface_tron1_adapter_design.md](docs/base_interface_tron1_adapter_design.md)：`base_interface + tron1_adapter` 设计
 - [docs/ai/OPENCODE_USAGE.md](docs/ai/OPENCODE_USAGE.md)：OpenCode 命令行与使用指南
 
 ## 当前最新状态
@@ -126,6 +128,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 
 ```bash
 cd /home/miya/follow_ws/src/fcr_ros2_3
+./tools/tron1_bringup/tron1_safety_acceptance_check.sh
 ./tools/tron1_bringup/tron1_real_motion_path_preflight.sh
 ```
 
@@ -182,6 +185,7 @@ ros2 launch bringup_pkg fcr_bringup.launch.py \
 工程优先：
 
 - 把 TRON1 官方 repo 的本地补丁整理成可复现 patch 或 fork。
+- 先完成 TRON1 Safety Acceptance Checklist，不再以“能动”为目标。
 - 在 Jetson 上验证 Jetson <-> TRON1 Ethernet 和 `/fcr_tron/cmd_vel` ROS graph。
 - 在 Gazebo 中系统复核 stop、timeout、lost-command、node-crash、damping 行为。
 - 将底盘控制抽象成更干净的 `base_interface`，只让 adapter/limiter 知道 TRON1 细节。

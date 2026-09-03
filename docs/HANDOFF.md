@@ -680,12 +680,14 @@ git log --oneline --decorate -5
 
 Then:
 
-1. Re-run RS2 + Orbbec coexistence after a fresh boot.
-   - Acceptance: `/gimbal/status connected=true`, `can1 ERROR-ACTIVE`, depth topic about 10 Hz.
-2. Design `base_interface` before large refactor.
-   - Acceptance: stable command API, message/topic choices, adapter boundaries, and safety path are documented.
-3. Continue TRON1 controller/SDK stop investigation before real motion.
+1. Run the TRON1 safety acceptance checklist before any more real motion.
+   - Start with [docs/TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md](TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md) and `tools/tron1_bringup/tron1_safety_acceptance_check.sh`.
+   - Acceptance: safety gates are green or explicitly marked as blockers; do not chase full follow yet.
+2. Continue TRON1 controller/SDK stop investigation before real motion.
    - Acceptance: with `/fcr_tron/cmd_vel` publisher lost or limiter killed, controller/SDK/hardware path demonstrably stops or enters a documented safe state. Gazebo-only zero-command drift is not enough for real-motion PASS.
+3. Implement `base_interface` / TRON1 adapter only after the interface design is reviewed.
+   - Start with [docs/base_interface_tron1_adapter_design.md](base_interface_tron1_adapter_design.md).
+   - Acceptance: stable command API, message/topic choices, adapter boundaries, and safety path are documented.
 4. Verify Jetson <-> TRON1 Ethernet topology using official SDK and real hardware, without motor command.
    - Acceptance: `tools/tron1_bringup/pc_jetson_network_preflight.sh` reports Ethernet carrier, route not captured by Mihomo/TUN, and SSH `SSH_OK`.
 5. Re-run RS2 + Orbbec coexistence after a fresh boot if hardware is connected.
