@@ -75,22 +75,67 @@ FCR /fcr/cmd_vel_stamped (TwistStamped)
   → TRON1 官方 controller
 ```
 
-进度：
+模块级进度：
 
 ```text
-TRON1 仿真环境      ████████░░ 80%
-学长项目编译        ██████████ 100%
-RS2 云台 CAN        ██████████ 100%
-Orbbec 深度相机     ██████████ 100%
-Sony UVC + 识别跟随 ████████░░ 80%
-Sony CRSDK 相机链路 ██░░░░░░░░ 20%
-安全限速适配        ████████░░ 80%
-TRON1 仿真联调      ██████░░░░ 60%
-PC 控 TRON 通信链路 ████████░░ 80%
-TRON1 真机低速运动  ███░░░░░░░ 30%  # 能激活，但暂停继续实机运动
-Jetson 控 TRON      █████░░░░░ 50%  # 架构/命令链 ready，Jetson<->TRON 实网未验
-Jetson 控云台跟拍   █████████░ 90%  # 已实测 Sony UVC + RS2 跟拍
-云台+TRON 全链跟拍  ████░░░░░░ 40%  # TRON 需先回仿真消化
+基础工程 / 代码仓库
+  GitHub fork / 推送链路        ██████████ 100%  followrobot/main 已确认
+  关键 handoff 文档             ██████████ 100%  README / HANDOFF / CODEX prompt 已更新
+  OpenCode 使用与安全规则        █████████░  90%  配置/指南完成，Harness 写入流未完全实战
+  本地 ROS2 包编译               ██████████ 100%  robot_platform / teleop / bringup focused build 通过
+
+Jetson 平台
+  Jetson 刷机 / NVMe 启动        ██████████ 100%  JetPack 6.2.3 / R36.5.2
+  Jetson ROS2 Humble             ██████████ 100%  基础 topic / 核心包可见
+  PC <-> Jetson SSH              █████████░  90%  以太网 SSH 已通，需避开 Mihomo/USB gadget 坑
+  Jetson <-> TRON Ethernet       ███░░░░░░░  30%  PC 侧已通，Jetson 侧未实测
+
+DJI RS2 云台链路
+  USB-CAN can1 / gs_usb          ██████████ 100%  can1 ERROR-ACTIVE，错误计数正常
+  RS2 ROS2 driver                ██████████ 100%  /gimbal/status connected=true
+  RS2 小角度手动控制             ██████████ 100%  yaw 方向与微动验证完成
+  RS2 视觉伺服跟拍               █████████░  90%  Sony UVC + 人像 + RS2 闭环已实测
+
+相机 / 感知
+  Orbbec Gemini 335 深度流       ██████████ 100%  424x240@10Hz 已验证
+  RS2 + Orbbec 共存              ██████████ 100%  已验证
+  Sony UVC 图像链路              █████████░  90%  /dev/video8 -> /sony/image_raw 已跑通
+  YOLO / tracking / aim smoke    ████████░░  80%  person / track / aim_target_2d 已验证
+  Sony CRSDK 正式链路            ██░░░░░░░░  20%  CRSDK 不在仓库，节点未启用
+
+TRON1 官方 SDK / 控制器
+  官方仓库 / launch / config 理解 █████████░  90%  入口、topic、env、ONNX 路径已查清
+  WF_TRON1A + isaacgym 模型       █████████░  90%  policy / encoder 可加载
+  官方 cmd_vel topic override     ████████░░  80%  本地补丁存在，需长期整理到外部 repo
+  controller watchdog             ███████░░░  70%  超时清零意图已补，零命令漂移仍待解
+
+TRON1 仿真
+  Gazebo / official sim launch    ████████░░  80%  可启动，rqt steering 默认关闭
+  /fcr_tron/cmd_vel 控制链        ███████░░░  70%  能驱动/能归零，需继续熟悉 stop 行为
+  基础运动复现                    ██████░░░░  60%  forward/stop/back/turn 已跑过，漂移需复核
+  仿真安全验收                    █████░░░░░  50%  limiter PASS，controller/hard-stop 仍需理解
+
+TRON1 真机
+  PC <-> TRON Ethernet            ██████████ 100%  10.192.1.2 经 enp0s31f6 ping 通
+  PC -> TRON SDK 连接             █████████░  90%  pointfoot_node 已连接并加载 ONNX
+  遥控器 axes/buttons             ██████████ 100%  SensorJoy 已读到摇杆和按键
+  controller 激活                 ███████░░░  70%  L1 + 三角/Y 可启动 WheelfootController
+  物理 damping / hardware stop    ████████░░  80%  Motor in damping mode 已观察
+  L1 + X 软件 stop                ████░░░░░░  40%  代码存在，但不是泄力，实测体验未验收
+  真机低速运动验收                ███░░░░░░░  30%  能激活但太猛，已暂停
+
+安全链路
+  FCR limiter clamp               █████████░  90%  限速输出已验证
+  input timeout -> zero           █████████░  90%  topic 输出层已验证
+  shutdown zero burst             █████████░  90%  SIGINT/SIGTERM 尾包为 0
+  kill/crash 兜底                 █████░░░░░  50%  需依赖 controller watchdog / 硬件 stop
+  裸 /cmd_vel 隔离                ████████░░  80%  FCR 链路已隔离，官方 joystick publisher 仍需注意
+
+集成目标
+  Jetson 控 TRON                  █████░░░░░  50%  架构 ready；Jetson 实网 + 仿真安全 + 低速验收未完
+  Jetson 控云台跟拍               █████████░  90%  已实测，可继续优化
+  RS2 + Camera + TRON 协同        ████░░░░░░  40%  底盘应只做慢速 yaw/距离补偿，未联调
+  Full Person Following           ███░░░░░░░  30%  视觉和云台 ready，TRON 真机安全未过
 ```
 
 距离目标的工程判断：
