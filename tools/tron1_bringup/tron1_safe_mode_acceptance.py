@@ -247,7 +247,7 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
         ok = wait_until(
             probe,
             lambda: any(
-                info.node_name in ("cmd_vel_node", "robot_hw_node")
+                info.node_name in ("cmd_vel_node", "robot_hw_node", "pointfoot_node")
                 for info in probe.get_subscriptions_info_by_topic("/fcr_tron/cmd_vel")
             ),
             8.0,
@@ -515,7 +515,12 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
 
 def graph_has_gazebo_or_robot_hw(probe: SafeModeProbe) -> bool:
     names = set(probe.get_node_names())
-    return "/gazebo" in names or "gazebo" in names or "robot_hw_node" in names
+    return (
+        "/gazebo" in names
+        or "gazebo" in names
+        or "robot_hw_node" in names
+        or "pointfoot_node" in names
+    )
 
 
 def main() -> int:
@@ -535,6 +540,7 @@ def main() -> int:
     env.setdefault("RL_TYPE", "isaacgym")
     env.setdefault("FCR_TRON_CMD_VEL_TOPIC", "/fcr_tron/cmd_vel")
     env.setdefault("FCR_TRON_CMD_VEL_TIMEOUT_SEC", "0.25")
+    env.setdefault("ROS_DOMAIN_ID", "83")
 
     guard_ok, guard_detail = real_robot_guard(args.allow_robot_network, args.robot_ip)
     if not guard_ok:

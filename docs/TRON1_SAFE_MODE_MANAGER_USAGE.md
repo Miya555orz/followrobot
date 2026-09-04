@@ -1,6 +1,6 @@
 # TRON1 安全模式管理使用文档
 
-日期：2026-09-03
+日期：2026-09-04
 
 适用范围：TRON1 EDU / `WF_TRON1A`、FCR ROS 2 Humble、Gazebo 仿真、后续 Jetson/真机低速验收。
 
@@ -172,6 +172,12 @@ ros2 topic pub --once /tron1/mode_request std_msgs/msg/String "{data: estop}"
 ros2 topic pub --once /tron1/mode_request std_msgs/msg/String "{data: clear_estop}"
 ```
 
+让 limiter 看到“急停源当前为 false”的新鲜样本：
+
+```bash
+ros2 topic pub --rate 50 /safety/estop_state std_msgs/msg/Bool "{data: false}"
+```
+
 解除 limiter 自身急停锁存：
 
 ```bash
@@ -184,7 +190,7 @@ ros2 topic pub --once /tron1/limiter_clear_estop std_msgs/msg/Bool "{data: true}
 ros2 topic pub --once /tron1/mode_request std_msgs/msg/String "{data: reset}"
 ```
 
-注意：`reset` 不能解除软件急停锁存；急停后必须显式 `clear_estop`。这些软件命令都不能替代 TRON1 物理急停、硬件 motor switch、遥控器急停锁存或官方错误码处理。
+注意：`reset` 不能解除软件急停锁存；急停后必须显式 `clear_estop`。limiter 还要求 `/safety/estop_state` 持续有新鲜样本，否则 0.5 秒后会进入 `BLOCKED_ESTOP_TIMEOUT`。这些软件命令都不能替代 TRON1 物理急停、硬件 motor switch、遥控器急停锁存或官方错误码处理。
 
 ## 6. 启动仿真安全栈
 
@@ -212,6 +218,14 @@ ros2 launch bringup_pkg fcr_tron_safe_mode_sim.launch.py \
 cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh --with-gazebo
 ```
+
+该 wrapper 默认使用独立仿真 domain：
+
+```text
+ROS_DOMAIN_ID=83
+```
+
+如果你必须改 domain，请显式传环境变量；不要和真实 TRON1 bringup 共用同一个 ROS graph。
 
 脚本会：
 

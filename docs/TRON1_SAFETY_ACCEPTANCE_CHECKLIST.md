@@ -40,7 +40,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 | --- | --- | --- |
 | A-01 | 测试前没有残留 `gazebo`、`pointfoot_node`、`tron1_safety_limiter` 或裸 `ros2 topic pub` 进程 | 没有非预期进程 |
 | A-02 | `/fcr_tron/cmd_vel` 只有一个发布者 | 发布者是 `tron1_safety_limiter` |
-| A-03 | TRON 控制器订阅 `/fcr_tron/cmd_vel` | 订阅者是 `robot_hw_node` / 官方控制器 |
+| A-03 | TRON 控制器订阅 `/fcr_tron/cmd_vel` | 订阅者是 `robot_hw_node` / `cmd_vel_node` / `pointfoot_node` 等官方控制器节点 |
 | A-04 | TRON1 不使用裸 `/cmd_vel` 路径 | 官方控制器以 `fcr_cmd_vel_topic:=/fcr_tron/cmd_vel` 启动 |
 | A-05 | `enable_motion=false` 强制输出 0 | 上游输入非零时，`/fcr_tron/cmd_vel` 仍为 0 |
 | A-06 | `enable_motion=true` 时输出被限幅 | `linear.x <= 0.03`，`linear.y == 0`，`angular.z <= 0.10` |
@@ -60,6 +60,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 - 物理 motor switch / 硬件动作曾被观察到触发 `Motor in damping mode`。
 - FCR 的“连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆；手柄摇杆不作为 FCR 实机验收输入。
 - 实机分步路线见 [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](TRON1_REAL_TEST_STEP_CHECKLIST.md)：先 PC 直连，再 Jetson 直连，最后 Jetson 加云台/相机。
+- 自动 Gazebo 验收建议使用独立 `ROS_DOMAIN_ID=83`，避免和真实 TRON1 bringup 共用 ROS graph。
 
 ## 阶段 B：官方控制器和遥控器状态机
 

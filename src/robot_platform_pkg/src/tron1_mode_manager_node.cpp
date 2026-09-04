@@ -42,7 +42,7 @@ public:
     estop_topic_ = declare_parameter<std::string>("estop_topic", "/safety/estop_state");
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 10.0);
     allow_walk_motion_ = declare_parameter<bool>("allow_walk_motion", false);
-    allow_tron_follow_motion_ = declare_parameter<bool>("allow_tron_follow_motion", true);
+    allow_tron_follow_motion_ = declare_parameter<bool>("allow_tron_follow_motion", false);
 
     if (publish_rate_hz_ <= 0.0) {
       throw std::invalid_argument("publish_rate_hz must be positive");
@@ -216,7 +216,7 @@ private:
   bool estop_latched_ = false;
   bool external_estop_active_ = false;
   bool allow_walk_motion_ = false;
-  bool allow_tron_follow_motion_ = true;
+  bool allow_tron_follow_motion_ = false;
   double publish_rate_hz_ = 10.0;
 
   std::string request_topic_;

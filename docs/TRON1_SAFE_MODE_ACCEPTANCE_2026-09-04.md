@@ -13,6 +13,7 @@ PASS：timeout、外部急停、软件 estop 都会让输出回到 0。
 PASS：mode manager 死亡后，limiter 因授权信号超时继续输出 0。
 PASS：`/tron1/limiter_state` 能说明当前放行意图/阻塞原因。
 PASS：自动验收启动前有真机进程/网络守卫，避免仿真测试误驱动真实 TRON1。
+PASS：验收 wrapper 默认使用独立 `ROS_DOMAIN_ID=83`，降低与真实 TRON1 graph 混跑风险。
 ```
 
 运行命令：
@@ -24,6 +25,14 @@ source /home/miya/limx_ws/install/setup.bash
 
 cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh --with-gazebo
+```
+
+代码基线：
+
+```text
+安全代码提交：736ce83 Close TRON1 safety review findings
+流程文档提交：638480b Clarify TRON1 real test control workflow
+后续提交如只修改文档/门禁脚本，应重新运行本验收后再更新记录。
 ```
 
 关键输出：

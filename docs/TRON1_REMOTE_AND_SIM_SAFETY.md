@@ -1,6 +1,6 @@
 # TRON1 遥控器与仿真优先安全说明
 
-日期：2026-09-03
+日期：2026-09-04
 
 适用范围：TRON1 EDU / `WF_TRON1A`，本地 PC `/home/miya/follow_ws` + `/home/miya/limx_ws`。
 

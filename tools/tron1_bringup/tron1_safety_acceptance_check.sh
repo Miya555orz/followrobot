@@ -66,6 +66,7 @@ echo "[1/7] Workspace"
 echo "PROJECT_ROOT=$PROJECT_ROOT"
 echo "ROBOT_TYPE=$ROBOT_TYPE"
 echo "RL_TYPE=$RL_TYPE"
+echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-未设置；建议仿真验收使用独立 domain，例如 83}"
 git -C "$PROJECT_ROOT" status --short --branch || true
 echo
 
@@ -149,7 +150,7 @@ if has_ros_graph_topic /fcr_tron/cmd_vel; then
     /^Subscription count:/ {in_subscribers=1; next}
     in_subscribers && /Node name:/ {print $3}
   ' /tmp/tron1_topic_info.txt)"
-  if printf "%s\n" "$subscriber_names" | grep -Eq "^(robot_hw_node|cmd_vel_node)$"; then
+  if printf "%s\n" "$subscriber_names" | grep -Eq "^(robot_hw_node|cmd_vel_node|pointfoot_node)$"; then
     pass "官方控制器已订阅 /fcr_tron/cmd_vel"
   else
     block "当前 graph 未看到官方控制器订阅 /fcr_tron/cmd_vel；subscribers=$subscriber_names；若准备真机运动，必须先启动官方控制器并复查"

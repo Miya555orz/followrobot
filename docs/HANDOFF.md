@@ -1,18 +1,18 @@
 # followrobot / fcr_ros2_3 -> TRON1 EDU 工程交接文档
 
-Last updated: 2026-09-03, Asia/Shanghai
+最后更新：2026-09-04，Asia/Shanghai
 
-Active GitHub repo: <https://github.com/Miya555orz/followrobot>
+当前活跃 GitHub 仓库：<https://github.com/Miya555orz/followrobot>
 
-This is the durable engineering field note for the current migration. It records code state, hardware wiring, network/SSH lessons, ROS2 launch paths, tested results, and known traps. If a fact is not verified from the current workspace or hardware session, it is explicitly marked.
+这是当前 TRON1 迁移阶段的工程交接记录，用来保存代码状态、硬件连接、网络/SSH 坑、ROS2 启动路径、已测结果和已知风险。凡是没有在当前 workspace 或当前硬件会话中验证过的内容，都会显式标注。
 
-## Labels
+## 标记说明
 
-- `[VERIFIED]`: confirmed from current git/workspace, Jetson shell, or successful hardware test.
-- `[UNVERIFIED]`: implemented or plausible, but not yet validated on the current real hardware.
-- `[CONTEXT ONLY / NEEDS RE-VERIFY]`: came from prior conversation or older docs/logs; check again before relying on it.
+- `[VERIFIED]`：已经从当前 git/workspace、Jetson shell 或成功硬件测试中确认。
+- `[UNVERIFIED]`：已经实现或推测可行，但尚未在当前真实硬件上验证。
+- `[CONTEXT ONLY / NEEDS RE-VERIFY]`：来自前序对话、旧文档或旧日志，使用前需要重新确认。
 
-## 1. Project background and final goal
+## 1. 项目背景和最终目标
 
 - `[VERIFIED]` `fcr_ros2_3` is the inherited ROS2 Humble follow-robot project. It contains perception, tracking, visual servoing, DJI RS2 support, command mux, safety logic, legacy base/platform code, and launch files.
 - `[VERIFIED]` `followrobot` is Miya's active fork/repository for this migration: <https://github.com/Miya555orz/followrobot>.
@@ -42,24 +42,24 @@ Platform Adapter
 Design intent:
 
 - Freeze the upper-level perception / tracking / follow code as much as possible.
-- Put chassis-specific behavior into adapter packages, launch files, and config.
-- Avoid changing business logic when swapping robot bases.
-- Never let old FCR `/cmd_vel` directly control TRON1 real hardware.
-- First TRON1 real tests must pass through a safety limiter with tiny speed limits, timeout stop, e-stop, and an explicit motion-enable gate.
+- 底盘专用行为必须放在 adapter package、launch 和 config 中。
+- 切换机器人底盘时，尽量不改上层业务逻辑。
+- 绝不允许旧 FCR `/cmd_vel` 直接控制 TRON1 真机。
+- 第一次 TRON1 真机测试必须经过 safety limiter，并使用极低速度、timeout 停止、急停和显式运动许可。
 
-Hardware roles:
+硬件角色：
 
-- `[VERIFIED]` Jetson Orin Nano CLB: headless onboard computer running ROS2 Humble, RS2 driver, Orbbec driver, follow/control nodes, and future TRON1 adapter.
-- `[VERIFIED]` DJI RS2: active-vision gimbal controlled by Jetson through external USB-CAN.
-- `[VERIFIED]` Orbbec Gemini 335: depth camera, currently verified as depth-only 424x240@10Hz.
-- `[VERIFIED]` Sony ZV-E10M2: UVC mode enumerates as `/dev/video8`, publishes `/sony/image_raw`, and has passed YOLO/person detection, tracking, aim-target smoke tests, and conservative-medium RS2 closed-loop follow; proprietary CRSDK node is still not staged.
-- `[VERIFIED]` Final 2026-09-02 Sony->RS2 lab profile used `gimbal_visual_servo_low_speed_lab.yaml` with yaw `0.12 rad/s` and pitch `0.075 rad/s` limits after direction was confirmed normal. All related lab processes were stopped at end of day.
-- `[VERIFIED]` Lightweight live viewer: `tools/visualization/ros_image_mjpeg_viewer.py` serves Sony raw and OpenCV debug images at `http://<JETSON_IP>:8088/`.
-- `[PARTIAL]` TRON1 EDU: target robot base. PC Ethernet, SDK connection, remote-controller input, and controller activation were observed on 2026-09-03, but real motion is paused because activation felt too strong/fast for this stage. Continue in simulation first.
+- `[VERIFIED]` Jetson Orin Nano CLB：无头上车计算机，运行 ROS2 Humble、RS2 driver、Orbbec driver、跟拍/控制节点，以及后续 TRON1 adapter。
+- `[VERIFIED]` DJI RS2：主动视觉云台，通过 Jetson external USB-CAN 控制。
+- `[VERIFIED]` Orbbec Gemini 335：深度相机，目前已验证 depth-only 424x240@10Hz。
+- `[VERIFIED]` Sony ZV-E10M2：UVC 模式枚举为 `/dev/video8`，发布 `/sony/image_raw`，已通过 YOLO/person detection、tracking、aim-target smoke test 和保守中速 RS2 闭环跟拍；专有 CRSDK node 仍未接入。
+- `[VERIFIED]` 2026-09-02 Sony->RS2 实验室最终 profile 使用 `gimbal_visual_servo_low_speed_lab.yaml`；方向确认正常后，yaw 限制 `0.12 rad/s`，pitch 限制 `0.075 rad/s`。当天结束时相关实验进程均已停止。
+- `[VERIFIED]` 轻量 live viewer：`tools/visualization/ros_image_mjpeg_viewer.py` 可在 `http://<JETSON_IP>:8088/` 提供 Sony raw 和 OpenCV debug 图像。
+- `[PARTIAL]` TRON1 EDU：目标机器人底盘。2026-09-03 已观察到 PC Ethernet、SDK 连接、遥控器输入和 controller 激活，但由于首次激活体感过猛，真实运动暂停；后续先继续仿真。
 
 ## 2. Current code and directories
 
-Active ROS workspace:
+当前 ROS workspace：
 
 ```text
 [VERIFIED] /home/miya/follow_ws
@@ -648,27 +648,30 @@ Symptom: CMake found OpenCV but link paths such as `libopencv_core.so.4.8.0` wer
 
 Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 
-### Sony camera
+### Sony 相机
 
-Symptom: package exists but no executable.
+现象：package 存在，但没有可执行节点。
 
-Cause: CRSDK not staged; real USB stream not verified.
+原因：CRSDK 未放入仓库；CRSDK 真 USB 流尚未验证。
 
-Fix later: stage CRSDK under `src/sony_camera_pkg/sdk/`, rebuild, verify `lsusb`/topics. Do not upload SDK.
+后续修复：将 CRSDK 放到 `src/sony_camera_pkg/sdk/`，重新 build，验证 `lsusb` 和 topics。不要上传 SDK。
 
-### TRON1 safety
+### TRON1 安全
 
-Risk: TRON1 is heavy; uncontrolled speed is dangerous.
+风险：TRON1 很重，失控速度很危险。
 
-Rule: no direct `/cmd_vel` to TRON1. Use safety limiter, physical protection, tiny speeds, and e-stop.
+规则：TRON1 禁止直接接裸 `/cmd_vel`。必须使用 safety limiter、物理防护、极低速度和急停。
 
-2026-09-03 update:
+2026-09-04 更新：
 
-- `[VERIFIED]` FCR-side `tron1_safety_limiter` clamp / lost-command timeout / estop paths output zero in simulation.
-- `[VERIFIED]` `tron1_safety_limiter` publishes a zero burst during SIGINT/SIGTERM shutdown; topic tail was confirmed zero.
-- `[VERIFIED]` TRON official controller local watchdog logs `cmd_vel timeout 0.250s exceeded; zeroing velocity command` after `/fcr_tron/cmd_vel` input disappears.
-- `[VERIFIED]` Official sim launch now has `start_steering_gui:=false` by default, so `rqt_robot_steering` is not started during safety-chain tests.
-- `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo still drifts at zero velocity command, and pure yaw commands produce lateral translation. On 2026-09-03, lightweight controller wheel-hold, URDF friction/contact, micro-yaw, and `RL_TYPE=isaaclab` checks did not solve it; the experimental changes were withdrawn/restored. Treat this as an official sim-policy/physics blocker, not an FCR limiter bug. Do not run real TRON1 motion until the official SDK/controller/hardware stop path is verified.
+- `[VERIFIED]` FCR 侧 `tron1_safety_limiter` 的限幅、lost-command timeout、estop 路径在仿真中输出 0。
+- `[VERIFIED]` `tron1_safety_limiter` 在 SIGINT/SIGTERM 关闭时发布零速度 burst；topic 尾包已确认是 0。
+- `[VERIFIED]` `/safety/estop_state` 无样本或样本超时会 fail-closed，limiter 输出 0。
+- `[VERIFIED]` mode manager 死亡后，limiter 会因授权信号超时归零。
+- `[VERIFIED]` TRON 官方 controller 本地 watchdog 在 `/fcr_tron/cmd_vel` 输入消失后会记录 `cmd_vel timeout 0.250s exceeded; zeroing velocity command`。
+- `[VERIFIED]` 官方 sim launch 默认 `start_steering_gui:=false`，安全链测试不会启动 `rqt_robot_steering`。
+- `[VERIFIED]` 自动 Gazebo 验收 wrapper 默认使用独立 `ROS_DOMAIN_ID=83`。
+- `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo 仍有零速度命令漂移，纯 yaw 命令也会产生横移。2026-09-03 轻量 controller wheel-hold、URDF friction/contact、micro-yaw、`RL_TYPE=isaaclab` 检查都没有解决；实验性改动已撤回/恢复。应把它视作官方 sim-policy/physics blocker，不是 FCR limiter bug。在官方 SDK/controller/hardware stop 路径确认前，不运行 TRON1 真实运动。
 
 ## 10. Next work
 
