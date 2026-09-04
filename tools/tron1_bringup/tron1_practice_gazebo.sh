@@ -67,15 +67,17 @@ ros_daemon_is_running() {
 }
 
 prelaunch_graph_guard() {
-  local info_file="$LOG_DIR/prelaunch_cmd_vel_topic_info.txt"
-  if timeout 3s ros2 topic info /fcr_tron/cmd_vel -v >"$info_file" 2>&1; then
+  local topic="$1"
+  local label="$2"
+  local info_file="$LOG_DIR/$label"
+  if timeout 3s ros2 topic info "$topic" -v >"$info_file" 2>&1; then
     if grep -q "Node name:" "$info_file"; then
       cat "$info_file" >&2
-      die "启动前 /fcr_tron/cmd_vel 已有 graph endpoint；请清理残留 graph 后重试"
+      die "启动前 $topic 已有 graph endpoint；请清理残留 graph 后重试。若确认同 domain 没有其他 ROS 会话，可运行：ROS_DOMAIN_ID=$ROS_DOMAIN_ID ros2 daemon stop && ROS_DOMAIN_ID=$ROS_DOMAIN_ID ros2 daemon start"
     fi
   elif ! grep -q "Unknown topic" "$info_file"; then
     cat "$info_file" >&2
-    die "启动前 ROS graph 预扫描失败；不能默认为安全"
+    die "启动前 ROS graph 预扫描 $topic 失败；不能默认为安全"
   fi
 }
 
@@ -142,7 +144,8 @@ if ros_daemon_is_running; then
   ROS_DAEMON_WAS_RUNNING=1
 fi
 real_robot_guard
-prelaunch_graph_guard
+prelaunch_graph_guard "/fcr_tron/cmd_vel" "prelaunch_cmd_vel_topic_info.txt"
+prelaunch_graph_guard "/tron1/mode_state" "prelaunch_mode_state_topic_info.txt"
 
 echo "== TRON1 Gazebo 练习（仿真） =="
 echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
