@@ -584,7 +584,8 @@ Current `can0`/`can1` rule:
 [✓] TRON1 official sim launch no longer auto-starts `rqt_robot_steering`; use `start_steering_gui:=true` only for manual GUI tests.
 [✓] FCR limiter clamp/acceleration/timeout/estop and clean-shutdown zero-burst pass at topic-output level.
 [✓] FCR-side TRON1 safe mode manager added. `tron1_mode_manager_node` gates `/tron1/motion_authorized`; `tron1_safety_limiter_node` now requires both `enable_motion=true` and mode authorization before nonzero output.
-[✓] 38/38 Gazebo/robot_hw_sim safety acceptance cases passed. See `docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md`.
+[✓] 43/43 Gazebo/robot_hw_sim safety acceptance cases passed. See `docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md`.
+[✓] TRON1 official controller/SDK semantics were read-only audited. See `docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md`.
 [✓] TRON1 real-motion path preflight script added; it is read-only and sends no velocity commands.
 [!] TRON controller watchdog clears stale velocity intent, but zero-command behavior still drifts in `WF_TRON1A + isaacgym` Gazebo. This remains a real-motion blocker.
 [✓] PC reached TRON1 default IP `10.192.1.2` through `enp0s31f6` after the Ethernet link came up.

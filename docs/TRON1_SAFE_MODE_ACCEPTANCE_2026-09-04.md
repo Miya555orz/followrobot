@@ -5,12 +5,13 @@
 结论：
 
 ```text
-PASS：38/38 组通过。
+PASS：43/43 组通过。
 PASS：带 --with-gazebo 时，脚本确认 /fcr_tron/cmd_vel 只有 limiter 一个发布者，且官方 robot_hw 订阅 limiter 输出。
 PASS：状态机未进入 TRON_FOLLOW 前，/fcr_tron/cmd_vel 始终保持 0。
 PASS：进入 TRON_FOLLOW 后，输出仍被 limiter 限幅。
 PASS：timeout、外部急停、软件 estop 都会让输出回到 0。
 PASS：mode manager 死亡后，limiter 因授权信号超时继续输出 0。
+PASS：`/tron1/limiter_state` 能说明当前放行/阻塞原因。
 ```
 
 运行命令：
@@ -31,6 +32,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 [PASS] 00b 官方 robot_hw 订阅 limiter 输出
 [PASS] 01 初始/复位后进入 IDLE
 [PASS] 02 IDLE 不授权运动
+[PASS] 02b limiter 状态显示未授权阻塞
 [PASS] 03 IDLE 下输入大速度仍输出零
 [PASS] 04 非法跳转到 TRON_FOLLOW 被拒绝
 [PASS] 05 非法跳转后仍不授权
@@ -45,12 +47,15 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 [PASS] 14 云台跟随态仍不授权 TRON 运动
 [PASS] 15 进入 TRON 跟随态
 [PASS] 16 TRON 跟随态授权运动
+[PASS] 16b limiter 状态显示正在放行限幅命令
 [PASS] 17 TRON 跟随态 linear.x 被限幅: max_x=0.0300
 [PASS] 18 TRON 跟随态 linear.y 被强制为零: max_y=0.0000
 [PASS] 19 TRON 跟随态 angular.z 被限幅: max_yaw=0.1000
 [PASS] 20 输入 timeout 后输出自动归零
+[PASS] 20b limiter 状态显示输入 timeout
 [PASS] 21 外部急停强制进入 ESTOP
 [PASS] 22 外部急停后取消运动授权
+[PASS] 22b limiter 状态显示急停锁存
 [PASS] 23 外部急停后输出归零
 [PASS] 24 急停锁存时拒绝继续进入 TRON_FOLLOW
 [PASS] 25 外部急停未解除时 clear_estop 无效
@@ -65,8 +70,9 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 [PASS] 34 死亡测试前已进入 TRON_FOLLOW 授权态
 [PASS] 35 杀死 mode manager 进程
 [PASS] 36 mode manager 死亡后继续发命令仍因授权超时归零
+[PASS] 37 mode manager 死亡后 limiter 状态显示授权超时
 
-结果：38/38 组通过
+结果：43/43 组通过
 Gazebo/robot_hw_sim 已随测试启动；姿态漂移不作为本脚本判定项。
 ```
 
@@ -79,6 +85,7 @@ Gazebo/robot_hw_sim 已随测试启动；姿态漂移不作为本脚本判定项
 - `allow_tron_follow_motion` 默认 false；验收脚本会显式传 true，真机 launch 不会默认放行。
 - `tron1_safety_limiter_node` 会检查授权信号新鲜度，mode manager 死亡后 0.5 秒内关门。
 - `tron1_safety_limiter_node` 自己锁存急停；`/safety/estop_state=false` 不会自动解除 limiter 急停。
+- `tron1_safety_limiter_node` 发布 `/tron1/limiter_state`，用于区分 `PASSING_LIMITED_CMD`、`BLOCKED_ESTOP_LATCHED`、`BLOCKED_INPUT_TIMEOUT`、`BLOCKED_AUTHORIZATION_TIMEOUT` 等原因。
 - `tron1_safety_limiter_node` 需要同时满足：
   - `enable_motion=true`
   - `/tron1/motion_authorized=true`

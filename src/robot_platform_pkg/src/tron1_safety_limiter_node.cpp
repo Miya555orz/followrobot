@@ -11,6 +11,7 @@
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/string.hpp>
 
 namespace
 {
@@ -54,6 +55,8 @@ public:
       declare_parameter<std::string>("estop_clear_topic", "/tron1/limiter_clear_estop");
     motion_authorized_topic_ =
       declare_parameter<std::string>("motion_authorized_topic", "/tron1/motion_authorized");
+    limiter_state_topic_ =
+      declare_parameter<std::string>("limiter_state_topic", "/tron1/limiter_state");
 
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 50.0);
     input_timeout_sec_ = declare_parameter<double>("input_timeout_sec", 0.30);
@@ -82,7 +85,9 @@ public:
     }
 
     const auto command_qos = rclcpp::QoS(1).reliable().durability_volatile();
+    const auto state_qos = rclcpp::QoS(1).reliable().transient_local();
     cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>(output_topic, command_qos);
+    limiter_state_pub_ = create_publisher<std_msgs::msg::String>(limiter_state_topic_, state_qos);
     cmd_sub_ = create_subscription<geometry_msgs::msg::TwistStamped>(
       input_topic, command_qos,
       std::bind(&Tron1SafetyLimiterNode::on_cmd, this, std::placeholders::_1));
@@ -106,12 +111,14 @@ public:
     RCLCPP_WARN(
       get_logger(),
       "TRON1 safety limiter: %s -> %s, enable_motion=%s, lateral=%s, "
-      "motion_authorized_topic=%s auth_timeout=%.2fs, limits x=%.3f y=%.3f yaw=%.3f, timeout=%.2fs",
+      "motion_authorized_topic=%s auth_timeout=%.2fs, state_topic=%s, "
+      "limits x=%.3f y=%.3f yaw=%.3f, timeout=%.2fs",
       input_topic.c_str(), output_topic.c_str(),
       enable_motion_ ? "true" : "false",
       enable_lateral_ ? "true" : "false",
       motion_authorized_topic_.c_str(),
       motion_authorized_timeout_sec_,
+      limiter_state_topic_.c_str(),
       max_linear_x_, enable_lateral_ ? max_linear_y_ : 0.0,
       max_angular_z_, input_timeout_sec_);
   }
@@ -197,6 +204,8 @@ private:
     if (enable_motion_ && authorized && fresh && !estopped) {
       requested = target_cmd_;
     }
+    const auto state = limiter_state(fresh, auth_fresh, authorized, estopped, requested);
+    publish_limiter_state(state);
     if ((!fresh && stop_immediately_on_timeout_) || estopped || !authorized) {
       target_cmd_ = geometry_msgs::msg::Twist();
       current_cmd_ = geometry_msgs::msg::Twist();
@@ -220,7 +229,47 @@ private:
     cmd_pub_->publish(current_cmd_);
   }
 
+  std::string limiter_state(
+    bool fresh, bool auth_fresh, bool authorized, bool estopped,
+    const geometry_msgs::msg::Twist & requested) const
+  {
+    if (!enable_motion_) {
+      return "BLOCKED_ENABLE_MOTION_FALSE";
+    }
+    if (estopped) {
+      return "BLOCKED_ESTOP_LATCHED";
+    }
+    if (!have_motion_authorized_) {
+      return "BLOCKED_NO_AUTHORIZATION_SAMPLE";
+    }
+    if (!auth_fresh) {
+      return "BLOCKED_AUTHORIZATION_TIMEOUT";
+    }
+    if (!authorized) {
+      return "BLOCKED_MOTION_NOT_AUTHORIZED";
+    }
+    if (!fresh) {
+      return "BLOCKED_INPUT_TIMEOUT";
+    }
+    if (is_near_zero(requested)) {
+      return "PASSING_ZERO_CMD";
+    }
+    return "PASSING_LIMITED_CMD";
+  }
+
+  void publish_limiter_state(const std::string & state)
+  {
+    if (state == last_limiter_state_) {
+      return;
+    }
+    std_msgs::msg::String msg;
+    msg.data = state;
+    limiter_state_pub_->publish(msg);
+    last_limiter_state_ = state;
+  }
+
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_pub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr limiter_state_pub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_sub_;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_clear_sub_;
@@ -236,6 +285,8 @@ private:
   std::string estop_topic_;
   std::string estop_clear_topic_;
   std::string motion_authorized_topic_;
+  std::string limiter_state_topic_;
+  std::string last_limiter_state_;
   bool have_cmd_ = false;
   bool estop_active_ = false;
   bool estop_latched_ = false;

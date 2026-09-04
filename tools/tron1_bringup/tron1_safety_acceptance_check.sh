@@ -61,11 +61,13 @@ echo
 
 echo "[2/7] 残留进程快照"
 process_snapshot="$(pgrep -af 'gazebo|gzserver|gzclient|pointfoot_node|robot_hw_node|tron1_mode_manager_node|tron1_safety_limiter_node|rqt_robot_steering|ros2 topic pub' || true)"
+real_tron_processes=""
 if [ -z "$process_snapshot" ]; then
   pass "未发现 Gazebo/TRON/limiter/裸 ros2 topic pub 残留进程"
 else
   echo "$process_snapshot"
   if echo "$process_snapshot" | grep -Ev 'tron1_safety_acceptance_check|pgrep -af' >/tmp/tron1_relevant_processes.txt; then
+    real_tron_processes="$(cat /tmp/tron1_relevant_processes.txt)"
     block "发现可能影响真机测试的残留进程；真机前请先人工确认并关闭"
   else
     pass "进程快照只包含本检查命令自身"
@@ -127,7 +129,7 @@ if has_ros_graph_topic /fcr_tron/cmd_vel; then
   if printf "%s\n" "$publisher_names" | grep -qx "tron1_safety_limiter" && [ "$publisher_count" -eq 1 ]; then
     pass "/fcr_tron/cmd_vel 当前只有 tron1_safety_limiter 一个发布者"
   else
-    fail "/fcr_tron/cmd_vel 发布者不是唯一 limiter；publishers=$publisher_names；禁止真机运动"
+    block "/fcr_tron/cmd_vel 当前没有唯一 limiter 发布者；publishers=$publisher_names；若准备真机运动，必须启动 limiter 并复查"
   fi
 
   subscriber_names="$(awk '
@@ -148,7 +150,11 @@ echo "[6/7] 裸 /cmd_vel 风险检查"
 if has_ros_graph_topic /cmd_vel; then
   cat /tmp/tron1_topic_info.txt
   if grep -Eq "Node name: (robot_hw_node|cmd_vel_node|pointfoot_node)" /tmp/tron1_topic_info.txt; then
-    fail "官方 TRON 控制相关节点出现在裸 /cmd_vel；禁止真机运动"
+    if [ -z "$real_tron_processes" ]; then
+      block "ROS graph 里有官方 TRON 裸 /cmd_vel endpoint，但未发现对应进程；可能是 stale graph。请执行：ros2 daemon stop; ros2 daemon start"
+    else
+      fail "官方 TRON 控制相关节点出现在裸 /cmd_vel；禁止真机运动"
+    fi
   else
     warn "存在 /cmd_vel graph，请确认它不属于 TRON 官方控制器"
   fi
@@ -159,14 +165,18 @@ echo
 
 echo "[7/7] 自动 topic/Gazebo 验收与真机人工门"
 if [ -f "$PROJECT_ROOT/docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md" ] &&
-  grep -q "PASS：38/38" "$PROJECT_ROOT/docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md"; then
-  pass "已记录 38/38 topic + Gazebo/robot_hw_sim 安全验收"
+  grep -q "PASS：43/43" "$PROJECT_ROOT/docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md"; then
+  pass "已记录 43/43 topic + Gazebo/robot_hw_sim 安全验收"
 else
-  block "未找到 38/38 topic + Gazebo/robot_hw_sim 安全验收记录"
+  block "未找到 43/43 topic + Gazebo/robot_hw_sim 安全验收记录"
 fi
 
 block "A-10 仍需真机前人工确认：物理急停/阻尼可触达，且官方 controller watchdog/进程死亡后果已理解"
-block "阶段 B 仍需只读摸底：零 cmd 是平衡/刹停/阻尼/仅零期望值，damping/lock API 是否存在"
+if [ -f "$PROJECT_ROOT/docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md" ]; then
+  pass "阶段 B 只读摸底已记录：zero cmd 是 RL policy 零期望速度，不是急停/泄力/阻尼"
+else
+  block "阶段 B 仍需只读摸底：零 cmd 是平衡/刹停/阻尼/仅零期望值，damping/lock API 是否存在"
+fi
 
 echo
 echo "Summary: FAIL=$fail_count WARN=$warn_count BLOCK=$block_count"

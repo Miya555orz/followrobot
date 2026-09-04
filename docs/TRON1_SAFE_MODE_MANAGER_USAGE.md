@@ -118,6 +118,24 @@ TRON1 official controller
 /tron1/motion_authorized    std_msgs/Bool
 ```
 
+limiter 状态 topic：
+
+```text
+/tron1/limiter_state        std_msgs/String
+```
+
+常见状态：
+
+| 状态 | 含义 |
+| --- | --- |
+| `BLOCKED_ENABLE_MOTION_FALSE` | `enable_motion=false`，硬门控关闭 |
+| `BLOCKED_MOTION_NOT_AUTHORIZED` | 状态机未授权 |
+| `BLOCKED_AUTHORIZATION_TIMEOUT` | mode manager 死亡或授权信号过旧 |
+| `BLOCKED_ESTOP_LATCHED` | limiter 急停锁存中 |
+| `BLOCKED_INPUT_TIMEOUT` | 输入命令超时 |
+| `PASSING_ZERO_CMD` | 正在放行零速度命令；注意这不是泄力 |
+| `PASSING_LIMITED_CMD` | 正在放行限幅后的非零命令 |
+
 按顺序进入 TRON 跟随：
 
 ```bash
@@ -196,7 +214,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 1. 启动 `fcr_tron_safe_mode_sim.launch.py`；
 2. 启动官方 `robot_hw pointfoot_hw_sim.launch.py`；
 3. 设置 `ROBOT_TYPE=WF_TRON1A`、`RL_TYPE=isaacgym`、`FCR_TRON_CMD_VEL_TOPIC=/fcr_tron/cmd_vel`；
-4. 自动跑 38 组验收；
+4. 自动跑 43 组验收；
 5. 结束后关闭测试进程。
 
 如果本机 Gazebo 图形环境不可用，可以先跑不带 Gazebo 的 topic 安全仿真：
@@ -213,9 +231,9 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 
 如果没有启动 live ROS graph、没有确认物理急停/阻尼，这个脚本输出 `BLOCK` 是正常且正确的；它的目的不是证明“可以动”，而是阻止把仿真验收误当成真机运动许可。
 
-## 8. 38 组验收覆盖内容
+## 8. 43 组验收覆盖内容
 
-当前脚本实际跑 38 组，超过“至少 20 组”的要求：
+当前脚本实际跑 43 组，超过“至少 20 组”的要求：
 
 1. 初始/复位后进入 `IDLE`
 2. `IDLE` 不授权运动

@@ -33,6 +33,7 @@ def generate_launch_description():
                 "estop_topic": LaunchConfiguration("estop_topic"),
                 "estop_clear_topic": LaunchConfiguration("estop_clear_topic"),
                 "motion_authorized_topic": LaunchConfiguration("motion_authorized_topic"),
+                "limiter_state_topic": LaunchConfiguration("limiter_state_topic"),
                 "enable_motion": ParameterValue(LaunchConfiguration("enable_motion"), value_type=bool),
                 "enable_lateral": ParameterValue(LaunchConfiguration("enable_lateral"), value_type=bool),
                 "input_timeout_sec": ParameterValue(LaunchConfiguration("input_timeout_sec"), value_type=float),
@@ -63,6 +64,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "motion_authorized_topic", default_value="/tron1/motion_authorized"
         ),
+        DeclareLaunchArgument("limiter_state_topic", default_value="/tron1/limiter_state"),
         DeclareLaunchArgument(
             "enable_motion",
             default_value="false",

@@ -52,10 +52,12 @@ class SafeModeProbe(Node):
 
         self.last_state: str | None = None
         self.last_auth: bool | None = None
+        self.last_limiter_state: str | None = None
         self.outputs: list[tuple[float, float, float]] = []
 
         self.create_subscription(String, "/tron1/mode_state", self._on_state, TRANSIENT_QOS)
         self.create_subscription(Bool, "/tron1/motion_authorized", self._on_auth, TRANSIENT_QOS)
+        self.create_subscription(String, "/tron1/limiter_state", self._on_limiter_state, TRANSIENT_QOS)
         self.create_subscription(TwistStamped, "/unused", lambda _: None, 10)
         self.create_subscription(Twist, "/fcr_tron/cmd_vel", self._on_output, 10)
 
@@ -64,6 +66,9 @@ class SafeModeProbe(Node):
 
     def _on_auth(self, msg: Bool) -> None:
         self.last_auth = bool(msg.data)
+
+    def _on_limiter_state(self, msg: String) -> None:
+        self.last_limiter_state = msg.data
 
     def _on_output(self, msg) -> None:
         self.outputs.append((msg.linear.x, msg.linear.y, msg.angular.z))
@@ -247,6 +252,10 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
         ok = wait_until(probe, lambda: probe.last_auth is expected, 1.0)
         return ok, f"motion_authorized={probe.last_auth}, expected={expected}"
 
+    def limiter_state_is(expected: str) -> tuple[bool, str]:
+        ok = wait_until(probe, lambda: probe.last_limiter_state == expected, 1.0)
+        return ok, f"limiter_state={probe.last_limiter_state}, expected={expected}"
+
     probe.estop(False)
     probe.clear_limiter_estop()
     probe.request("reset")
@@ -258,6 +267,12 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
     )
     results.append(check("01 初始/复位后进入 IDLE", lambda: state_is("IDLE")))
     results.append(check("02 IDLE 不授权运动", lambda: auth_is(False)))
+    results.append(
+        check(
+            "02b limiter 状态显示未授权阻塞",
+            lambda: limiter_state_is("BLOCKED_MOTION_NOT_AUTHORIZED"),
+        )
+    )
 
     probe.reset_outputs()
     probe.publish_cmd_for(0.5, 0.5, 0.5, 0.4)
@@ -313,6 +328,9 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
 
     probe.reset_outputs()
     probe.publish_cmd_for(1.0, 1.0, 1.0, 1.1)
+    results.append(
+        check("16b limiter 状态显示正在放行限幅命令", lambda: limiter_state_is("PASSING_LIMITED_CMD"))
+    )
     max_x, max_y, max_yaw = probe.max_abs_output()
     results.append(
         check(
@@ -343,11 +361,17 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
             ),
         )
     )
+    results.append(
+        check("20b limiter 状态显示输入 timeout", lambda: limiter_state_is("BLOCKED_INPUT_TIMEOUT"))
+    )
 
     probe.publish_cmd_for(0.3, 0.0, 0.0, 0.3)
     probe.estop(True)
     results.append(check("21 外部急停强制进入 ESTOP", lambda: state_is("ESTOP")))
     results.append(check("22 外部急停后取消运动授权", lambda: auth_is(False)))
+    results.append(
+        check("22b limiter 状态显示急停锁存", lambda: limiter_state_is("BLOCKED_ESTOP_LATCHED"))
+    )
     results.append(
         check(
             "23 外部急停后输出归零",
@@ -400,6 +424,12 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
                 probe.last_output_near_zero(),
                 f"last_output={probe.outputs[-1] if probe.outputs else None}, last_auth={probe.last_auth}",
             ),
+        )
+    )
+    results.append(
+        check(
+            "37 mode manager 死亡后 limiter 状态显示授权超时",
+            lambda: limiter_state_is("BLOCKED_AUTHORIZATION_TIMEOUT"),
         )
     )
 

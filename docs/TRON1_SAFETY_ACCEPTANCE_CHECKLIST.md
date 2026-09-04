@@ -53,18 +53,23 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 
 - A-01 到 A-09 可以先在仿真/topic 级测试中验证。
 - A-10 是进入真实低速运动前的关键 blocker。
-- `tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh --with-gazebo` 是自动 topic/Gazebo/官方订阅验收；当前已通过 38/38。
+- `tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh --with-gazebo` 是自动 topic/Gazebo/官方订阅验收；当前已通过 43/43。
+- 官方 controller 语义见 [docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md](TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md)：zero cmd 只是 RL policy 的零期望速度，不是急停/泄力/阻尼。
 - `tools/tron1_bringup/tron1_safety_acceptance_check.sh` 是真机前 read-only 闸门；没有 live ROS graph、没有确认物理急停/阻尼前，它应该输出 `BLOCK`，这不是脚本失败，而是在防止误把仿真 PASS 当成真机许可。
 - `L1 + X` 是软件停止/中止，不是已证明的阻尼/泄力。
 - 物理 motor switch / 硬件动作曾被观察到触发 `Motor in damping mode`。
 
 ## 阶段 B：官方控制器和遥控器状态机
 
-继续实机运动前，先只读回答这些问题：
+当前只读结论见 [docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md](TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md)。已经确认：
 
-- `WheelfootController` 启动后进入什么状态？
-- 零 `/cmd_vel` 表示动态平衡、刹停、阻尼，还是仅仅表示“期望速度为零”？
-- 哪些遥控器组合键会启动/停止控制器？
+- `L1 + 三角/Y` 启动 `WheelfootController`。
+- `L1 + X` 是 `stopController()` + `abort()`，不是已证明的 damping / zero torque。
+- zero `/cmd_vel` 只是 RL policy 的零期望速度输入，不是急停、泄力或阻尼。
+- `WheelfootController` 启动后先进入 `STAND`，随后进入 `WALK` policy。
+
+继续实机运动前，仍需回答这些硬件层问题：
+
 - 官方是否提供 damping / lock / sit / zero-torque API？
 - `/fcr_tron/cmd_vel` 发布者消失时会发生什么？
 - SDK 进程死亡时会发生什么？

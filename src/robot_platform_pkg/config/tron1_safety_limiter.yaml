@@ -5,6 +5,7 @@ tron1_safety_limiter:
     estop_topic: "/safety/estop_state"
     estop_clear_topic: "/tron1/limiter_clear_estop"
     motion_authorized_topic: "/tron1/motion_authorized"
+    limiter_state_topic: "/tron1/limiter_state"
 
     publish_rate_hz: 50.0
     input_timeout_sec: 0.25
