@@ -5,13 +5,14 @@
 结论：
 
 ```text
-PASS：43/43 组通过。
+PASS：45/45 组通过。
 PASS：带 --with-gazebo 时，脚本确认 /fcr_tron/cmd_vel 只有 limiter 一个发布者，且官方 robot_hw 订阅 limiter 输出。
 PASS：状态机未进入 TRON_FOLLOW 前，/fcr_tron/cmd_vel 始终保持 0。
 PASS：进入 TRON_FOLLOW 后，输出仍被 limiter 限幅。
 PASS：timeout、外部急停、软件 estop 都会让输出回到 0。
 PASS：mode manager 死亡后，limiter 因授权信号超时继续输出 0。
-PASS：`/tron1/limiter_state` 能说明当前放行/阻塞原因。
+PASS：`/tron1/limiter_state` 能说明当前放行意图/阻塞原因。
+PASS：自动验收启动前有真机进程/网络守卫，避免仿真测试误驱动真实 TRON1。
 ```
 
 运行命令：
@@ -47,12 +48,14 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 [PASS] 14 云台跟随态仍不授权 TRON 运动
 [PASS] 15 进入 TRON 跟随态
 [PASS] 16 TRON 跟随态授权运动
-[PASS] 16b limiter 状态显示正在放行限幅命令
+[PASS] 16b limiter 状态显示正在尝试放行限幅命令
 [PASS] 17 TRON 跟随态 linear.x 被限幅: max_x=0.0300
 [PASS] 18 TRON 跟随态 linear.y 被强制为零: max_y=0.0000
 [PASS] 19 TRON 跟随态 angular.z 被限幅: max_yaw=0.1000
 [PASS] 20 输入 timeout 后输出自动归零
 [PASS] 20b limiter 状态显示输入 timeout
+[PASS] 20c estop 样本超时后继续发命令仍输出零
+[PASS] 20d limiter 状态显示 estop 样本超时
 [PASS] 21 外部急停强制进入 ESTOP
 [PASS] 22 外部急停后取消运动授权
 [PASS] 22b limiter 状态显示急停锁存
@@ -72,7 +75,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 [PASS] 36 mode manager 死亡后继续发命令仍因授权超时归零
 [PASS] 37 mode manager 死亡后 limiter 状态显示授权超时
 
-结果：43/43 组通过
+结果：45/45 组通过
 Gazebo/robot_hw_sim 已随测试启动；姿态漂移不作为本脚本判定项。
 ```
 
@@ -85,12 +88,13 @@ Gazebo/robot_hw_sim 已随测试启动；姿态漂移不作为本脚本判定项
 - `allow_tron_follow_motion` 默认 false；验收脚本会显式传 true，真机 launch 不会默认放行。
 - `tron1_safety_limiter_node` 会检查授权信号新鲜度，mode manager 死亡后 0.5 秒内关门。
 - `tron1_safety_limiter_node` 自己锁存急停；`/safety/estop_state=false` 不会自动解除 limiter 急停。
-- `tron1_safety_limiter_node` 发布 `/tron1/limiter_state`，用于区分 `PASSING_LIMITED_CMD`、`BLOCKED_ESTOP_LATCHED`、`BLOCKED_INPUT_TIMEOUT`、`BLOCKED_AUTHORIZATION_TIMEOUT` 等原因。
+- `tron1_safety_limiter_node` 对 `/safety/estop_state` 做新鲜度检查；没样本或样本超时按急停处理。
+- `tron1_safety_limiter_node` 发布 `/tron1/limiter_state`，用于区分 `INTENT_PASSING_LIMITED_CMD`、`BLOCKED_ESTOP_LATCHED`、`BLOCKED_ESTOP_TIMEOUT`、`BLOCKED_INPUT_TIMEOUT`、`BLOCKED_AUTHORIZATION_TIMEOUT` 等原因。
 - `tron1_safety_limiter_node` 需要同时满足：
   - `enable_motion=true`
   - `/tron1/motion_authorized=true`
   - 授权信号未 timeout
-  - 没有急停
+  - 急停源样本新鲜且没有急停
   - 输入未 timeout
 - 横移 `linear.y` 被强制为 0。
 

@@ -36,6 +36,7 @@ class Tron1ChineseTeleop(Node):
         super().__init__("tron1_chinese_teleop")
         self.declare_parameter("cmd_topic", "/fcr/cmd_vel_stamped")
         self.declare_parameter("estop_topic", "/safety/estop_state")
+        self.declare_parameter("limiter_clear_estop_topic", "/tron1/limiter_clear_estop")
         self.declare_parameter("publish_rate_hz", 10.0)
         self.declare_parameter("default_linear_x", 0.03)
         self.declare_parameter("default_angular_z", 0.10)
@@ -46,6 +47,9 @@ class Tron1ChineseTeleop(Node):
 
         self.cmd_topic = str(self.get_parameter("cmd_topic").value)
         self.estop_topic = str(self.get_parameter("estop_topic").value)
+        self.limiter_clear_estop_topic = str(
+            self.get_parameter("limiter_clear_estop_topic").value
+        )
         self.rate_hz = max(float(self.get_parameter("publish_rate_hz").value), 1.0)
         self.default_x = abs(float(self.get_parameter("default_linear_x").value))
         self.default_yaw = abs(float(self.get_parameter("default_angular_z").value))
@@ -70,6 +74,9 @@ class Tron1ChineseTeleop(Node):
         )
         self.cmd_pub = self.create_publisher(TwistStamped, self.cmd_topic, qos)
         self.estop_pub = self.create_publisher(Bool, self.estop_topic, estop_qos)
+        self.limiter_clear_estop_pub = self.create_publisher(
+            Bool, self.limiter_clear_estop_topic, qos
+        )
 
         self._lock = threading.Lock()
         self._current = Command()
@@ -122,8 +129,13 @@ class Tron1ChineseTeleop(Node):
             return
 
         if any(word in text for word in ("解除急停", "恢复急停", "清除急停")):
-            self.estop_pub.publish(Bool(data=False))
-            print("已尝试解除限速器急停状态：/safety/estop_state=false。")
+            for _ in range(5):
+                self.estop_pub.publish(Bool(data=False))
+                self.limiter_clear_estop_pub.publish(Bool(data=True))
+            print(
+                "已尝试解除软件急停：/safety/estop_state=false，"
+                "并显式清除 limiter 锁存：/tron1/limiter_clear_estop=true。"
+            )
             return
 
         if any(word in text for word in ("急停", "急刹", "刹车", "危险")):

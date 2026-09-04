@@ -131,10 +131,12 @@ limiter 状态 topic：
 | `BLOCKED_ENABLE_MOTION_FALSE` | `enable_motion=false`，硬门控关闭 |
 | `BLOCKED_MOTION_NOT_AUTHORIZED` | 状态机未授权 |
 | `BLOCKED_AUTHORIZATION_TIMEOUT` | mode manager 死亡或授权信号过旧 |
+| `BLOCKED_NO_ESTOP_SAMPLE` | 尚未收到急停源样本，按急停处理 |
+| `BLOCKED_ESTOP_TIMEOUT` | 急停源样本过旧，按急停处理 |
 | `BLOCKED_ESTOP_LATCHED` | limiter 急停锁存中 |
 | `BLOCKED_INPUT_TIMEOUT` | 输入命令超时 |
-| `PASSING_ZERO_CMD` | 正在放行零速度命令；注意这不是泄力 |
-| `PASSING_LIMITED_CMD` | 正在放行限幅后的非零命令 |
+| `INTENT_PASSING_ZERO_CMD` | 门控允许零速度命令；注意这不是泄力，实际输出仍以 `/fcr_tron/cmd_vel` 为准 |
+| `INTENT_PASSING_LIMITED_CMD` | 门控允许限幅后的非零命令；实际输出仍以 `/fcr_tron/cmd_vel` 为准 |
 
 按顺序进入 TRON 跟随：
 
@@ -214,7 +216,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 1. 启动 `fcr_tron_safe_mode_sim.launch.py`；
 2. 启动官方 `robot_hw pointfoot_hw_sim.launch.py`；
 3. 设置 `ROBOT_TYPE=WF_TRON1A`、`RL_TYPE=isaacgym`、`FCR_TRON_CMD_VEL_TOPIC=/fcr_tron/cmd_vel`；
-4. 自动跑 43 组验收；
+4. 自动跑 45 组验收；
 5. 结束后关闭测试进程。
 
 如果本机 Gazebo 图形环境不可用，可以先跑不带 Gazebo 的 topic 安全仿真：
@@ -231,9 +233,11 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 
 如果没有启动 live ROS graph、没有确认物理急停/阻尼，这个脚本输出 `BLOCK` 是正常且正确的；它的目的不是证明“可以动”，而是阻止把仿真验收误当成真机运动许可。
 
-## 8. 43 组验收覆盖内容
+## 8. 45 组验收覆盖内容
 
-当前脚本实际跑 43 组，超过“至少 20 组”的要求：
+当前脚本实际跑 45 组，超过“至少 20 组”的要求。
+
+注意：真机进程/真机网络守卫发生在 45 组用例之前，不计入 `45/45` 分母；如果守卫发现真实 `pointfoot_node`、`robot_hw_node` 或可达 TRON1 网络，脚本会在启动仿真安全栈前直接拒绝运行。
 
 1. 初始/复位后进入 `IDLE`
 2. `IDLE` 不授权运动
@@ -255,24 +259,31 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 18. `linear.y` 被强制为 0
 19. `angular.z` 被限幅到 `0.10 rad/s`
 20. 输入 timeout 后输出自动归零
-21. 外部急停强制进入 `ESTOP`
-22. 外部急停后取消运动授权
-23. 外部急停后输出归零
-24. 急停锁存时拒绝继续进入 `TRON_FOLLOW`
-25. 外部急停未解除时 `clear_estop` 无效
-26. 外部急停未解除时仍不授权
-27. `clear_estop` 后回到 `IDLE`
-28. `clear_estop` 后仍不授权
-29. 软件模式请求 `estop` 进入 `ESTOP`
-30. 软件 `estop` 后不授权
-31. 软件急停锁存时 `reset` 不能清除急停
-32. `clear_estop` 后回到 `IDLE`
-33. `clear_estop` 后输出保持零
-34. 死亡测试前已进入 `TRON_FOLLOW` 授权态
-35. 杀死 `tron1_mode_manager_node`
-36. mode manager 死亡后继续发命令仍因授权超时归零
-37. `/fcr_tron/cmd_vel` 只有 limiter 一个发布者
-38. 官方 `robot_hw` 订阅 limiter 输出
+21. limiter 状态显示输入 timeout
+22. estop 样本超时后继续发命令仍输出零
+23. limiter 状态显示 estop 样本超时
+24. 外部急停强制进入 `ESTOP`
+25. 外部急停后取消运动授权
+26. 外部急停后 limiter 状态显示急停锁存
+27. 外部急停后输出归零
+28. 急停锁存时拒绝继续进入 `TRON_FOLLOW`
+29. 外部急停未解除时 `clear_estop` 无效
+30. 外部急停未解除时仍不授权
+31. `clear_estop` 后回到 `IDLE`
+32. `clear_estop` 后仍不授权
+33. 软件模式请求 `estop` 进入 `ESTOP`
+34. 软件 `estop` 后不授权
+35. 软件急停锁存时 `reset` 不能清除急停
+36. `clear_estop` 后回到 `IDLE`
+37. `clear_estop` 后输出保持零
+38. 死亡测试前已进入 `TRON_FOLLOW` 授权态
+39. 杀死 `tron1_mode_manager_node`
+40. mode manager 死亡后继续发命令仍因授权超时归零
+41. mode manager 死亡后 limiter 状态显示授权超时
+42. 死亡测试后输出仍保持零
+43. topic 诊断确认 `/fcr_tron/cmd_vel` 只有 limiter 一个发布者
+44. topic 诊断确认官方 `robot_hw` 订阅 limiter 输出
+45. Gazebo/robot_hw_sim 生命周期由验收脚本启动和回收，不作为真实地面运动证明
 
 ## 9. 真机限制
 

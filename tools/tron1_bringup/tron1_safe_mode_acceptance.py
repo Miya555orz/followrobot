@@ -54,6 +54,9 @@ class SafeModeProbe(Node):
         self.last_auth: bool | None = None
         self.last_limiter_state: str | None = None
         self.outputs: list[tuple[float, float, float]] = []
+        self._estop_state = False
+        self._last_estop_heartbeat = 0.0
+        self._estop_heartbeat_enabled = True
 
         self.create_subscription(String, "/tron1/mode_state", self._on_state, TRANSIENT_QOS)
         self.create_subscription(Bool, "/tron1/motion_authorized", self._on_auth, TRANSIENT_QOS)
@@ -77,6 +80,10 @@ class SafeModeProbe(Node):
     def spin_for(self, seconds: float) -> None:
         end = time.monotonic() + seconds
         while time.monotonic() < end:
+            now = time.monotonic()
+            if self._estop_heartbeat_enabled and now - self._last_estop_heartbeat >= 0.05:
+                self.estop_pub.publish(Bool(data=self._estop_state))
+                self._last_estop_heartbeat = now
             rclpy.spin_once(self, timeout_sec=0.02)
 
     def request(self, text: str) -> None:
@@ -87,11 +94,17 @@ class SafeModeProbe(Node):
             self.spin_for(0.05)
 
     def estop(self, active: bool) -> None:
+        self._estop_heartbeat_enabled = True
+        self._estop_state = active
         msg = Bool()
         msg.data = active
         for _ in range(3):
             self.estop_pub.publish(msg)
             self.spin_for(0.05)
+
+    def set_estop_heartbeat_enabled(self, enabled: bool) -> None:
+        self._estop_heartbeat_enabled = enabled
+        self._last_estop_heartbeat = 0.0
 
     def clear_limiter_estop(self) -> None:
         msg = Bool()
@@ -154,6 +167,49 @@ def stop_process(proc: subprocess.Popen | None) -> None:
     except subprocess.TimeoutExpired:
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         proc.wait(timeout=8)
+
+
+def matching_processes(pattern: str) -> list[str]:
+    proc = subprocess.run(
+        ["pgrep", "-af", pattern],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return []
+    return [
+        line
+        for line in proc.stdout.splitlines()
+        if "tron1_safe_mode_acceptance.py" not in line and "pgrep -af" not in line
+    ]
+
+
+def robot_network_reachable(ip: str) -> bool:
+    proc = subprocess.run(
+        ["ping", "-c", "1", "-W", "1", ip],
+        text=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return proc.returncode == 0
+
+
+def real_robot_guard(allow_robot_network: bool, robot_ip: str) -> tuple[bool, str]:
+    risky_processes = matching_processes(
+        r"pointfoot_node|/robot_hw_node|robot_hw_node|pointfoot_hw.launch.py"
+    )
+    if risky_processes:
+        return False, "发现可能连接真机的残留进程：\n" + "\n".join(risky_processes)
+    if not allow_robot_network and robot_network_reachable(robot_ip):
+        return (
+            False,
+            f"检测到 TRON1 地址 {robot_ip} 可达；自动仿真验收默认拒跑，"
+            "避免同 domain 误驱动真机。确认完全隔离后可显式加 --allow-robot-network。",
+        )
+    return True, "未发现真机进程；TRON1 网络未授权接入自动验收"
 
 
 def check(name: str, fn: Callable[[], tuple[bool, str]]) -> CaseResult:
@@ -329,7 +385,10 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
     probe.reset_outputs()
     probe.publish_cmd_for(1.0, 1.0, 1.0, 1.1)
     results.append(
-        check("16b limiter 状态显示正在放行限幅命令", lambda: limiter_state_is("PASSING_LIMITED_CMD"))
+        check(
+            "16b limiter 状态显示正在尝试放行限幅命令",
+            lambda: limiter_state_is("INTENT_PASSING_LIMITED_CMD"),
+        )
     )
     max_x, max_y, max_yaw = probe.max_abs_output()
     results.append(
@@ -364,6 +423,24 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
     results.append(
         check("20b limiter 状态显示输入 timeout", lambda: limiter_state_is("BLOCKED_INPUT_TIMEOUT"))
     )
+
+    probe.reset_outputs()
+    probe.set_estop_heartbeat_enabled(False)
+    probe.publish_cmd_for(0.03, 0.0, 0.05, 0.8)
+    results.append(
+        check(
+            "20c estop 样本超时后继续发命令仍输出零",
+            lambda: (
+                probe.last_output_near_zero(),
+                f"last_output={probe.outputs[-1] if probe.outputs else None}",
+            ),
+        )
+    )
+    results.append(
+        check("20d limiter 状态显示 estop 样本超时", lambda: limiter_state_is("BLOCKED_ESTOP_TIMEOUT"))
+    )
+    probe.estop(False)
+    probe.clear_limiter_estop()
 
     probe.publish_cmd_for(0.3, 0.0, 0.0, 0.3)
     probe.estop(True)
@@ -445,6 +522,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--with-gazebo", action="store_true", help="额外启动官方 Gazebo/robot_hw_sim")
     parser.add_argument("--startup-timeout", type=float, default=8.0)
+    parser.add_argument("--robot-ip", default="10.192.1.2")
+    parser.add_argument(
+        "--allow-robot-network",
+        action="store_true",
+        help="仅在确认 TRON1 真机网络不会被当前 ROS graph 触达时使用。",
+    )
     args = parser.parse_args()
 
     env = os.environ.copy()
@@ -452,6 +535,13 @@ def main() -> int:
     env.setdefault("RL_TYPE", "isaacgym")
     env.setdefault("FCR_TRON_CMD_VEL_TOPIC", "/fcr_tron/cmd_vel")
     env.setdefault("FCR_TRON_CMD_VEL_TIMEOUT_SEC", "0.25")
+
+    guard_ok, guard_detail = real_robot_guard(args.allow_robot_network, args.robot_ip)
+    if not guard_ok:
+        print("[FAIL] 真机进程/网络守卫拒绝启动自动验收")
+        print(guard_detail)
+        return 4
+    print(f"[PASS] 真机进程/网络守卫：{guard_detail}")
 
     safe_stack_cmd = [
         "ros2",
@@ -463,6 +553,7 @@ def main() -> int:
         "max_linear_x:=0.03",
         "max_angular_z:=0.10",
         "input_timeout_sec:=0.25",
+        "estop_timeout_sec:=0.50",
         "motion_authorized_timeout_sec:=0.50",
     ]
     safe_proc = start_process(safe_stack_cmd, env)

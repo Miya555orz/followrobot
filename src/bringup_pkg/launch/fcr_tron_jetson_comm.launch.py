@@ -38,6 +38,7 @@ def generate_launch_description():
             "max_linear_y": "0.0",
             "max_angular_z": LaunchConfiguration("max_angular_z"),
             "input_timeout_sec": LaunchConfiguration("input_timeout_sec"),
+            "estop_timeout_sec": LaunchConfiguration("estop_timeout_sec"),
             "motion_authorized_timeout_sec": LaunchConfiguration("motion_authorized_timeout_sec"),
             "allow_tron_follow_motion": LaunchConfiguration("allow_tron_follow_motion"),
             "use_foxglove": LaunchConfiguration("use_foxglove"),
@@ -90,6 +91,7 @@ def generate_launch_description():
             description="First-real-test yaw speed limit in rad/s.",
         ),
         DeclareLaunchArgument("input_timeout_sec", default_value="0.25"),
+        DeclareLaunchArgument("estop_timeout_sec", default_value="0.50"),
         DeclareLaunchArgument("motion_authorized_timeout_sec", default_value="0.50"),
         DeclareLaunchArgument(
             "allow_tron_follow_motion",

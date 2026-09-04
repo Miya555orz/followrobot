@@ -20,6 +20,16 @@ has_ros_graph_topic() {
   timeout 3s ros2 topic info "$1" -v >/tmp/tron1_topic_info.txt 2>&1
 }
 
+launch_arg_default() {
+  local file="$1"
+  local arg="$2"
+  awk -v arg="'$arg':" '
+    $0 ~ arg {in_arg=1; next}
+    in_arg && /^    '\''[^'\'']+'\'':/ {exit}
+    in_arg && /\(default:/ {print; exit}
+  ' "$file"
+}
+
 echo "[TRON1 真机前安全闸门 / read-only]"
 echo "本脚本不启动 ROS、不发布速度、不连接真实 TRON1；只检查当前环境和已运行 graph。"
 echo
@@ -88,9 +98,12 @@ echo "[4/7] 默认 launch/config 安全值"
 if ros2 launch bringup_pkg fcr_tron_safe_mode_sim.launch.py --show-args >/tmp/tron1_safe_sim_args.txt 2>&1; then
   grep -A3 "'enable_motion':" /tmp/tron1_safe_sim_args.txt || true
   grep -A3 "'allow_tron_follow_motion':" /tmp/tron1_safe_sim_args.txt || true
-  grep -q "(default: 'false')" /tmp/tron1_safe_sim_args.txt \
-    && pass "safe_mode_sim launch 默认包含 false 安全默认值" \
-    || fail "safe_mode_sim launch 未看到 false 默认值"
+  launch_arg_default /tmp/tron1_safe_sim_args.txt enable_motion | grep -q "(default: 'false')" \
+    && pass "safe_mode_sim launch 默认 enable_motion=false" \
+    || fail "safe_mode_sim launch 默认 enable_motion 不是 false"
+  launch_arg_default /tmp/tron1_safe_sim_args.txt allow_tron_follow_motion | grep -q "(default: 'false')" \
+    && pass "safe_mode_sim launch 默认 allow_tron_follow_motion=false" \
+    || fail "safe_mode_sim launch 默认 allow_tron_follow_motion 不是 false"
 else
   fail "无法 inspect fcr_tron_safe_mode_sim.launch.py"
 fi
@@ -165,13 +178,17 @@ echo
 
 echo "[7/7] 自动 topic/Gazebo 验收与真机人工门"
 if [ -f "$PROJECT_ROOT/docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md" ] &&
-  grep -q "PASS：43/43" "$PROJECT_ROOT/docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md"; then
-  pass "已记录 43/43 topic + Gazebo/robot_hw_sim 安全验收"
+  grep -q "PASS：45/45" "$PROJECT_ROOT/docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md"; then
+  pass "已记录 45/45 topic + Gazebo/robot_hw_sim 安全验收"
 else
-  block "未找到 43/43 topic + Gazebo/robot_hw_sim 安全验收记录"
+  block "未找到 45/45 topic + Gazebo/robot_hw_sim 安全验收记录"
 fi
 
-block "A-10 仍需真机前人工确认：物理急停/阻尼可触达，且官方 controller watchdog/进程死亡后果已理解"
+if [ "${A10_CONFIRMED:-}" = "yes" ]; then
+  pass "A-10 人工确认已由环境变量 A10_CONFIRMED=yes 显式给出"
+else
+  block "A-10 仍需真机前人工确认：物理急停/阻尼可触达，且官方 controller watchdog/进程死亡后果已理解。若已完成，显式设置 A10_CONFIRMED=yes 后复查"
+fi
 if [ -f "$PROJECT_ROOT/docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md" ]; then
   pass "阶段 B 只读摸底已记录：zero cmd 是 RL policy 零期望速度，不是急停/泄力/阻尼"
 else
@@ -189,3 +206,4 @@ if [ "$block_count" -gt 0 ]; then
   exit 3
 fi
 echo "结论：PASS。仍建议从架空/支架 enable_motion=false 开始。"
+exit 0

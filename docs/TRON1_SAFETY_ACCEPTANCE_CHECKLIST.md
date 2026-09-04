@@ -53,7 +53,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 
 - A-01 到 A-09 可以先在仿真/topic 级测试中验证。
 - A-10 是进入真实低速运动前的关键 blocker。
-- `tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh --with-gazebo` 是自动 topic/Gazebo/官方订阅验收；当前已通过 43/43。
+- `tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh --with-gazebo` 是自动 topic/Gazebo/官方订阅验收；当前已通过 45/45。
 - 官方 controller 语义见 [docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md](TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md)：zero cmd 只是 RL policy 的零期望速度，不是急停/泄力/阻尼。
 - `tools/tron1_bringup/tron1_safety_acceptance_check.sh` 是真机前 read-only 闸门；没有 live ROS graph、没有确认物理急停/阻尼前，它应该输出 `BLOCK`，这不是脚本失败，而是在防止误把仿真 PASS 当成真机许可。
 - `L1 + X` 是软件停止/中止，不是已证明的阻尼/泄力。

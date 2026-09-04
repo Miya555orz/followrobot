@@ -60,6 +60,7 @@ public:
 
     publish_rate_hz_ = declare_parameter<double>("publish_rate_hz", 50.0);
     input_timeout_sec_ = declare_parameter<double>("input_timeout_sec", 0.30);
+    estop_timeout_sec_ = declare_parameter<double>("estop_timeout_sec", 0.50);
     motion_authorized_timeout_sec_ =
       declare_parameter<double>("motion_authorized_timeout_sec", 0.50);
     max_linear_x_ = declare_parameter<double>("max_linear_x", 0.03);
@@ -77,6 +78,7 @@ public:
       declare_parameter<bool>("stop_immediately_on_timeout", true);
 
     if (publish_rate_hz_ <= 0.0 || input_timeout_sec_ <= 0.0 ||
+      estop_timeout_sec_ <= 0.0 ||
       motion_authorized_timeout_sec_ <= 0.0 ||
       max_accel_x_ <= 0.0 || max_accel_y_ <= 0.0 || max_accel_yaw_ <= 0.0)
     {
@@ -111,13 +113,14 @@ public:
     RCLCPP_WARN(
       get_logger(),
       "TRON1 safety limiter: %s -> %s, enable_motion=%s, lateral=%s, "
-      "motion_authorized_topic=%s auth_timeout=%.2fs, state_topic=%s, "
-      "limits x=%.3f y=%.3f yaw=%.3f, timeout=%.2fs",
+      "motion_authorized_topic=%s auth_timeout=%.2fs, estop_timeout=%.2fs, "
+      "state_topic=%s, limits x=%.3f y=%.3f yaw=%.3f, timeout=%.2fs",
       input_topic.c_str(), output_topic.c_str(),
       enable_motion_ ? "true" : "false",
       enable_lateral_ ? "true" : "false",
       motion_authorized_topic_.c_str(),
       motion_authorized_timeout_sec_,
+      estop_timeout_sec_,
       limiter_state_topic_.c_str(),
       max_linear_x_, enable_lateral_ ? max_linear_y_ : 0.0,
       max_angular_z_, input_timeout_sec_);
@@ -158,8 +161,12 @@ private:
   void on_estop(const std_msgs::msg::Bool::ConstSharedPtr msg)
   {
     estop_active_ = msg->data;
-    if (estop_active_ && stop_immediately_on_estop_) {
+    last_estop_time_ = now();
+    have_estop_sample_ = true;
+    if (estop_active_) {
       estop_latched_ = true;
+    }
+    if (estop_active_ && stop_immediately_on_estop_) {
       target_cmd_ = geometry_msgs::msg::Twist();
       current_cmd_ = geometry_msgs::msg::Twist();
       cmd_pub_->publish(current_cmd_);
@@ -170,6 +177,16 @@ private:
   void on_estop_clear(const std_msgs::msg::Bool::ConstSharedPtr msg)
   {
     if (!msg->data) {
+      return;
+    }
+    const auto estop_fresh = have_estop_sample_ &&
+      ((now() - last_estop_time_).seconds() <= estop_timeout_sec_);
+    if (!have_estop_sample_) {
+      RCLCPP_ERROR(get_logger(), "TRON1 limiter estop clear rejected: no estop sample received");
+      return;
+    }
+    if (!estop_fresh) {
+      RCLCPP_ERROR(get_logger(), "TRON1 limiter estop clear rejected: estop sample is stale");
       return;
     }
     if (estop_active_) {
@@ -200,11 +217,13 @@ private:
     const auto auth_fresh = have_motion_authorized_ &&
       ((now() - last_motion_authorized_time_).seconds() <= motion_authorized_timeout_sec_);
     const auto authorized = motion_authorized_ && auth_fresh;
-    const auto estopped = estop_active_ || estop_latched_;
+    const auto estop_fresh = have_estop_sample_ &&
+      ((now() - last_estop_time_).seconds() <= estop_timeout_sec_);
+    const auto estopped = !have_estop_sample_ || !estop_fresh || estop_active_ || estop_latched_;
     if (enable_motion_ && authorized && fresh && !estopped) {
       requested = target_cmd_;
     }
-    const auto state = limiter_state(fresh, auth_fresh, authorized, estopped, requested);
+    const auto state = limiter_state(fresh, auth_fresh, authorized, estop_fresh, requested);
     publish_limiter_state(state);
     if ((!fresh && stop_immediately_on_timeout_) || estopped || !authorized) {
       target_cmd_ = geometry_msgs::msg::Twist();
@@ -230,13 +249,19 @@ private:
   }
 
   std::string limiter_state(
-    bool fresh, bool auth_fresh, bool authorized, bool estopped,
+    bool fresh, bool auth_fresh, bool authorized, bool estop_fresh,
     const geometry_msgs::msg::Twist & requested) const
   {
     if (!enable_motion_) {
       return "BLOCKED_ENABLE_MOTION_FALSE";
     }
-    if (estopped) {
+    if (!have_estop_sample_) {
+      return "BLOCKED_NO_ESTOP_SAMPLE";
+    }
+    if (!estop_fresh) {
+      return "BLOCKED_ESTOP_TIMEOUT";
+    }
+    if (estop_active_ || estop_latched_) {
       return "BLOCKED_ESTOP_LATCHED";
     }
     if (!have_motion_authorized_) {
@@ -252,9 +277,9 @@ private:
       return "BLOCKED_INPUT_TIMEOUT";
     }
     if (is_near_zero(requested)) {
-      return "PASSING_ZERO_CMD";
+      return "INTENT_PASSING_ZERO_CMD";
     }
-    return "PASSING_LIMITED_CMD";
+    return "INTENT_PASSING_LIMITED_CMD";
   }
 
   void publish_limiter_state(const std::string & state)
@@ -281,6 +306,7 @@ private:
   rclcpp::Time last_cmd_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_publish_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_motion_authorized_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_estop_time_{0, 0, RCL_ROS_TIME};
 
   std::string estop_topic_;
   std::string estop_clear_topic_;
@@ -290,6 +316,7 @@ private:
   bool have_cmd_ = false;
   bool estop_active_ = false;
   bool estop_latched_ = false;
+  bool have_estop_sample_ = false;
   bool enable_motion_ = false;
   bool motion_authorized_ = false;
   bool have_motion_authorized_ = false;
@@ -299,6 +326,7 @@ private:
   bool stop_immediately_on_timeout_ = true;
   double publish_rate_hz_ = 50.0;
   double input_timeout_sec_ = 0.30;
+  double estop_timeout_sec_ = 0.50;
   double motion_authorized_timeout_sec_ = 0.50;
   double max_linear_x_ = 0.03;
   double max_linear_y_ = 0.0;

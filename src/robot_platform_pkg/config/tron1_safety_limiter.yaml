@@ -9,6 +9,7 @@ tron1_safety_limiter:
 
     publish_rate_hz: 50.0
     input_timeout_sec: 0.25
+    estop_timeout_sec: 0.50
     motion_authorized_timeout_sec: 0.50
 
     # First-test TRON1 EDU limits. Keep these extremely low until the simulator

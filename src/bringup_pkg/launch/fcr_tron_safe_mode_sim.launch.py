@@ -60,6 +60,9 @@ def generate_launch_description():
                 "input_timeout_sec": ParameterValue(
                     LaunchConfiguration("input_timeout_sec"), value_type=float
                 ),
+                "estop_timeout_sec": ParameterValue(
+                    LaunchConfiguration("estop_timeout_sec"), value_type=float
+                ),
                 "motion_authorized_timeout_sec": ParameterValue(
                     LaunchConfiguration("motion_authorized_timeout_sec"), value_type=float
                 ),
@@ -78,6 +81,7 @@ def generate_launch_description():
             DeclareLaunchArgument("max_linear_x", default_value="0.03"),
             DeclareLaunchArgument("max_angular_z", default_value="0.10"),
             DeclareLaunchArgument("input_timeout_sec", default_value="0.25"),
+            DeclareLaunchArgument("estop_timeout_sec", default_value="0.50"),
             DeclareLaunchArgument("motion_authorized_timeout_sec", default_value="0.50"),
             mode_manager,
             limiter,
