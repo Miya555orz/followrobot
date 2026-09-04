@@ -60,8 +60,8 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 - 物理 motor switch / 硬件动作曾被观察到触发 `Motor in damping mode`。
 - FCR 的“连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆；手柄摇杆不作为 FCR 实机验收输入。
 - 实机分步路线见 [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](TRON1_REAL_TEST_STEP_CHECKLIST.md)：先 PC 直连，再 Jetson 直连，最后 Jetson 加云台/相机。
-- 自动 Gazebo 验收默认使用独立 `ROS_DOMAIN_ID=83`；Python 验收脚本是 domain 单一真源，支持 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，且拒绝空值或 `0`，避免和真实 TRON1 bringup 共用 ROS graph。
-
+- 自动 Gazebo 验收默认使用独立 `ROS_DOMAIN_ID=83`；Python 验收脚本是 domain 单一真源，支持 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，且拒绝空值、`0`、非十进制或越界值，避免和真实 TRON1 bringup 共用 ROS graph。
+- `--with-gazebo` 自动验收必须看到 `/gazebo` 节点，并且只允许本次 Gazebo `robot_hw_node` 订阅 `/fcr_tron/cmd_vel`。
 - `/safety/estop_state` 是 FCR 聚合软件急停状态，不代表 TRON1 物理 motor switch；`/tron1/limiter_clear_estop` 是受控 ROS_DOMAIN 内的 limiter 软件恢复入口，不能替代物理急停/阻尼。
 - 真机前 A 门会打印 git `HEAD`，并在工作区 dirty 时保持 `BLOCK`，避免用未提交代码给出最终许可。
 

@@ -285,6 +285,18 @@ def real_robot_guard(allow_robot_network: bool, robot_ip: str) -> tuple[bool, st
     return True, "未发现真机进程；TRON1 网络未授权接入自动验收"
 
 
+def parse_ros_domain_id(value: str | int | None) -> tuple[int | None, str]:
+    raw = "" if value is None else str(value).strip()
+    if raw == "":
+        return None, "ROS_DOMAIN_ID 不能为空"
+    if not raw.isdecimal():
+        return None, f"ROS_DOMAIN_ID 必须是十进制整数，当前值为 {raw!r}"
+    domain_id = int(raw)
+    if not 1 <= domain_id <= 232:
+        return None, f"ROS_DOMAIN_ID 必须在 1..232，当前值为 {raw!r}"
+    return domain_id, ""
+
+
 def prelaunch_graph_guard(env: dict[str, str]) -> tuple[bool, str]:
     """启动任何验收节点前检查目标 topic 是否已有残留/远端订阅者。"""
     proc = subprocess.run(
@@ -345,7 +357,7 @@ def graph_robot_guard(probe: SafeModeProbe, with_gazebo: bool) -> tuple[bool, st
                 "请求 --with-gazebo，但 graph 中未看到 /gazebo；"
                 f"nodes={sorted(graph_nodes)}",
             )
-        allowed.update({"cmd_vel_node", "robot_hw_node", "pointfoot_node"})
+        allowed.add("robot_hw_node")
     unexpected = sorted(set(names) - allowed)
     if unexpected:
         return (
@@ -542,7 +554,7 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
         ok = wait_until(
             probe,
             lambda: any(
-                info.node_name in ("cmd_vel_node", "robot_hw_node", "pointfoot_node")
+                info.node_name == "robot_hw_node"
                 for info in probe.get_subscriptions_info_by_topic("/fcr_tron/cmd_vel")
             ),
             8.0,
@@ -808,14 +820,9 @@ def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[C
     return results
 
 
-def graph_has_gazebo_or_robot_hw(probe: SafeModeProbe) -> bool:
+def graph_has_gazebo(probe: SafeModeProbe) -> bool:
     names = set(probe.get_node_names())
-    return (
-        "/gazebo" in names
-        or "gazebo" in names
-        or "robot_hw_node" in names
-        or "pointfoot_node" in names
-    )
+    return "/gazebo" in names or "gazebo" in names
 
 
 def main() -> int:
@@ -835,15 +842,15 @@ def main() -> int:
     )
     args = parser.parse_args()
     robot_ip = args.robot_ip or "10.192.1.2"
-    ros_domain_id = str(args.ros_domain_id).strip()
-    if ros_domain_id in {"", "0"}:
-        print("[FAIL] 自动验收拒绝使用空值或 0 作为 ROS_DOMAIN_ID；请使用独立 domain，例如 83")
+    ros_domain_id, ros_domain_error = parse_ros_domain_id(args.ros_domain_id)
+    if ros_domain_id is None:
+        print(f"[FAIL] 自动验收拒绝当前 ROS_DOMAIN_ID：{ros_domain_error}；请使用独立 domain，例如 83")
         return 4
     if args.allow_robot_network and args.robot_ip is None:
         print("[FAIL] 使用 --allow-robot-network 时必须同时显式传 --robot-ip，避免误绕过默认 TRON1 网络守卫")
         return 4
 
-    os.environ["ROS_DOMAIN_ID"] = ros_domain_id
+    os.environ["ROS_DOMAIN_ID"] = str(ros_domain_id)
 
     env = os.environ.copy()
     env.setdefault("ROBOT_TYPE", "WF_TRON1A")
@@ -907,9 +914,9 @@ def main() -> int:
             return 2
 
         if args.with_gazebo and not wait_until(
-            probe, lambda: graph_has_gazebo_or_robot_hw(probe), args.startup_timeout
+            probe, lambda: graph_has_gazebo(probe), args.startup_timeout
         ):
-            print("[FAIL] --with-gazebo 已请求，但 ROS graph 中未看到 /gazebo 或 robot_hw_node")
+            print("[FAIL] --with-gazebo 已请求，但 ROS graph 中未看到 /gazebo")
             return 3
 
         graph_guard_ok, graph_guard_detail = graph_robot_guard(probe, args.with_gazebo)

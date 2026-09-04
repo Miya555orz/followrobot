@@ -230,7 +230,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 ROS_DOMAIN_ID=83
 ```
 
-Python 验收脚本是 `ROS_DOMAIN_ID` 的单一真源：默认读取 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID`，未设置时使用 `83`；也可以显式传 Python 参数 `--ros-domain-id <非0编号>`。脚本会在启动前打印最终生效值，并拒绝空值或 `0`。不要和真实 TRON1 bringup 共用同一个 ROS graph。
+Python 验收脚本是 `ROS_DOMAIN_ID` 的单一真源：默认读取 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID`，未设置时使用 `83`；也可以显式传 Python 参数 `--ros-domain-id <1..232>`。脚本会在启动前打印最终生效值，并拒绝空值、`0`、非十进制或越界值。不要和真实 TRON1 bringup 共用同一个 ROS graph。
 
 脚本会：
 
@@ -258,7 +258,7 @@ Python 验收脚本是 `ROS_DOMAIN_ID` 的单一真源：默认读取 `FCR_TRON_
 
 当前脚本实际跑 47 组，超过“至少 20 组”的要求。
 
-注意：真机进程/真机网络守卫、启动前 `/fcr_tron/cmd_vel` graph 预扫描、启动后 ROS graph 订阅者守卫都发生在主运动用例前；如果守卫发现真实 `pointfoot_node`、`robot_hw_node`、可达 TRON1 网络、启动前已有 `/fcr_tron/cmd_vel` endpoint，或非 Gazebo 模式下 `/fcr_tron/cmd_vel` 除 probe 外已有订阅者，脚本会在发布任何验收速度前直接拒绝运行。
+注意：真机进程/真机网络守卫、启动前 `/fcr_tron/cmd_vel` graph 预扫描、启动后 ROS graph 订阅者守卫都发生在主运动用例前；如果守卫发现真实 `pointfoot_node`、`robot_hw_node`、可达 TRON1 网络、启动前已有 `/fcr_tron/cmd_vel` endpoint，或非 Gazebo 模式下 `/fcr_tron/cmd_vel` 除 probe 外已有订阅者，脚本会在发布任何验收速度前直接拒绝运行。`--with-gazebo` 还会等待 graph 中出现 `/gazebo`，并且只把本次官方仿真的 `robot_hw_node` 作为允许的 TRON 订阅者。
 
 新增两组硬门负向用例：
 
@@ -275,8 +275,17 @@ Python 验收脚本是 `ROS_DOMAIN_ID` 的单一真源：默认读取 `FCR_TRON_
 - estop 样本超时后继续发命令仍输出 0。
 - FCR 聚合软件急停 `/safety/estop_state`、软件 estop、limiter 急停锁存和显式 clear。
 - mode manager 死亡后授权超时归零。
-- `/fcr_tron/cmd_vel` 唯一发布者和官方 `robot_hw`/`cmd_vel_node`/`pointfoot_node` 订阅关系。
+- `/fcr_tron/cmd_vel` 唯一发布者和本次官方 Gazebo `robot_hw_node` 订阅关系。
 - Gazebo/robot_hw_sim 生命周期由验收脚本启动和回收；姿态漂移不作为真实地面运动证明。
+
+Gazebo 练习脚本：
+
+```bash
+./tools/tron1_bringup/tron1_practice_gazebo.sh
+./tools/tron1_bringup/tron1_practice_keyboard_gazebo.sh
+```
+
+这两个脚本只用于仿真练习；它们默认使用 `ROS_DOMAIN_ID=90`，拒绝空值、`0`、非十进制或越界 domain，启动前会检查 TRON1 默认地址不可达、无真实 `pointfoot_node`/`robot_hw_node` 进程、`/fcr_tron/cmd_vel` 无残留 endpoint，启动后还要看到 `/gazebo` 节点才会推进状态机。
 
 ## 9. 真机限制
 
