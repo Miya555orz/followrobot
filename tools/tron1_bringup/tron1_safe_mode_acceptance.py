@@ -285,6 +285,46 @@ def real_robot_guard(allow_robot_network: bool, robot_ip: str) -> tuple[bool, st
     return True, "未发现真机进程；TRON1 网络未授权接入自动验收"
 
 
+def prelaunch_graph_guard(env: dict[str, str]) -> tuple[bool, str]:
+    """启动任何验收节点前检查目标 topic 是否已有残留/远端订阅者。"""
+    proc = subprocess.run(
+        ["timeout", "3s", "ros2", "topic", "info", "/fcr_tron/cmd_vel", "-v"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return True, "启动前未发现 /fcr_tron/cmd_vel graph"
+    lines = proc.stdout.splitlines()
+    publishers: list[str] = []
+    subscribers: list[str] = []
+    section = ""
+    for line in lines:
+        if line.startswith("Publisher count:"):
+            section = "publishers"
+            continue
+        if line.startswith("Subscription count:"):
+            section = "subscribers"
+            continue
+        if "Node name:" not in line:
+            continue
+        name = line.split("Node name:", 1)[1].strip()
+        if section == "publishers":
+            publishers.append(name)
+        elif section == "subscribers":
+            subscribers.append(name)
+    if publishers or subscribers:
+        return (
+            False,
+            "启动前 /fcr_tron/cmd_vel 已存在 graph endpoint；"
+            f"publishers={publishers}, subscribers={subscribers}。"
+            "请确认没有真实 TRON1/残留 Gazebo，同步执行 ros2 daemon stop/start 后重试。",
+        )
+    return True, "启动前 /fcr_tron/cmd_vel 无发布者/订阅者"
+
+
 def graph_robot_guard(probe: SafeModeProbe, with_gazebo: bool) -> tuple[bool, str]:
     """在发布任何验收速度前检查当前 ROS graph 是否已有可疑 TRON 订阅者。"""
     infos = probe.get_subscriptions_info_by_topic("/fcr_tron/cmd_vel")
@@ -366,6 +406,17 @@ def run_negative_gate_prechecks(env: dict[str, str]) -> list[CaseResult]:
     )
     limiter_probe = NegativeGateProbe("tron1_acceptance_enable_false_probe", limiter_prefix)
     try:
+        if not wait_until(
+            limiter_probe, lambda: limiter_probe.last_limiter_state is not None, 3.0
+        ):
+            results.append(
+                CaseResult(
+                    "N01 enable_motion=false 时非零输入仍输出零",
+                    False,
+                    "等待独立 limiter 节点启动超时",
+                )
+            )
+            return results
         limiter_probe.publish_estop(False, 0.4)
         limiter_probe.publish_auth(True, 0.4)
         limiter_probe.publish_cmd(0.5, 0.0, 0.5, 0.5)
@@ -409,6 +460,19 @@ def run_negative_gate_prechecks(env: dict[str, str]) -> list[CaseResult]:
     )
     manager_probe = NegativeGateProbe("tron1_acceptance_allow_false_probe", manager_prefix)
     try:
+        if not wait_until(
+            manager_probe,
+            lambda: manager_probe.last_state is not None and manager_probe.last_auth is not None,
+            3.0,
+        ):
+            results.append(
+                CaseResult(
+                    "N02 allow_tron_follow_motion=false 时 TRON_FOLLOW 仍不授权",
+                    False,
+                    "等待独立 mode manager 节点启动超时",
+                )
+            )
+            return results
         manager_probe.publish_estop(False, 0.4)
         for req in [
             "developer_mode",
@@ -753,6 +817,9 @@ def main() -> int:
     )
     args = parser.parse_args()
     robot_ip = args.robot_ip or "10.192.1.2"
+    if str(args.ros_domain_id).strip() in {"", "0"}:
+        print("[FAIL] 自动验收拒绝使用空值或 0 作为 ROS_DOMAIN_ID；请使用独立 domain，例如 83")
+        return 4
     if args.allow_robot_network and args.robot_ip is None:
         print("[FAIL] 使用 --allow-robot-network 时必须同时显式传 --robot-ip，避免误绕过默认 TRON1 网络守卫")
         return 4
@@ -772,6 +839,13 @@ def main() -> int:
         print(guard_detail)
         return 4
     print(f"[PASS] 真机进程/网络守卫：{guard_detail}")
+
+    prelaunch_ok, prelaunch_detail = prelaunch_graph_guard(env)
+    if not prelaunch_ok:
+        print("[FAIL] 启动前 ROS graph 守卫拒绝启动自动验收")
+        print(prelaunch_detail)
+        return 4
+    print(f"[PASS] 启动前 ROS graph 守卫：{prelaunch_detail}")
 
     safe_stack_cmd = [
         "ros2",

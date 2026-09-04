@@ -67,7 +67,13 @@ echo "PROJECT_ROOT=$PROJECT_ROOT"
 echo "ROBOT_TYPE=$ROBOT_TYPE"
 echo "RL_TYPE=$RL_TYPE"
 echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-未设置；建议仿真验收使用独立 domain，例如 83}"
+current_head="$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+dirty_status="$(git -C "$PROJECT_ROOT" status --porcelain 2>/dev/null || true)"
+echo "GIT_HEAD=$current_head"
 git -C "$PROJECT_ROOT" status --short --branch || true
+if [ -n "$dirty_status" ]; then
+  block "当前工作区存在未提交修改；真机前 A 门不能基于 dirty tree 给最终 PASS"
+fi
 echo
 
 echo "[2/7] 残留进程快照"

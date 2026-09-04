@@ -18,7 +18,7 @@ import rclpy
 from geometry_msgs.msg import TwistStamped
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 
 
 def clamp(value: float, lower: float, upper: float) -> float:
@@ -36,6 +36,7 @@ class Tron1ChineseTeleop(Node):
         super().__init__("tron1_chinese_teleop")
         self.declare_parameter("cmd_topic", "/fcr/cmd_vel_stamped")
         self.declare_parameter("estop_topic", "/safety/estop_state")
+        self.declare_parameter("mode_request_topic", "/tron1/mode_request")
         self.declare_parameter("limiter_clear_estop_topic", "/tron1/limiter_clear_estop")
         self.declare_parameter("publish_rate_hz", 10.0)
         self.declare_parameter("default_linear_x", 0.03)
@@ -47,6 +48,7 @@ class Tron1ChineseTeleop(Node):
 
         self.cmd_topic = str(self.get_parameter("cmd_topic").value)
         self.estop_topic = str(self.get_parameter("estop_topic").value)
+        self.mode_request_topic = str(self.get_parameter("mode_request_topic").value)
         self.limiter_clear_estop_topic = str(
             self.get_parameter("limiter_clear_estop_topic").value
         )
@@ -74,6 +76,7 @@ class Tron1ChineseTeleop(Node):
         )
         self.cmd_pub = self.create_publisher(TwistStamped, self.cmd_topic, qos)
         self.estop_pub = self.create_publisher(Bool, self.estop_topic, estop_qos)
+        self.mode_request_pub = self.create_publisher(String, self.mode_request_topic, qos)
         self.limiter_clear_estop_pub = self.create_publisher(
             Bool, self.limiter_clear_estop_topic, qos
         )
@@ -129,12 +132,16 @@ class Tron1ChineseTeleop(Node):
             return
 
         if any(word in text for word in ("解除急停", "恢复急停", "清除急停")):
+            clear_msg = String()
+            clear_msg.data = "clear_estop"
             for _ in range(5):
+                self.mode_request_pub.publish(clear_msg)
                 self.estop_pub.publish(Bool(data=False))
                 self.limiter_clear_estop_pub.publish(Bool(data=True))
             print(
-                "已尝试解除软件急停：/safety/estop_state=false，"
-                "并显式清除 limiter 锁存：/tron1/limiter_clear_estop=true。"
+                "已尝试解除软件急停：/tron1/mode_request=clear_estop，"
+                "/safety/estop_state=false，并显式清除 limiter 锁存。"
+                "若状态机仍处于 ESTOP，请确认外部急停源已解除并持续发布 estop=false 心跳。"
             )
             return
 

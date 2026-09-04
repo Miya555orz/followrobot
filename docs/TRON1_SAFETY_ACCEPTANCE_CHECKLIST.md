@@ -60,7 +60,8 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 - 物理 motor switch / 硬件动作曾被观察到触发 `Motor in damping mode`。
 - FCR 的“连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆；手柄摇杆不作为 FCR 实机验收输入。
 - 实机分步路线见 [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](TRON1_REAL_TEST_STEP_CHECKLIST.md)：先 PC 直连，再 Jetson 直连，最后 Jetson 加云台/相机。
-- 自动 Gazebo 验收建议使用独立 `ROS_DOMAIN_ID=83`，避免和真实 TRON1 bringup 共用 ROS graph。
+- 自动 Gazebo 验收默认强制使用独立 `ROS_DOMAIN_ID=83`，且拒绝空值或 `0`，避免和真实 TRON1 bringup 共用 ROS graph。
+- 真机前 A 门会打印 git `HEAD`，并在工作区 dirty 时保持 `BLOCK`，避免用未提交代码给出最终许可。
 
 ## 阶段 B：官方控制器和遥控器状态机
 

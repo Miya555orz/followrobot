@@ -670,7 +670,7 @@ Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 - `[VERIFIED]` mode manager 死亡后，limiter 会因授权信号超时归零。
 - `[VERIFIED]` TRON 官方 controller 本地 watchdog 在 `/fcr_tron/cmd_vel` 输入消失后会记录 `cmd_vel timeout 0.250s exceeded; zeroing velocity command`。
 - `[VERIFIED]` 官方 sim launch 默认 `start_steering_gui:=false`，安全链测试不会启动 `rqt_robot_steering`。
-- `[VERIFIED]` 自动 Gazebo 验收 wrapper 默认使用独立 `ROS_DOMAIN_ID=83`。
+- `[VERIFIED]` 自动 Gazebo 验收 wrapper 默认强制使用独立 `ROS_DOMAIN_ID=83`，拒绝空值或 `0`，并在发布验收速度前检查 `/fcr_tron/cmd_vel` graph。
 - `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo 仍有零速度命令漂移，纯 yaw 命令也会产生横移。2026-09-03 轻量 controller wheel-hold、URDF friction/contact、micro-yaw、`RL_TYPE=isaaclab` 检查都没有解决；实验性改动已撤回/恢复。应把它视作官方 sim-policy/physics blocker，不是 FCR limiter bug。在官方 SDK/controller/hardware stop 路径确认前，不运行 TRON1 真实运动。
 
 ## 10. Next work

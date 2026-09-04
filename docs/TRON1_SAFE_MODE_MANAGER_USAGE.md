@@ -219,13 +219,13 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh --with-gazebo
 ```
 
-该 wrapper 默认使用独立仿真 domain：
+该 wrapper 默认强制使用独立仿真 domain：
 
 ```text
 ROS_DOMAIN_ID=83
 ```
 
-如果你必须改 domain，请显式传环境变量；不要和真实 TRON1 bringup 共用同一个 ROS graph。
+如果你必须改 domain，请显式传 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID=<非0编号>` 或 Python 参数 `--ros-domain-id <非0编号>`；不要和真实 TRON1 bringup 共用同一个 ROS graph。脚本会拒绝空值或 `0`。
 
 脚本会：
 
@@ -253,7 +253,7 @@ ROS_DOMAIN_ID=83
 
 当前脚本实际跑 47 组，超过“至少 20 组”的要求。
 
-注意：真机进程/真机网络守卫和 ROS graph 订阅者守卫发生在主运动用例前；如果守卫发现真实 `pointfoot_node`、`robot_hw_node`、可达 TRON1 网络，或非 Gazebo 模式下 `/fcr_tron/cmd_vel` 除 probe 外已有订阅者，脚本会在发布任何验收速度前直接拒绝运行。
+注意：真机进程/真机网络守卫、启动前 `/fcr_tron/cmd_vel` graph 预扫描、启动后 ROS graph 订阅者守卫都发生在主运动用例前；如果守卫发现真实 `pointfoot_node`、`robot_hw_node`、可达 TRON1 网络、启动前已有 `/fcr_tron/cmd_vel` endpoint，或非 Gazebo 模式下 `/fcr_tron/cmd_vel` 除 probe 外已有订阅者，脚本会在发布任何验收速度前直接拒绝运行。
 
 新增两组硬门负向用例：
 

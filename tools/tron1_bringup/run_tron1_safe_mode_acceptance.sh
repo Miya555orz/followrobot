@@ -20,5 +20,4 @@ if [ -f "$LIMX_WS/install/setup.bash" ]; then
 fi
 
 cd "$PROJECT_ROOT"
-echo "[TRON1 safe mode acceptance] ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
 python3 tools/tron1_bringup/tron1_safe_mode_acceptance.py "$@"
