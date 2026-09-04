@@ -16,6 +16,15 @@ warn() { echo "[WARN] $*"; warn_count=$((warn_count + 1)); }
 fail() { echo "[FAIL] $*"; fail_count=$((fail_count + 1)); }
 block() { echo "[BLOCK] $*"; block_count=$((block_count + 1)); }
 
+A10_REQUIRED_ENVS=(
+  A10_PHYSICAL_STOP_REHEARSED
+  A10_DAMPING_OBSERVED
+  A10_L1X_NOT_DAMPING_ACK
+  A10_CONTROLLER_WATCHDOG_ACK
+  A10_GAZEBO_ZERO_DRIFT_ACK
+  TRON1_REAL_TEST_CHECKLIST_ACK
+)
+
 require_yes_env() {
   local name="$1"
   local description="$2"
@@ -23,6 +32,26 @@ require_yes_env() {
     pass "$description ($name=yes)"
   else
     block "未完成：$description；若已完成，显式设置 $name=yes 后复查"
+  fi
+}
+
+a10_required_envs_all_yes() {
+  local name
+  for name in "${A10_REQUIRED_ENVS[@]}"; do
+    if [ "${!name:-}" != "yes" ]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
+optional_trace_env() {
+  local name="$1"
+  local description="$2"
+  if [ -n "${!name:-}" ]; then
+    pass "$description: ${!name}"
+  else
+    warn "$description 未设置；建议记录以便后续审计"
   fi
 }
 
@@ -93,11 +122,34 @@ if [ -z "$process_snapshot" ]; then
   pass "未发现 Gazebo/TRON/limiter/裸 ros2 topic pub 残留进程"
 else
   echo "$process_snapshot"
-  if echo "$process_snapshot" | grep -Ev 'tron1_safety_acceptance_check|pgrep -af' >/tmp/tron1_relevant_processes.txt; then
-    real_tron_processes="$(cat /tmp/tron1_relevant_processes.txt)"
-    block "发现可能影响真机测试的残留进程；真机前请先人工确认并关闭"
-  else
+  printf "%s\n" "$process_snapshot" \
+    | grep -Ev 'tron1_safety_acceptance_check|pgrep -af' \
+    >/tmp/tron1_relevant_processes.txt || true
+  printf "%s\n" "$(cat /tmp/tron1_relevant_processes.txt)" \
+    | grep -E 'gazebo|gzserver|gzclient|rqt_robot_steering|ros2 topic pub' \
+    >/tmp/tron1_unexpected_processes.txt || true
+  printf "%s\n" "$(cat /tmp/tron1_relevant_processes.txt)" \
+    | grep -E 'pointfoot_node|robot_hw_node|tron1_mode_manager_node|tron1_safety_limiter_node' \
+    >/tmp/tron1_expected_live_processes.txt || true
+
+  if [ -s /tmp/tron1_unexpected_processes.txt ]; then
+    cat /tmp/tron1_unexpected_processes.txt
+    block "发现非预期 Gazebo/steering/topic-pub 进程；真机前请先人工确认并关闭"
+  fi
+  if [ -s /tmp/tron1_expected_live_processes.txt ]; then
+    real_tron_processes="$(cat /tmp/tron1_expected_live_processes.txt)"
+    if [ "${TRON1_LIVE_BRINGUP_INTENDED:-}" = "yes" ]; then
+      pass "发现预期 live bringup 进程，并已由 TRON1_LIVE_BRINGUP_INTENDED=yes 显式声明"
+    else
+      block "发现 TRON1 live bringup 进程但未声明为本次预期检查；若这是现场分步验收中的已启动 graph，显式设置 TRON1_LIVE_BRINGUP_INTENDED=yes 后复查"
+    fi
+  fi
+  if [ ! -s /tmp/tron1_unexpected_processes.txt ] && [ ! -s /tmp/tron1_expected_live_processes.txt ]; then
     pass "进程快照只包含本检查命令自身"
+  elif [ -s /tmp/tron1_unexpected_processes.txt ]; then
+    :
+  else
+    pass "未发现非预期残留进程"
   fi
 fi
 echo
@@ -212,6 +264,10 @@ require_yes_env A10_L1X_NOT_DAMPING_ACK "A-10.3 已确认 L1+X 只是 stopContro
 require_yes_env A10_CONTROLLER_WATCHDOG_ACK "A-10.4 已理解 controller watchdog 只清零期望速度，不等于物理停止/阻尼"
 require_yes_env A10_GAZEBO_ZERO_DRIFT_ACK "A-10.5 已接受 WF_TRON1A+isaacgym 零命令漂移仍是实机前 blocker，Gazebo 不证明停止距离"
 require_yes_env TRON1_REAL_TEST_CHECKLIST_ACK "A-10.6 已按 TRON1_REAL_TEST_STEP_CHECKLIST.md 准备架空/支架、极低速短脉冲和停止记录"
+if a10_required_envs_all_yes; then
+  optional_trace_env A10_REVIEWED_BY "A-10 审核人"
+  optional_trace_env A10_REVIEWED_AT "A-10 审核时间"
+fi
 if [ "${A10_CONFIRMED:-}" = "yes" ]; then
   warn "A10_CONFIRMED=yes 是旧版汇总标志；现在还必须逐项设置 A10_* 和 TRON1_REAL_TEST_CHECKLIST_ACK"
 fi

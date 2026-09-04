@@ -675,6 +675,7 @@ Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 - `[VERIFIED]` `--with-gazebo` 验收用独立 60 秒上限等待 `/gazebo` 节点存在；启动后的 graph 守卫只允许 probe 和本次 Gazebo `robot_hw_node` 订阅 `/fcr_tron/cmd_vel`。
 - `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo 仍有零速度命令漂移，纯 yaw 命令也会产生横移。2026-09-03 轻量 controller wheel-hold、URDF friction/contact、micro-yaw、`RL_TYPE=isaaclab` 检查都没有解决；实验性改动已撤回/恢复。应把它视作官方 sim-policy/physics blocker，不是 FCR limiter bug。在官方 SDK/controller/hardware stop 路径确认前，不运行 TRON1 真实运动。
 - `[UPDATED]` 真机前 A-10 不再接受单个 `A10_CONFIRMED=yes` 作为充分证据；read-only gate 现在要求逐项确认物理停止可触达、damping 证据、`L1+X` 语义、controller watchdog 后果、Gazebo 零漂 blocker 和分步 checklist。
+- `[UPDATED]` read-only gate 的进程扫描区分非预期残留和预期 live bringup；只有显式设置 `TRON1_LIVE_BRINGUP_INTENDED=yes` 时，运行中的 limiter/mode manager/官方 controller 才会进入 graph 检查路径。
 
 ## 10. Next work
 

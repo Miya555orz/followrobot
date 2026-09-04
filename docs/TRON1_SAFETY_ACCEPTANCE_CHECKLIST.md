@@ -38,7 +38,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 
 | ID | 检查项 | PASS 标准 |
 | --- | --- | --- |
-| A-01 | 测试前没有残留 `gazebo`、`pointfoot_node`、`tron1_safety_limiter` 或裸 `ros2 topic pub` 进程 | 没有非预期进程 |
+| A-01 | 测试前没有非预期 `gazebo`、steering GUI、裸 `ros2 topic pub` 或 TRON/FCR 进程 | 无非预期进程；若正在做 live bringup graph 复查，必须显式设置 `TRON1_LIVE_BRINGUP_INTENDED=yes` |
 | A-02 | `/fcr_tron/cmd_vel` 只有一个发布者 | 发布者是 `tron1_safety_limiter` |
 | A-03 | TRON 控制器订阅 `/fcr_tron/cmd_vel` | 订阅者是 `robot_hw_node` / `cmd_vel_node` / `pointfoot_node` 等官方控制器节点 |
 | A-04 | TRON1 不使用裸 `/cmd_vel` 路径 | 官方控制器以 `fcr_cmd_vel_topic:=/fcr_tron/cmd_vel` 启动 |
@@ -74,10 +74,12 @@ export A10_L1X_NOT_DAMPING_ACK=yes
 export A10_CONTROLLER_WATCHDOG_ACK=yes
 export A10_GAZEBO_ZERO_DRIFT_ACK=yes
 export TRON1_REAL_TEST_CHECKLIST_ACK=yes
+export A10_REVIEWED_BY="$(whoami)"
+export A10_REVIEWED_AT="$(date -Is)"
 ./tools/tron1_bringup/tron1_safety_acceptance_check.sh
 ```
 
-这些变量只是把人工复核显式记录到当前 shell；它们不能让机器人更安全，也不能替代架空/支架、旁人扶稳、物理停止动作和现场判断。即使脚本最终没有 `FAIL/BLOCK`，结论也只能是“可进入架空/支架极低速分步测试”，不是“100% 安全”。
+这些变量只是把人工复核显式记录到当前 shell；它们不能让机器人更安全，也不能替代架空/支架、旁人扶稳、物理停止动作和现场判断。`A10_REVIEWED_BY` / `A10_REVIEWED_AT` 用于留下审核痕迹，缺失只会提示，不会放宽安全门。即使脚本最终没有 `FAIL/BLOCK`，结论也只能是“可进入架空/支架极低速分步测试”，不是“100% 安全”。
 
 ## 阶段 B：官方控制器和遥控器状态机
 
