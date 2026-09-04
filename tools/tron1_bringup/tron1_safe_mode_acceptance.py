@@ -859,6 +859,12 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--with-gazebo", action="store_true", help="额外启动官方 Gazebo/robot_hw_sim")
     parser.add_argument("--startup-timeout", type=float, default=8.0)
+    parser.add_argument(
+        "--gazebo-startup-timeout",
+        type=float,
+        default=60.0,
+        help="--with-gazebo 时等待 /gazebo 节点出现的独立超时，默认 60 秒",
+    )
     parser.add_argument("--robot-ip", default=None)
     parser.add_argument(
         "--ros-domain-id",
@@ -944,7 +950,7 @@ def main() -> int:
             return 2
 
         if args.with_gazebo and not wait_until(
-            probe, lambda: graph_has_gazebo(probe), args.startup_timeout
+            probe, lambda: graph_has_gazebo(probe), args.gazebo_startup_timeout
         ):
             print("[FAIL] --with-gazebo 已请求，但 ROS graph 中未看到 /gazebo")
             return 3

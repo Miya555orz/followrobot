@@ -285,7 +285,7 @@ Gazebo 练习脚本：
 ./tools/tron1_bringup/tron1_practice_keyboard_gazebo.sh
 ```
 
-这两个脚本只用于仿真练习；它们默认使用 `ROS_DOMAIN_ID=90`，拒绝空值、`0`、前导零、非十进制或越界 domain，启动前会检查 TRON1 默认地址不可达、无真实 `pointfoot_node`/`robot_hw_node` 进程、`/fcr_tron/cmd_vel` 无残留 endpoint，启动后会最多等待 60 秒直到看到 `/gazebo` 节点，才会推进状态机。退出时会按本脚本启动的进程组清理 Gazebo/robot_hw/FCR launch。
+这两个脚本只用于仿真练习；它们默认使用 `ROS_DOMAIN_ID=90`，拒绝空值、`0`、前导零、非十进制或越界 domain，启动前会检查 TRON1 默认地址不可达、无真实 `pointfoot_node`/`robot_hw_node` 进程、`/fcr_tron/cmd_vel` 无残留 endpoint，启动后会最多等待 60 秒直到看到 `/gazebo` 节点，才会推进状态机。推进后还会读回 `/tron1/mode_state`，确认进入 `TRON_FOLLOW` 后再打开控制台。退出时会按本脚本启动的进程组清理 Gazebo/robot_hw/FCR launch；只有脚本启动前 ROS daemon 没在运行时，cleanup 才会 stop daemon。
 
 ## 9. 真机限制
 

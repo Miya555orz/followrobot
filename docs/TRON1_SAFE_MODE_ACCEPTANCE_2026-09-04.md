@@ -102,7 +102,7 @@ Gazebo/robot_hw_sim 已随测试启动；姿态漂移不作为本脚本判定项
 - `REMOTE_WALK_READY` 默认仍不授权运动，避免“同款行走准备”变成实际运动许可。
 - 只有按顺序进入 `TRON_FOLLOW`，`/tron1/motion_authorized` 才为 true。
 - `allow_tron_follow_motion` 默认 false；验收脚本会显式传 true，真机 launch 不会默认放行。
-- `--with-gazebo` 会等待 `/gazebo` 节点出现，不能只因 `robot_hw_node` 先出现就继续；启动后的 graph 守卫只允许 probe 和本次 Gazebo `robot_hw_node` 订阅 `/fcr_tron/cmd_vel`。
+- `--with-gazebo` 会用独立 60 秒上限等待 `/gazebo` 节点出现，不能只因 `robot_hw_node` 先出现就继续；启动后的 graph 守卫只允许 probe 和本次 Gazebo `robot_hw_node` 订阅 `/fcr_tron/cmd_vel`。
 - `tron1_safety_limiter_node` 会检查授权信号新鲜度，mode manager 死亡后 0.5 秒内关门。
 - `tron1_safety_limiter_node` 自己锁存急停；`/safety/estop_state=false` 不会自动解除 limiter 急停。
 - `tron1_safety_limiter_node` 对 `/safety/estop_state` 做新鲜度检查；没样本或样本超时按急停处理。

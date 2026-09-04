@@ -61,6 +61,11 @@ real_robot_guard() {
   fi
 }
 
+ros_daemon_is_running() {
+  command -v ros2 >/dev/null 2>&1 &&
+    ros2 daemon status 2>/dev/null | grep -q "^The daemon is running$"
+}
+
 prelaunch_graph_guard() {
   local info_file="$LOG_DIR/prelaunch_cmd_vel_topic_info.txt"
   if timeout 3s ros2 topic info /fcr_tron/cmd_vel -v >"$info_file" 2>&1; then
@@ -101,6 +106,20 @@ gazebo_graph_guard() {
   fi
 }
 
+wait_for_mode_state() {
+  local expected="$1"
+  local state_file="$LOG_DIR/mode_state.txt"
+  for _ in $(seq 1 10); do
+    if timeout 3s ros2 topic echo --once /tron1/mode_state >"$state_file" 2>&1 &&
+       grep -q "data: $expected" "$state_file"; then
+      return 0
+    fi
+    sleep 1
+  done
+  cat "$state_file" >&2
+  return 1
+}
+
 validate_ros_domain_id
 
 set +u
@@ -118,6 +137,10 @@ if [ -f "$LIMX_WS/install/setup.bash" ]; then
 fi
 
 mkdir -p "$LOG_DIR"
+ROS_DAEMON_WAS_RUNNING=0
+if ros_daemon_is_running; then
+  ROS_DAEMON_WAS_RUNNING=1
+fi
 real_robot_guard
 prelaunch_graph_guard
 
@@ -153,7 +176,7 @@ cleanup() {
   for pid in "${PIDS[@]:-}"; do
     kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
   done
-  if command -v ros2 >/dev/null 2>&1; then
+  if [ "$ROS_DAEMON_WAS_RUNNING" -eq 0 ] && command -v ros2 >/dev/null 2>&1; then
     ROS_DOMAIN_ID="$ROS_DOMAIN_ID" ros2 daemon stop >/dev/null 2>&1 || true
   fi
 }
@@ -208,7 +231,11 @@ for req in developer_mode developer_self_check_pass stand_ready walk_ready \
     >/dev/null 2>&1
   sleep 0.2
 done
-echo "[练习脚本] 已进入 TRON_FOLLOW。"
+if wait_for_mode_state "TRON_FOLLOW"; then
+  echo "[练习脚本] 已确认进入 TRON_FOLLOW。"
+else
+  die "推进状态机后未确认进入 TRON_FOLLOW；请重试或查看日志"
+fi
 echo
 
 echo "=============================================="
