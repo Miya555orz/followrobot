@@ -16,6 +16,16 @@ warn() { echo "[WARN] $*"; warn_count=$((warn_count + 1)); }
 fail() { echo "[FAIL] $*"; fail_count=$((fail_count + 1)); }
 block() { echo "[BLOCK] $*"; block_count=$((block_count + 1)); }
 
+require_yes_env() {
+  local name="$1"
+  local description="$2"
+  if [ "${!name:-}" = "yes" ]; then
+    pass "$description ($name=yes)"
+  else
+    block "未完成：$description；若已完成，显式设置 $name=yes 后复查"
+  fi
+}
+
 has_ros_graph_topic() {
   timeout 3s ros2 topic info "$1" -v >/tmp/tron1_topic_info.txt 2>&1
 }
@@ -191,15 +201,19 @@ else
   block "未找到 47/47 topic + Gazebo/robot_hw_sim 安全验收记录"
 fi
 
-if [ "${A10_CONFIRMED:-}" = "yes" ]; then
-  pass "A-10 人工确认已由环境变量 A10_CONFIRMED=yes 显式给出"
-else
-  block "A-10 仍需真机前人工确认：物理急停/阻尼可触达，且官方 controller watchdog/进程死亡后果已理解。若已完成，显式设置 A10_CONFIRMED=yes 后复查"
-fi
 if [ -f "$PROJECT_ROOT/docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md" ]; then
   pass "阶段 B 只读摸底已记录：zero cmd 是 RL policy 零期望速度，不是急停/泄力/阻尼"
 else
   block "阶段 B 仍需只读摸底：零 cmd 是平衡/刹停/阻尼/仅零期望值，damping/lock API 是否存在"
+fi
+require_yes_env A10_PHYSICAL_STOP_REHEARSED "A-10.1 物理停止/急停动作位置已现场复核，操作员可立即触达"
+require_yes_env A10_DAMPING_OBSERVED "A-10.2 物理 motor switch / 硬件动作进入 damping 的日志或现象已复核"
+require_yes_env A10_L1X_NOT_DAMPING_ACK "A-10.3 已确认 L1+X 只是 stopController()+abort()，不能当作阻尼/泄力"
+require_yes_env A10_CONTROLLER_WATCHDOG_ACK "A-10.4 已理解 controller watchdog 只清零期望速度，不等于物理停止/阻尼"
+require_yes_env A10_GAZEBO_ZERO_DRIFT_ACK "A-10.5 已接受 WF_TRON1A+isaacgym 零命令漂移仍是实机前 blocker，Gazebo 不证明停止距离"
+require_yes_env TRON1_REAL_TEST_CHECKLIST_ACK "A-10.6 已按 TRON1_REAL_TEST_STEP_CHECKLIST.md 准备架空/支架、极低速短脉冲和停止记录"
+if [ "${A10_CONFIRMED:-}" = "yes" ]; then
+  warn "A10_CONFIRMED=yes 是旧版汇总标志；现在还必须逐项设置 A10_* 和 TRON1_REAL_TEST_CHECKLIST_ACK"
 fi
 
 echo
@@ -212,5 +226,5 @@ if [ "$block_count" -gt 0 ]; then
   echo "结论：BLOCK。代码基础安全验收有进展，但还不是地面真机运动许可。"
   exit 3
 fi
-echo "结论：PASS。仍建议从架空/支架 enable_motion=false 开始。"
+echo "结论：PASS_FOR_STAGED_AIRBORNE_TEST。仍不是 100% 安全保证；只允许从架空/支架、enable_motion=false、极低速短脉冲开始。"
 exit 0

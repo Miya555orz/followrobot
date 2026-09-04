@@ -47,15 +47,15 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 | A-07 | 输入丢失 timeout | 输入停止后输出自动回到 0 |
 | A-08 | `/safety/estop_state=true` | 输出立即回到 0 |
 | A-09 | limiter 正常关闭 | SIGINT/SIGTERM 时发布零速度 burst |
-| A-10 | limiter 或命令发布者崩溃 | 实机前必须理解官方控制器 watchdog / 硬件停止行为 |
+| A-10 | limiter 或命令发布者崩溃 | 实机前必须逐项确认物理停止、damping 证据、controller watchdog 后果、Gazebo 零漂 blocker 和分步测试条件 |
 
 备注：
 
 - A-01 到 A-09 可以先在仿真/topic 级测试中验证。
-- A-10 是进入真实低速运动前的关键 blocker。
+- A-10 是进入真实低速运动前的关键 blocker；不能用一个笼统“已确认”替代逐项复核。
 - `tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh --with-gazebo` 是自动 topic/Gazebo/官方订阅验收；当前已通过 47/47。
 - 官方 controller 语义见 [docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md](TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md)：zero cmd 只是 RL policy 的零期望速度，不是急停/泄力/阻尼。
-- `tools/tron1_bringup/tron1_safety_acceptance_check.sh` 是真机前 read-only 闸门；没有 live ROS graph、没有确认物理急停/阻尼前，它应该输出 `BLOCK`，这不是脚本失败，而是在防止误把仿真 PASS 当成真机许可。
+- `tools/tron1_bringup/tron1_safety_acceptance_check.sh` 是真机前 read-only 闸门；没有 live ROS graph、没有逐项确认 A-10 前，它应该输出 `BLOCK`，这不是脚本失败，而是在防止误把仿真 PASS 当成真机许可。
 - `L1 + X` 是软件停止/中止，不是已证明的阻尼/泄力。
 - 物理 motor switch / 硬件动作曾被观察到触发 `Motor in damping mode`。
 - FCR 的“连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆；手柄摇杆不作为 FCR 实机验收输入。
@@ -64,6 +64,20 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 - `--with-gazebo` 自动验收必须看到 `/gazebo` 节点，并且只允许本次 Gazebo `robot_hw_node` 订阅 `/fcr_tron/cmd_vel`。
 - `/safety/estop_state` 是 FCR 聚合软件急停状态，不代表 TRON1 物理 motor switch；`/tron1/limiter_clear_estop` 是受控 ROS_DOMAIN 内的 limiter 软件恢复入口，不能替代物理急停/阻尼。
 - 真机前 A 门会打印 git `HEAD`，并在工作区 dirty 时保持 `BLOCK`，避免用未提交代码给出最终许可。
+
+A-10 逐项确认变量：
+
+```bash
+export A10_PHYSICAL_STOP_REHEARSED=yes
+export A10_DAMPING_OBSERVED=yes
+export A10_L1X_NOT_DAMPING_ACK=yes
+export A10_CONTROLLER_WATCHDOG_ACK=yes
+export A10_GAZEBO_ZERO_DRIFT_ACK=yes
+export TRON1_REAL_TEST_CHECKLIST_ACK=yes
+./tools/tron1_bringup/tron1_safety_acceptance_check.sh
+```
+
+这些变量只是把人工复核显式记录到当前 shell；它们不能让机器人更安全，也不能替代架空/支架、旁人扶稳、物理停止动作和现场判断。即使脚本最终没有 `FAIL/BLOCK`，结论也只能是“可进入架空/支架极低速分步测试”，不是“100% 安全”。
 
 ## 阶段 B：官方控制器和遥控器状态机
 

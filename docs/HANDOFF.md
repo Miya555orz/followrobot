@@ -674,6 +674,7 @@ Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 - `[VERIFIED]` 自动 Gazebo 验收脚本默认使用独立 `ROS_DOMAIN_ID=83`；Python 脚本是 domain 单一真源，支持 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，拒绝空值、`0`、前导零、非十进制或越界值，并在发布验收速度前检查 `/fcr_tron/cmd_vel` graph。
 - `[VERIFIED]` `--with-gazebo` 验收用独立 60 秒上限等待 `/gazebo` 节点存在；启动后的 graph 守卫只允许 probe 和本次 Gazebo `robot_hw_node` 订阅 `/fcr_tron/cmd_vel`。
 - `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo 仍有零速度命令漂移，纯 yaw 命令也会产生横移。2026-09-03 轻量 controller wheel-hold、URDF friction/contact、micro-yaw、`RL_TYPE=isaaclab` 检查都没有解决；实验性改动已撤回/恢复。应把它视作官方 sim-policy/physics blocker，不是 FCR limiter bug。在官方 SDK/controller/hardware stop 路径确认前，不运行 TRON1 真实运动。
+- `[UPDATED]` 真机前 A-10 不再接受单个 `A10_CONFIRMED=yes` 作为充分证据；read-only gate 现在要求逐项确认物理停止可触达、damping 证据、`L1+X` 语义、controller watchdog 后果、Gazebo 零漂 blocker 和分步 checklist。
 
 ## 10. Next work
 
@@ -692,7 +693,7 @@ Then:
    - Start with [docs/TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md](TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md) and `tools/tron1_bringup/tron1_safety_acceptance_check.sh`.
    - Acceptance: safety gates are green or explicitly marked as blockers; do not chase full follow yet.
 2. Continue TRON1 controller/SDK stop investigation before real motion.
-   - Acceptance: with `/fcr_tron/cmd_vel` publisher lost or limiter killed, controller/SDK/hardware path demonstrably stops or enters a documented safe state. Gazebo-only zero-command drift is not enough for real-motion PASS.
+   - Acceptance: with `/fcr_tron/cmd_vel` publisher lost or limiter killed, controller/SDK/hardware path demonstrably stops or enters a documented safe state. Gazebo-only zero-command drift is not enough for real-motion PASS; no script may claim 100% safety.
 3. Implement `base_interface` / TRON1 adapter only after the interface design is reviewed.
    - Start with [docs/base_interface_tron1_adapter_design.md](base_interface_tron1_adapter_design.md).
    - Acceptance: stable command API, message/topic choices, adapter boundaries, and safety path are documented.

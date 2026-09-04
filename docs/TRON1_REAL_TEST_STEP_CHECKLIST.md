@@ -4,6 +4,8 @@
 
 目标：把 TRON1 从“仿真安全链路通过”推进到“真实硬件低速可控”，但不直接进入 Sony + RS2 + TRON 全链路跟拍。
 
+重要边界：任何脚本或清单都不能证明“100% 安全”。本清单只能把风险降到适合继续架空/支架、极低速、短脉冲分步验证的程度；现场操作员仍必须能立即触达物理停止/阻尼动作。
+
 当前硬规则：
 
 - FCR 链路里的“遥控”是电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆。
@@ -13,6 +15,39 @@
 - `/fcr_tron/cmd_vel` 唯一发布者必须是 `tron1_safety_limiter`。
 - 裸 `/cmd_vel` 不能作为 FCR 到 TRON1 的实机入口。
 - 每一步都先以 `enable_motion=false` 启动，确认输出为 0，再显式授权。
+- A-10 必须逐项确认；旧的单个 `A10_CONFIRMED=yes` 不能单独作为真机运动许可。
+
+## A-10 人工门
+
+在任何真实底盘运动前，必须先完成并理解以下事实：
+
+| 项 | 必须确认的事实 | 记录方式 |
+| --- | --- | --- |
+| A10.1 | 物理停止/急停动作位置已现场复核，操作员一只手可立即触达 | `A10_PHYSICAL_STOP_REHEARSED=yes` |
+| A10.2 | 物理 motor switch / 硬件动作确实能进入 damping；日志或现象已复核 | `A10_DAMPING_OBSERVED=yes` |
+| A10.3 | `L1 + X` 只是 `stopController()` + `abort()`，不是阻尼/泄力 | `A10_L1X_NOT_DAMPING_ACK=yes` |
+| A10.4 | controller watchdog 只把期望速度清零，不等于物理停止/阻尼 | `A10_CONTROLLER_WATCHDOG_ACK=yes` |
+| A10.5 | `WF_TRON1A + isaacgym` 零命令漂移仍是 blocker；Gazebo 不证明真实停止距离 | `A10_GAZEBO_ZERO_DRIFT_ACK=yes` |
+| A10.6 | 已按本清单准备架空/支架、极低速短脉冲、停止方式和记录项 | `TRON1_REAL_TEST_CHECKLIST_ACK=yes` |
+
+复查命令：
+
+```bash
+cd /home/miya/follow_ws/src/fcr_ros2_3
+source /opt/ros/humble/setup.bash
+source /home/miya/follow_ws/install/setup.bash
+source /home/miya/limx_ws/install/setup.bash
+
+export A10_PHYSICAL_STOP_REHEARSED=yes
+export A10_DAMPING_OBSERVED=yes
+export A10_L1X_NOT_DAMPING_ACK=yes
+export A10_CONTROLLER_WATCHDOG_ACK=yes
+export A10_GAZEBO_ZERO_DRIFT_ACK=yes
+export TRON1_REAL_TEST_CHECKLIST_ACK=yes
+./tools/tron1_bringup/tron1_safety_acceptance_check.sh
+```
+
+只有该 read-only gate 没有 `FAIL/BLOCK`，且现场仍满足硬件要求时，才进入第 1 步的 `enable_motion=false` 验证；仍不得直接做地面跟拍。
 
 ## 三步路线
 
@@ -49,7 +84,7 @@ source /home/miya/follow_ws/install/setup.bash
 
 ```text
 FAIL=0
-允许 BLOCK：未启动 live graph、A-10 未人工确认
+允许 BLOCK：未启动 live graph、A-10 逐项人工门未确认
 ```
 
 启动 FCR 安全栈时，先保持：
