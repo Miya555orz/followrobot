@@ -42,6 +42,7 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - `L1 + X` 是软件 `stopController()` + `abort()`，不是泄力/阻尼。
 - FCR 侧已新增 `tron1_mode_manager_node`，`/fcr_tron/cmd_vel` 现在必须同时满足 `enable_motion=true`、`/tron1/motion_authorized=true` 且授权信号新鲜才可能非零。
 - TRON1 安全模式管理已通过 38/38 组 Gazebo/robot_hw_sim 验收；已覆盖 mode manager 死亡后授权超时归零、limiter 急停锁存、官方控制器订阅关系。
+- 真机前 read-only A 门脚本会在没有 live graph/物理急停确认时输出 `BLOCK`；这是预期保护，不等同于仿真失败。
 - 物理 motor switch / hardware action 会触发 `Motor in damping mode`。
 - TRON1 不允许裸接旧 `/cmd_vel`；安全链路必须是 `/fcr/cmd_vel_stamped -> tron1_safety_limiter -> /fcr_tron/cmd_vel`。
 - `WF_TRON1A + isaacgym` 官方 Gazebo pose 仍有零命令漂移/纯 yaw 横移；FCR topic safety 已 PASS，但 Gazebo pose 不作为真机运动 PASS 条件。

@@ -205,6 +205,14 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh
 ```
 
+真机前还要单独跑 read-only A 门检查：
+
+```bash
+./tools/tron1_bringup/tron1_safety_acceptance_check.sh
+```
+
+如果没有启动 live ROS graph、没有确认物理急停/阻尼，这个脚本输出 `BLOCK` 是正常且正确的；它的目的不是证明“可以动”，而是阻止把仿真验收误当成真机运动许可。
+
 ## 8. 38 组验收覆盖内容
 
 当前脚本实际跑 38 组，超过“至少 20 组”的要求：
