@@ -9,7 +9,6 @@ export ROBOT_TYPE="${ROBOT_TYPE:-WF_TRON1A}"
 export RL_TYPE="${RL_TYPE:-isaacgym}"
 export FCR_TRON_CMD_VEL_TOPIC="${FCR_TRON_CMD_VEL_TOPIC:-/fcr_tron/cmd_vel}"
 export FCR_TRON_CMD_VEL_TIMEOUT_SEC="${FCR_TRON_CMD_VEL_TIMEOUT_SEC:-0.25}"
-export ROS_DOMAIN_ID="${FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID:-83}"
 
 source /opt/ros/humble/setup.bash
 if [ -f "$FOLLOW_WS/install/setup.bash" ]; then

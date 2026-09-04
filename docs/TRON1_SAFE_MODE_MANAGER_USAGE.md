@@ -192,6 +192,11 @@ ros2 topic pub --once /tron1/mode_request std_msgs/msg/String "{data: reset}"
 
 注意：`reset` 不能解除软件急停锁存；急停后必须显式 `clear_estop`。limiter 还要求 `/safety/estop_state` 持续有新鲜样本，否则 0.5 秒后会进入 `BLOCKED_ESTOP_TIMEOUT`。这些软件命令都不能替代 TRON1 物理急停、硬件 motor switch、遥控器急停锁存或官方错误码处理。
 
+语义边界：
+
+- `/safety/estop_state` 是 FCR `command_mux` 聚合出的软件急停状态，不是 TRON1 物理 motor switch，也不是手柄硬件急停。
+- `/tron1/limiter_clear_estop` 是同一受控 ROS_DOMAIN 内的 limiter 软件恢复/维护入口，不是硬件安全边界；真机 limiter-only 部署不应把它作为唯一安全门，长期实机使用应放在隔离 domain/namespace 或加外层访问控制。
+
 ## 6. 启动仿真安全栈
 
 只启动 FCR 侧安全状态机和 limiter：
@@ -219,13 +224,13 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh --with-gazebo
 ```
 
-该 wrapper 默认强制使用独立仿真 domain：
+验收脚本默认使用独立仿真 domain：
 
 ```text
 ROS_DOMAIN_ID=83
 ```
 
-如果你必须改 domain，请显式传 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID=<非0编号>` 或 Python 参数 `--ros-domain-id <非0编号>`；不要和真实 TRON1 bringup 共用同一个 ROS graph。脚本会拒绝空值或 `0`。
+Python 验收脚本是 `ROS_DOMAIN_ID` 的单一真源：默认读取 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID`，未设置时使用 `83`；也可以显式传 Python 参数 `--ros-domain-id <非0编号>`。脚本会在启动前打印最终生效值，并拒绝空值或 `0`。不要和真实 TRON1 bringup 共用同一个 ROS graph。
 
 脚本会：
 
@@ -268,7 +273,7 @@ ROS_DOMAIN_ID=83
 - `linear.x`、`linear.y`、`angular.z` 的限幅和禁止横移。
 - 输入 timeout 后输出自动归零。
 - estop 样本超时后继续发命令仍输出 0。
-- 外部急停、软件 estop、limiter 急停锁存和显式 clear。
+- FCR 聚合软件急停 `/safety/estop_state`、软件 estop、limiter 急停锁存和显式 clear。
 - mode manager 死亡后授权超时归零。
 - `/fcr_tron/cmd_vel` 唯一发布者和官方 `robot_hw`/`cmd_vel_node`/`pointfoot_node` 订阅关系。
 - Gazebo/robot_hw_sim 生命周期由验收脚本启动和回收；姿态漂移不作为真实地面运动证明。

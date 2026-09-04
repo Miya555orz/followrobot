@@ -9,12 +9,12 @@ PASS：47/47 组通过。
 PASS：带 --with-gazebo 时，脚本确认 /fcr_tron/cmd_vel 只有 limiter 一个发布者，且官方 robot_hw 订阅 limiter 输出。
 PASS：状态机未进入 TRON_FOLLOW 前，/fcr_tron/cmd_vel 始终保持 0。
 PASS：进入 TRON_FOLLOW 后，输出仍被 limiter 限幅。
-PASS：timeout、外部急停、软件 estop 都会让输出回到 0。
+PASS：timeout、FCR 聚合软件急停 `/safety/estop_state`、软件 estop 都会让输出回到 0。
 PASS：mode manager 死亡后，limiter 因授权信号超时继续输出 0。
 PASS：`/tron1/limiter_state` 能说明当前放行意图/阻塞原因。
 PASS：自动验收启动前有真机进程/网络守卫和 `/fcr_tron/cmd_vel` 预扫描，避免仿真测试误驱动真实 TRON1。
 PASS：启动后、发布任何验收速度前，会做 ROS graph 订阅者守卫，非 Gazebo 模式除 probe 外出现任何 `/fcr_tron/cmd_vel` 订阅者都会拒绝继续。
-PASS：验收 wrapper 默认强制使用独立 `ROS_DOMAIN_ID=83`，并拒绝空值或 `0`，降低与真实 TRON1 graph 混跑风险。
+PASS：验收 Python 脚本默认使用独立 `ROS_DOMAIN_ID=83`，支持 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，并拒绝空值或 `0`，降低与真实 TRON1 graph 混跑风险。
 ```
 
 运行命令：
@@ -105,6 +105,7 @@ Gazebo/robot_hw_sim 已随测试启动；姿态漂移不作为本脚本判定项
 - `tron1_safety_limiter_node` 会检查授权信号新鲜度，mode manager 死亡后 0.5 秒内关门。
 - `tron1_safety_limiter_node` 自己锁存急停；`/safety/estop_state=false` 不会自动解除 limiter 急停。
 - `tron1_safety_limiter_node` 对 `/safety/estop_state` 做新鲜度检查；没样本或样本超时按急停处理。
+- `/safety/estop_state` 是 FCR `command_mux` 聚合出的软件急停状态，不是 TRON1 物理 motor switch；`/tron1/limiter_clear_estop` 是同一受控 ROS_DOMAIN 内的 limiter 软件恢复入口，不能替代物理急停/阻尼。
 - `tron1_safety_limiter_node` 发布 `/tron1/limiter_state`，用于区分 `INTENT_PASSING_LIMITED_CMD`、`BLOCKED_ESTOP_LATCHED`、`BLOCKED_ESTOP_TIMEOUT`、`BLOCKED_INPUT_TIMEOUT`、`BLOCKED_AUTHORIZATION_TIMEOUT` 等原因。
 - `tron1_safety_limiter_node` 需要同时满足：
   - `enable_motion=true`

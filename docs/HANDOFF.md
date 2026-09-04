@@ -558,7 +558,7 @@ Important topics:
 | `/cmd_vel` | legacy FCR mux output | do not directly connect to TRON1 |
 | `/fcr/cmd_vel_stamped` | `geometry_msgs/TwistStamped` | FCR safe input to TRON1 limiter |
 | `/fcr_tron/cmd_vel` | `geometry_msgs/Twist` | limited TRON1 command topic |
-| `/safety/estop_state` | `std_msgs/Bool` | e-stop gate |
+| `/safety/estop_state` | `std_msgs/Bool` | FCR aggregated software e-stop gate; not the physical motor switch |
 
 Current `can0`/`can1` rule:
 
@@ -667,10 +667,11 @@ Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 - `[VERIFIED]` FCR 侧 `tron1_safety_limiter` 的限幅、lost-command timeout、estop 路径在仿真中输出 0。
 - `[VERIFIED]` `tron1_safety_limiter` 在 SIGINT/SIGTERM 关闭时发布零速度 burst；topic 尾包已确认是 0。
 - `[VERIFIED]` `/safety/estop_state` 无样本或样本超时会 fail-closed，limiter 输出 0。
+- `[VERIFIED]` `/safety/estop_state` 是 FCR `command_mux` 聚合的软件急停状态，不是物理 motor switch；`/tron1/limiter_clear_estop` 是同一受控 ROS_DOMAIN 内的 limiter 软件维护/恢复入口，不是硬件安全边界，真机 limiter-only 部署不应依赖它作为唯一安全门。
 - `[VERIFIED]` mode manager 死亡后，limiter 会因授权信号超时归零。
 - `[VERIFIED]` TRON 官方 controller 本地 watchdog 在 `/fcr_tron/cmd_vel` 输入消失后会记录 `cmd_vel timeout 0.250s exceeded; zeroing velocity command`。
 - `[VERIFIED]` 官方 sim launch 默认 `start_steering_gui:=false`，安全链测试不会启动 `rqt_robot_steering`。
-- `[VERIFIED]` 自动 Gazebo 验收 wrapper 默认强制使用独立 `ROS_DOMAIN_ID=83`，拒绝空值或 `0`，并在发布验收速度前检查 `/fcr_tron/cmd_vel` graph。
+- `[VERIFIED]` 自动 Gazebo 验收脚本默认使用独立 `ROS_DOMAIN_ID=83`；Python 脚本是 domain 单一真源，支持 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，拒绝空值或 `0`，并在发布验收速度前检查 `/fcr_tron/cmd_vel` graph。
 - `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo 仍有零速度命令漂移，纯 yaw 命令也会产生横移。2026-09-03 轻量 controller wheel-hold、URDF friction/contact、micro-yaw、`RL_TYPE=isaaclab` 检查都没有解决；实验性改动已撤回/恢复。应把它视作官方 sim-policy/physics blocker，不是 FCR limiter bug。在官方 SDK/controller/hardware stop 路径确认前，不运行 TRON1 真实运动。
 
 ## 10. Next work

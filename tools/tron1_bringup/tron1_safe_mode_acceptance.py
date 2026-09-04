@@ -296,7 +296,14 @@ def prelaunch_graph_guard(env: dict[str, str]) -> tuple[bool, str]:
         check=False,
     )
     if proc.returncode != 0:
-        return True, "启动前未发现 /fcr_tron/cmd_vel graph"
+        combined = f"{proc.stdout}\n{proc.stderr}".strip()
+        if "Unknown topic" in combined:
+            return True, "启动前未发现 /fcr_tron/cmd_vel graph"
+        return (
+            False,
+            "启动前 ROS graph 预扫描命令失败，不能默认为安全；"
+            f"returncode={proc.returncode}, output={combined!r}",
+        )
     lines = proc.stdout.splitlines()
     publishers: list[str] = []
     subscribers: list[str] = []
@@ -331,6 +338,13 @@ def graph_robot_guard(probe: SafeModeProbe, with_gazebo: bool) -> tuple[bool, st
     names = [info.node_name for info in infos]
     allowed = {"tron1_safe_mode_acceptance_probe"}
     if with_gazebo:
+        graph_nodes = set(probe.get_node_names())
+        if "/gazebo" not in graph_nodes and "gazebo" not in graph_nodes:
+            return (
+                False,
+                "请求 --with-gazebo，但 graph 中未看到 /gazebo；"
+                f"nodes={sorted(graph_nodes)}",
+            )
         allowed.update({"cmd_vel_node", "robot_hw_node", "pointfoot_node"})
     unexpected = sorted(set(names) - allowed)
     if unexpected:
@@ -809,7 +823,11 @@ def main() -> int:
     parser.add_argument("--with-gazebo", action="store_true", help="额外启动官方 Gazebo/robot_hw_sim")
     parser.add_argument("--startup-timeout", type=float, default=8.0)
     parser.add_argument("--robot-ip", default=None)
-    parser.add_argument("--ros-domain-id", default="83", help="自动验收专用 ROS_DOMAIN_ID，默认 83")
+    parser.add_argument(
+        "--ros-domain-id",
+        default=os.environ.get("FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID", "83"),
+        help="自动验收专用 ROS_DOMAIN_ID，默认读取 FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID，否则 83",
+    )
     parser.add_argument(
         "--allow-robot-network",
         action="store_true",
@@ -817,14 +835,15 @@ def main() -> int:
     )
     args = parser.parse_args()
     robot_ip = args.robot_ip or "10.192.1.2"
-    if str(args.ros_domain_id).strip() in {"", "0"}:
+    ros_domain_id = str(args.ros_domain_id).strip()
+    if ros_domain_id in {"", "0"}:
         print("[FAIL] 自动验收拒绝使用空值或 0 作为 ROS_DOMAIN_ID；请使用独立 domain，例如 83")
         return 4
     if args.allow_robot_network and args.robot_ip is None:
         print("[FAIL] 使用 --allow-robot-network 时必须同时显式传 --robot-ip，避免误绕过默认 TRON1 网络守卫")
         return 4
 
-    os.environ["ROS_DOMAIN_ID"] = str(args.ros_domain_id)
+    os.environ["ROS_DOMAIN_ID"] = ros_domain_id
 
     env = os.environ.copy()
     env.setdefault("ROBOT_TYPE", "WF_TRON1A")
