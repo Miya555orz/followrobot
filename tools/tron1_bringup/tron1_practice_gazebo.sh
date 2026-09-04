@@ -38,7 +38,12 @@ validate_ros_domain_id() {
   if [[ ! "$ROS_DOMAIN_ID" =~ ^[0-9]+$ ]]; then
     die "ROS_DOMAIN_ID 必须是 1..232 的十进制整数，当前值：$ROS_DOMAIN_ID"
   fi
-  if (( ROS_DOMAIN_ID < 1 || ROS_DOMAIN_ID > 232 )); then
+  if [[ "$ROS_DOMAIN_ID" =~ ^0[0-9]+$ ]]; then
+    die "ROS_DOMAIN_ID 不允许前导零，当前值：$ROS_DOMAIN_ID"
+  fi
+  local domain_num
+  domain_num=$((10#$ROS_DOMAIN_ID))
+  if (( domain_num < 1 || domain_num > 232 )); then
     die "ROS_DOMAIN_ID 必须是 1..232；拒绝空值、0 或默认真机 domain。当前值：$ROS_DOMAIN_ID"
   fi
 }
@@ -71,11 +76,19 @@ prelaunch_graph_guard() {
 
 gazebo_graph_guard() {
   local nodes_file="$LOG_DIR/ros_nodes.txt"
-  timeout 3s ros2 node list >"$nodes_file" 2>&1 || die "无法读取 ROS node list"
-  grep -Eq '^/gazebo$|^gazebo$' "$nodes_file" || {
+  local gazebo_ready=0
+  for _ in $(seq 1 60); do
+    if timeout 3s ros2 node list >"$nodes_file" 2>&1 &&
+       grep -Eq '^/gazebo$|^gazebo$' "$nodes_file"; then
+      gazebo_ready=1
+      break
+    fi
+    sleep 1
+  done
+  if [ "$gazebo_ready" -ne 1 ]; then
     cat "$nodes_file" >&2
-    die "未看到 /gazebo 节点；拒绝把 robot_hw_node 当作仿真证据"
-  }
+    die "60 秒内未看到 /gazebo 节点；拒绝把 robot_hw_node 当作仿真证据"
+  fi
 
   local info_file="$LOG_DIR/cmd_vel_topic_info.txt"
   timeout 3s ros2 topic info /fcr_tron/cmd_vel -v >"$info_file" 2>&1 || {
@@ -113,30 +126,55 @@ echo "ROS_DOMAIN_ID=$ROS_DOMAIN_ID"
 echo "日志目录：$LOG_DIR"
 echo
 
+CLEANED_UP=0
 PIDS=()
+start_background() {
+  local log_file="$1"
+  shift
+  setsid "$@" >"$log_file" 2>&1 </dev/null &
+  PIDS+=($!)
+}
+
 cleanup() {
+  if [ "$CLEANED_UP" -eq 1 ]; then
+    return
+  fi
+  CLEANED_UP=1
   echo
   echo "[练习脚本] 正在关闭后台进程..."
   for pid in "${PIDS[@]:-}"; do
-    kill "$pid" 2>/dev/null || true
+    kill -INT -- "-$pid" 2>/dev/null || kill -INT "$pid" 2>/dev/null || true
   done
+  sleep 1
+  for pid in "${PIDS[@]:-}"; do
+    kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  done
+  sleep 1
+  for pid in "${PIDS[@]:-}"; do
+    kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+  done
+  if command -v ros2 >/dev/null 2>&1; then
+    ROS_DOMAIN_ID="$ROS_DOMAIN_ID" ros2 daemon stop >/dev/null 2>&1 || true
+  fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 
 # 1. 官方 Gazebo 仿真控制器
-ros2 launch robot_hw pointfoot_hw_sim.launch.py \
+start_background "$LOG_DIR/gazebo.log" \
+  ros2 launch robot_hw pointfoot_hw_sim.launch.py \
   use_gazebo:=true \
   fcr_cmd_vel_topic:=/fcr_tron/cmd_vel \
-  start_steering_gui:=false >"$LOG_DIR/gazebo.log" 2>&1 &
-PIDS+=($!)
+  start_steering_gui:=false
 
 # 2. FCR 安全栈
-ros2 launch bringup_pkg fcr_tron_safe_mode_sim.launch.py \
+start_background "$LOG_DIR/safe_stack.log" \
+  ros2 launch bringup_pkg fcr_tron_safe_mode_sim.launch.py \
   enable_motion:=true \
   allow_tron_follow_motion:=true \
   max_linear_x:=0.03 \
-  max_angular_z:=0.10 >"$LOG_DIR/safe_stack.log" 2>&1 &
-PIDS+=($!)
+  max_angular_z:=0.10
 
 # 3. 等 graph 就绪
 echo "[练习脚本] 等待 /fcr_tron/cmd_vel 与 /tron1/mode_state 就绪..."

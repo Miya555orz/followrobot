@@ -14,7 +14,7 @@ PASS：mode manager 死亡后，limiter 因授权信号超时继续输出 0。
 PASS：`/tron1/limiter_state` 能说明当前放行意图/阻塞原因。
 PASS：自动验收启动前有真机进程/网络守卫和 `/fcr_tron/cmd_vel` 预扫描，避免仿真测试误驱动真实 TRON1。
 PASS：启动后、发布任何验收速度前，会做 ROS graph 订阅者守卫，非 Gazebo 模式除 probe 外出现任何 `/fcr_tron/cmd_vel` 订阅者都会拒绝继续。
-PASS：验收 Python 脚本默认使用独立 `ROS_DOMAIN_ID=83`，支持 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，并拒绝空值、`0`、非十进制或越界值，降低与真实 TRON1 graph 混跑风险。
+PASS：验收 Python 脚本默认使用独立 `ROS_DOMAIN_ID=83`，支持 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，并拒绝空值、`0`、前导零、非十进制或越界值，降低与真实 TRON1 graph 混跑风险。
 ```
 
 运行命令：

@@ -82,6 +82,8 @@ class FcrModeConsole(Node):
         self.declare_parameter("linear_speed", 0.06)
         self.declare_parameter("strafe_speed", 0.06)
         self.declare_parameter("yaw_rate", 0.25)
+        self.declare_parameter("max_speed_scale", 1.5)
+        self.declare_parameter("speed_scale_step", 0.25)
         self.declare_parameter("gimbal_step_deg", 3.0)
         self.declare_parameter("jog_translation_m", 0.10)
         self.declare_parameter("jog_rotation_deg", 5.0)
@@ -95,6 +97,13 @@ class FcrModeConsole(Node):
         self.linear_speed = abs(float(self.get_parameter("linear_speed").value))
         self.strafe_speed = abs(float(self.get_parameter("strafe_speed").value))
         self.yaw_rate = abs(float(self.get_parameter("yaw_rate").value))
+        self.max_speed_scale = min(
+            max(abs(float(self.get_parameter("max_speed_scale").value)), 1.0), 8.0
+        )
+        self.speed_scale_step = min(
+            max(abs(float(self.get_parameter("speed_scale_step").value)), 0.01),
+            self.max_speed_scale,
+        )
         self.gimbal_step = math.radians(abs(float(self.get_parameter("gimbal_step_deg").value)))
         self.jog_translation = abs(float(self.get_parameter("jog_translation_m").value))
         self.jog_rotation = math.radians(abs(float(self.get_parameter("jog_rotation_deg").value)))
@@ -301,7 +310,10 @@ class FcrModeConsole(Node):
     def _finish_enter_teleop(self) -> None:
         self._publish_mode("manual")
         self._set_state(self.TELEOP, "连续遥控")
-        self.get_logger().info("遥控键: W/S A/D Q/E，方向键云台；空格停车，+/-调速")
+        self.get_logger().info(
+            "遥控键: W/S A/D Q/E，方向键云台；空格停车，"
+            f"+/-调速(上限 {self.max_speed_scale:.2f}x，步进 {self.speed_scale_step:.2f})"
+        )
 
     def _handle_teleop_key(self, key: str) -> None:
         scale = self.speed_scale
@@ -318,10 +330,12 @@ class FcrModeConsole(Node):
         elif key == "RIGHT": self._gimbal_nudge(-self.gimbal_step * scale, 0.0)
         elif key == " ": self._zero_manual()
         elif key in ("+", "="):
-            self.speed_scale = min(1.5, self.speed_scale + 0.25)
+            self.speed_scale = min(
+                self.max_speed_scale, self.speed_scale + self.speed_scale_step
+            )
             self.get_logger().info(f"遥控速度倍率 {self.speed_scale:.2f}")
         elif key in ("-", "_"):
-            self.speed_scale = max(0.25, self.speed_scale - 0.25)
+            self.speed_scale = max(0.25, self.speed_scale - self.speed_scale_step)
             self.get_logger().info(f"遥控速度倍率 {self.speed_scale:.2f}")
         if motion is not None:
             self.motion = motion

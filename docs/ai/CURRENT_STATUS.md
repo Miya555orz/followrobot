@@ -20,7 +20,7 @@
 - TRON1 官方 `robot_hw` launch 暴露 `fcr_cmd_vel_topic`；本地官方工作区仍包含让官方控制器订阅 `/fcr_tron/cmd_vel` 的 FCR override 补丁。
 - FCR 侧 `robot_platform_pkg`、`teleop_control_pkg`、`bringup_pkg` 可以在本机成功 build。
 - TRON1 侧 `robot_controllers` 和 `robot_hw` 可以在本机成功 build。
-- TRON1 safety mode acceptance 已于 2026-09-04 通过 47/47 组 Gazebo/robot_hw_sim 验收；验收 Python 脚本默认使用独立 `ROS_DOMAIN_ID=83`，可由 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，拒绝空值/0/非十进制/越界值，并在发布验收速度前检查 `/fcr_tron/cmd_vel` graph，`--with-gazebo` 必须看到 `/gazebo` 节点。
+- TRON1 safety mode acceptance 已于 2026-09-04 通过 47/47 组 Gazebo/robot_hw_sim 验收；验收 Python 脚本默认使用独立 `ROS_DOMAIN_ID=83`，可由 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，拒绝空值/0/前导零/非十进制/越界值，并在发布验收速度前检查 `/fcr_tron/cmd_vel` graph，`--with-gazebo` 必须看到 `/gazebo` 节点。
 - TRON1 official sim launch 默认 `start_steering_gui=false`，FCR 安全链测试不会再自动启动 `rqt_robot_steering`。
 - FCR 的“遥控/连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆。Jetson 测试时，控制台应跑在 Jetson 上，PC 只通过 SSH 输入。
 - TRON1 实机分步验收清单见 `docs/TRON1_REAL_TEST_STEP_CHECKLIST.md`。

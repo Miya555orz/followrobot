@@ -292,6 +292,8 @@ def parse_ros_domain_id(value: str | int | None) -> tuple[int | None, str]:
     if not raw.isdecimal():
         return None, f"ROS_DOMAIN_ID 必须是十进制整数，当前值为 {raw!r}"
     domain_id = int(raw)
+    if raw != str(domain_id):
+        return None, f"ROS_DOMAIN_ID 不允许前导零，当前值为 {raw!r}"
     if not 1 <= domain_id <= 232:
         return None, f"ROS_DOMAIN_ID 必须在 1..232，当前值为 {raw!r}"
     return domain_id, ""
@@ -499,24 +501,52 @@ def run_negative_gate_prechecks(env: dict[str, str]) -> list[CaseResult]:
                 )
             )
             return results
+        if not wait_until(
+            manager_probe,
+            lambda: any(
+                info.node_name == "tron1_acceptance_allow_false_manager"
+                for info in manager_probe.get_subscriptions_info_by_topic(
+                    f"{manager_prefix}/mode_request"
+                )
+            ),
+            3.0,
+        ):
+            results.append(
+                CaseResult(
+                    "N02 allow_tron_follow_motion=false 时 TRON_FOLLOW 仍不授权",
+                    False,
+                    "等待独立 mode manager request subscription 匹配超时",
+                )
+            )
+            return results
         manager_probe.publish_estop(False, 0.4)
-        for req in [
-            "developer_mode",
-            "developer_self_check_pass",
-            "stand_ready",
-            "walk_ready",
-            "device_self_check_pass",
-            "gimbal_follow",
-            "tron_follow",
-        ]:
+        transition_steps = [
+            ("developer_mode", "DEVELOPER_MODE"),
+            ("developer_self_check_pass", "DEVELOPER_SELF_CHECK"),
+            ("stand_ready", "REMOTE_STAND_READY"),
+            ("walk_ready", "REMOTE_WALK_READY"),
+            ("device_self_check_pass", "DEVICE_SELF_CHECK"),
+            ("gimbal_follow", "GIMBAL_FOLLOW"),
+            ("tron_follow", "TRON_FOLLOW"),
+        ]
+        transition_failure = ""
+        for req, expected_state in transition_steps:
             manager_probe.request(req)
-        manager_probe.spin_for(0.4)
+            if not wait_until(manager_probe, lambda: manager_probe.last_state == expected_state, 1.0):
+                transition_failure = (
+                    f"请求 {req} 后未进入 {expected_state}；"
+                    f"state={manager_probe.last_state}, motion_authorized={manager_probe.last_auth}"
+                )
+                break
         results.append(
             check(
                 "N02 allow_tron_follow_motion=false 时 TRON_FOLLOW 仍不授权",
                 lambda: (
-                    manager_probe.last_state == "TRON_FOLLOW" and manager_probe.last_auth is False,
-                    f"state={manager_probe.last_state}, motion_authorized={manager_probe.last_auth}",
+                    not transition_failure
+                    and manager_probe.last_state == "TRON_FOLLOW"
+                    and manager_probe.last_auth is False,
+                    transition_failure
+                    or f"state={manager_probe.last_state}, motion_authorized={manager_probe.last_auth}",
                 ),
             )
         )
