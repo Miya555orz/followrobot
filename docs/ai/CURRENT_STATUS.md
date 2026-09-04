@@ -4,7 +4,7 @@
 
 ## 距离下一阶段还有多远
 
-- Jetson 控制 TRON1：大约完成一半。FCR 命令路径、PC 侧 TRON Ethernet/SDK、45/45 组 Gazebo 安全验收、estop 样本新鲜度 fail-closed、真机误启动守卫都已经就位；还缺 Jetson <-> TRON1 Ethernet、Jetson 侧 ROS graph 检查、低速实机验收。
+- Jetson 控制 TRON1：大约完成一半。FCR 命令路径、PC 侧 TRON Ethernet/SDK、47/47 组 Gazebo 安全验收、estop 样本新鲜度 fail-closed、真机误启动守卫都已经就位；还缺 Jetson <-> TRON1 Ethernet、Jetson 侧 ROS graph 检查、低速实机验收。
 - Jetson 控制 RS2 云台跟拍：接近可用。Sony UVC -> perception/tracking -> RS2 over `can1` 已经在 Jetson 上跑通过；CRSDK 仍是可选且未验证。
 - Jetson 控制 RS2 跟拍 + TRON1 底盘：还不能做真实全链路跟拍。TRON1 仍需保持在仿真和低速安全验收阶段，底盘只允许后续作为慢速 yaw / 距离修正，不应和云台抢同一个误差。
 
@@ -20,7 +20,7 @@
 - TRON1 官方 `robot_hw` launch 暴露 `fcr_cmd_vel_topic`；本地官方工作区仍包含让官方控制器订阅 `/fcr_tron/cmd_vel` 的 FCR override 补丁。
 - FCR 侧 `robot_platform_pkg`、`teleop_control_pkg`、`bringup_pkg` 可以在本机成功 build。
 - TRON1 侧 `robot_controllers` 和 `robot_hw` 可以在本机成功 build。
-- TRON1 safety mode acceptance 已于 2026-09-04 通过 45/45 组 Gazebo/robot_hw_sim 验收。
+- TRON1 safety mode acceptance 已于 2026-09-04 通过 47/47 组 Gazebo/robot_hw_sim 验收。
 - TRON1 official sim launch 默认 `start_steering_gui=false`，FCR 安全链测试不会再自动启动 `rqt_robot_steering`。
 - FCR 的“遥控/连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆。Jetson 测试时，控制台应跑在 Jetson 上，PC 只通过 SSH 输入。
 - TRON1 实机分步验收清单见 `docs/TRON1_REAL_TEST_STEP_CHECKLIST.md`。

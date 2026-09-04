@@ -232,7 +232,7 @@ ROS_DOMAIN_ID=83
 1. 启动 `fcr_tron_safe_mode_sim.launch.py`；
 2. 启动官方 `robot_hw pointfoot_hw_sim.launch.py`；
 3. 设置 `ROBOT_TYPE=WF_TRON1A`、`RL_TYPE=isaacgym`、`FCR_TRON_CMD_VEL_TOPIC=/fcr_tron/cmd_vel`；
-4. 自动跑 45 组验收；
+4. 自动跑 47 组验收；
 5. 结束后关闭测试进程。
 
 如果本机 Gazebo 图形环境不可用，可以先跑不带 Gazebo 的 topic 安全仿真：
@@ -249,57 +249,29 @@ ROS_DOMAIN_ID=83
 
 如果没有启动 live ROS graph、没有确认物理急停/阻尼，这个脚本输出 `BLOCK` 是正常且正确的；它的目的不是证明“可以动”，而是阻止把仿真验收误当成真机运动许可。
 
-## 8. 45 组验收覆盖内容
+## 8. 47 组验收覆盖内容
 
-当前脚本实际跑 45 组，超过“至少 20 组”的要求。
+当前脚本实际跑 47 组，超过“至少 20 组”的要求。
 
-注意：真机进程/真机网络守卫发生在 45 组用例之前，不计入 `45/45` 分母；如果守卫发现真实 `pointfoot_node`、`robot_hw_node` 或可达 TRON1 网络，脚本会在启动仿真安全栈前直接拒绝运行。
+注意：真机进程/真机网络守卫和 ROS graph 订阅者守卫发生在主运动用例前；如果守卫发现真实 `pointfoot_node`、`robot_hw_node`、可达 TRON1 网络，或非 Gazebo 模式下 `/fcr_tron/cmd_vel` 除 probe 外已有订阅者，脚本会在发布任何验收速度前直接拒绝运行。
 
-1. 初始/复位后进入 `IDLE`
-2. `IDLE` 不授权运动
-3. `IDLE` 下输入大速度仍输出零
-4. 非法跳转到 `TRON_FOLLOW` 被拒绝
-5. 非法跳转后仍不授权
-6. 进入开发者模式
-7. 开发者算法自检通过
-8. 进入同款蹲起/站立准备
-9. 进入同款行走准备
-10. 行走准备态默认仍不授权运动
-11. 行走准备态大速度仍输出零
-12. 设备自检通过
-13. 云台进入跟随模式
-14. 云台跟随态仍不授权 TRON 运动
-15. 进入 TRON 跟随态
-16. TRON 跟随态授权运动
-17. `linear.x` 被限幅到 `0.03 m/s`
-18. `linear.y` 被强制为 0
-19. `angular.z` 被限幅到 `0.10 rad/s`
-20. 输入 timeout 后输出自动归零
-21. limiter 状态显示输入 timeout
-22. estop 样本超时后继续发命令仍输出零
-23. limiter 状态显示 estop 样本超时
-24. 外部急停强制进入 `ESTOP`
-25. 外部急停后取消运动授权
-26. 外部急停后 limiter 状态显示急停锁存
-27. 外部急停后输出归零
-28. 急停锁存时拒绝继续进入 `TRON_FOLLOW`
-29. 外部急停未解除时 `clear_estop` 无效
-30. 外部急停未解除时仍不授权
-31. `clear_estop` 后回到 `IDLE`
-32. `clear_estop` 后仍不授权
-33. 软件模式请求 `estop` 进入 `ESTOP`
-34. 软件 `estop` 后不授权
-35. 软件急停锁存时 `reset` 不能清除急停
-36. `clear_estop` 后回到 `IDLE`
-37. `clear_estop` 后输出保持零
-38. 死亡测试前已进入 `TRON_FOLLOW` 授权态
-39. 杀死 `tron1_mode_manager_node`
-40. mode manager 死亡后继续发命令仍因授权超时归零
-41. mode manager 死亡后 limiter 状态显示授权超时
-42. 死亡测试后输出仍保持零
-43. topic 诊断确认 `/fcr_tron/cmd_vel` 只有 limiter 一个发布者
-44. topic 诊断确认官方 `robot_hw` 订阅 limiter 输出
-45. Gazebo/robot_hw_sim 生命周期由验收脚本启动和回收，不作为真实地面运动证明
+新增两组硬门负向用例：
+
+1. `enable_motion=false` 时，即使急停源新鲜、授权为 true、输入非零，limiter 输出仍为 0，状态为 `BLOCKED_ENABLE_MOTION_FALSE`。
+2. `allow_tron_follow_motion=false` 时，即使状态机按顺序进入 `TRON_FOLLOW`，`/tron1/motion_authorized` 仍为 false。
+
+主链路用例继续覆盖：
+
+- 初始/复位后进入 `IDLE`，未授权时输出 0。
+- 非法跳转到 `TRON_FOLLOW` 被拒绝。
+- 开发者模式、同款蹲起/站立准备、同款行走准备、设备自检、云台跟随、TRON 跟随的顺序门。
+- `linear.x`、`linear.y`、`angular.z` 的限幅和禁止横移。
+- 输入 timeout 后输出自动归零。
+- estop 样本超时后继续发命令仍输出 0。
+- 外部急停、软件 estop、limiter 急停锁存和显式 clear。
+- mode manager 死亡后授权超时归零。
+- `/fcr_tron/cmd_vel` 唯一发布者和官方 `robot_hw`/`cmd_vel_node`/`pointfoot_node` 订阅关系。
+- Gazebo/robot_hw_sim 生命周期由验收脚本启动和回收；姿态漂移不作为真实地面运动证明。
 
 ## 9. 真机限制
 

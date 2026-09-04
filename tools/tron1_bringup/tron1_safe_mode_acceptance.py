@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TRON1 安全模式管理 20 组仿真验收。
+"""TRON1 安全模式管理 47 组仿真验收。
 
 默认只启动 FCR 侧 `tron1_mode_manager_node + tron1_safety_limiter_node`，
 验证状态机、授权、限速、急停、timeout。它不会连接真实 TRON1。
@@ -147,6 +147,79 @@ class SafeModeProbe(Node):
         return abs(x) <= eps and abs(y) <= eps and abs(yaw) <= eps
 
 
+class NegativeGateProbe(Node):
+    def __init__(self, name: str, prefix: str) -> None:
+        super().__init__(name)
+        self.prefix = prefix
+        self.mode_request_pub = self.create_publisher(String, f"{prefix}/mode_request", 10)
+        self.estop_pub = self.create_publisher(Bool, f"{prefix}/estop_state", TRANSIENT_QOS)
+        self.auth_pub = self.create_publisher(Bool, f"{prefix}/motion_authorized", TRANSIENT_QOS)
+        self.cmd_pub = self.create_publisher(TwistStamped, f"{prefix}/cmd_vel_stamped", 10)
+        self.last_state: str | None = None
+        self.last_auth: bool | None = None
+        self.last_limiter_state: str | None = None
+        self.outputs: list[tuple[float, float, float]] = []
+        self.create_subscription(String, f"{prefix}/mode_state", self._on_state, TRANSIENT_QOS)
+        self.create_subscription(Bool, f"{prefix}/motion_authorized", self._on_auth, TRANSIENT_QOS)
+        self.create_subscription(String, f"{prefix}/limiter_state", self._on_limiter_state, TRANSIENT_QOS)
+        self.create_subscription(Twist, f"{prefix}/cmd_vel_out", self._on_output, 10)
+
+    def _on_state(self, msg: String) -> None:
+        self.last_state = msg.data
+
+    def _on_auth(self, msg: Bool) -> None:
+        self.last_auth = bool(msg.data)
+
+    def _on_limiter_state(self, msg: String) -> None:
+        self.last_limiter_state = msg.data
+
+    def _on_output(self, msg: Twist) -> None:
+        self.outputs.append((msg.linear.x, msg.linear.y, msg.angular.z))
+        self.outputs = self.outputs[-100:]
+
+    def spin_for(self, seconds: float) -> None:
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            rclpy.spin_once(self, timeout_sec=0.02)
+
+    def request(self, text: str) -> None:
+        msg = String()
+        msg.data = text
+        for _ in range(3):
+            self.mode_request_pub.publish(msg)
+            self.spin_for(0.05)
+
+    def publish_estop(self, active: bool, seconds: float = 0.2) -> None:
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            self.estop_pub.publish(Bool(data=active))
+            self.spin_for(0.05)
+
+    def publish_auth(self, authorized: bool, seconds: float = 0.2) -> None:
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            self.auth_pub.publish(Bool(data=authorized))
+            self.spin_for(0.05)
+
+    def publish_cmd(self, x: float, y: float, yaw: float, seconds: float) -> None:
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            msg = TwistStamped()
+            msg.header.stamp = self.get_clock().now().to_msg()
+            msg.header.frame_id = "negative_gate"
+            msg.twist.linear.x = x
+            msg.twist.linear.y = y
+            msg.twist.angular.z = yaw
+            self.cmd_pub.publish(msg)
+            self.publish_estop(False, 0.05)
+
+    def last_output_near_zero(self, eps: float = 1e-4) -> bool:
+        if not self.outputs:
+            return True
+        x, y, yaw = self.outputs[-1]
+        return abs(x) <= eps and abs(y) <= eps and abs(yaw) <= eps
+
+
 def start_process(cmd: list[str], env: dict[str, str]) -> subprocess.Popen:
     return subprocess.Popen(
         cmd,
@@ -212,12 +285,156 @@ def real_robot_guard(allow_robot_network: bool, robot_ip: str) -> tuple[bool, st
     return True, "未发现真机进程；TRON1 网络未授权接入自动验收"
 
 
+def graph_robot_guard(probe: SafeModeProbe, with_gazebo: bool) -> tuple[bool, str]:
+    """在发布任何验收速度前检查当前 ROS graph 是否已有可疑 TRON 订阅者。"""
+    infos = probe.get_subscriptions_info_by_topic("/fcr_tron/cmd_vel")
+    names = [info.node_name for info in infos]
+    allowed = {"tron1_safe_mode_acceptance_probe"}
+    if with_gazebo:
+        allowed.update({"cmd_vel_node", "robot_hw_node", "pointfoot_node"})
+    unexpected = sorted(set(names) - allowed)
+    if unexpected:
+        return (
+            False,
+            "检测到非本验收允许的 /fcr_tron/cmd_vel 订阅者："
+            f"{unexpected}；all_subscribers={names}",
+        )
+    if not with_gazebo and len(names) > 1:
+        return (
+            False,
+            "非 Gazebo 模式下 /fcr_tron/cmd_vel 除 probe 外还有订阅者；"
+            f"all_subscribers={names}",
+        )
+    return True, f"graph 订阅者守卫通过；subscribers={names}"
+
+
 def check(name: str, fn: Callable[[], tuple[bool, str]]) -> CaseResult:
     try:
         passed, detail = fn()
     except Exception as exc:  # noqa: BLE001
         return CaseResult(name, False, f"异常：{exc}")
     return CaseResult(name, passed, detail)
+
+
+def git_head_summary(project_root: str) -> str:
+    head = subprocess.run(
+        ["git", "-C", project_root, "rev-parse", "--short", "HEAD"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    dirty = subprocess.run(
+        ["git", "-C", project_root, "status", "--short"],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    head_text = head.stdout.strip() if head.returncode == 0 else "unknown"
+    dirty_count = len([line for line in dirty.stdout.splitlines() if line.strip()])
+    return f"HEAD={head_text}, dirty_files={dirty_count}"
+
+
+def run_negative_gate_prechecks(env: dict[str, str]) -> list[CaseResult]:
+    results: list[CaseResult] = []
+
+    limiter_prefix = "/tron1_acceptance_enable_false"
+    limiter_proc = start_process(
+        [
+            "ros2",
+            "run",
+            "robot_platform_pkg",
+            "tron1_safety_limiter_node",
+            "--ros-args",
+            "-r",
+            "__node:=tron1_acceptance_enable_false_limiter",
+            "-p",
+            f"input_topic:={limiter_prefix}/cmd_vel_stamped",
+            "-p",
+            f"output_topic:={limiter_prefix}/cmd_vel_out",
+            "-p",
+            f"estop_topic:={limiter_prefix}/estop_state",
+            "-p",
+            f"motion_authorized_topic:={limiter_prefix}/motion_authorized",
+            "-p",
+            f"limiter_state_topic:={limiter_prefix}/limiter_state",
+            "-p",
+            "enable_motion:=false",
+        ],
+        env,
+    )
+    limiter_probe = NegativeGateProbe("tron1_acceptance_enable_false_probe", limiter_prefix)
+    try:
+        limiter_probe.publish_estop(False, 0.4)
+        limiter_probe.publish_auth(True, 0.4)
+        limiter_probe.publish_cmd(0.5, 0.0, 0.5, 0.5)
+        results.append(
+            check(
+                "N01 enable_motion=false 时非零输入仍输出零",
+                lambda: (
+                    limiter_probe.last_output_near_zero()
+                    and limiter_probe.last_limiter_state == "BLOCKED_ENABLE_MOTION_FALSE",
+                    (
+                        f"last_output={limiter_probe.outputs[-1] if limiter_probe.outputs else None}, "
+                        f"limiter_state={limiter_probe.last_limiter_state}"
+                    ),
+                ),
+            )
+        )
+    finally:
+        limiter_probe.destroy_node()
+        stop_process(limiter_proc)
+
+    manager_prefix = "/tron1_acceptance_allow_false"
+    manager_proc = start_process(
+        [
+            "ros2",
+            "run",
+            "robot_platform_pkg",
+            "tron1_mode_manager_node",
+            "--ros-args",
+            "-r",
+            "__node:=tron1_acceptance_allow_false_manager",
+            "-p",
+            f"request_topic:={manager_prefix}/mode_request",
+            "-p",
+            f"state_topic:={manager_prefix}/mode_state",
+            "-p",
+            f"motion_authorized_topic:={manager_prefix}/motion_authorized",
+            "-p",
+            f"estop_topic:={manager_prefix}/estop_state",
+        ],
+        env,
+    )
+    manager_probe = NegativeGateProbe("tron1_acceptance_allow_false_probe", manager_prefix)
+    try:
+        manager_probe.publish_estop(False, 0.4)
+        for req in [
+            "developer_mode",
+            "developer_self_check_pass",
+            "stand_ready",
+            "walk_ready",
+            "device_self_check_pass",
+            "gimbal_follow",
+            "tron_follow",
+        ]:
+            manager_probe.request(req)
+        manager_probe.spin_for(0.4)
+        results.append(
+            check(
+                "N02 allow_tron_follow_motion=false 时 TRON_FOLLOW 仍不授权",
+                lambda: (
+                    manager_probe.last_state == "TRON_FOLLOW" and manager_probe.last_auth is False,
+                    f"state={manager_probe.last_state}, motion_authorized={manager_probe.last_auth}",
+                ),
+            )
+        )
+    finally:
+        manager_probe.destroy_node()
+        stop_process(manager_proc)
+
+    return results
 
 
 def wait_until(probe: SafeModeProbe, predicate: Callable[[], bool], timeout: float) -> bool:
@@ -527,22 +744,29 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--with-gazebo", action="store_true", help="额外启动官方 Gazebo/robot_hw_sim")
     parser.add_argument("--startup-timeout", type=float, default=8.0)
-    parser.add_argument("--robot-ip", default="10.192.1.2")
+    parser.add_argument("--robot-ip", default=None)
+    parser.add_argument("--ros-domain-id", default="83", help="自动验收专用 ROS_DOMAIN_ID，默认 83")
     parser.add_argument(
         "--allow-robot-network",
         action="store_true",
-        help="仅在确认 TRON1 真机网络不会被当前 ROS graph 触达时使用。",
+        help="仅在确认 TRON1 真机网络不会被当前 ROS graph 触达时使用；必须同时显式传 --robot-ip。",
     )
     args = parser.parse_args()
+    robot_ip = args.robot_ip or "10.192.1.2"
+    if args.allow_robot_network and args.robot_ip is None:
+        print("[FAIL] 使用 --allow-robot-network 时必须同时显式传 --robot-ip，避免误绕过默认 TRON1 网络守卫")
+        return 4
+
+    os.environ["ROS_DOMAIN_ID"] = str(args.ros_domain_id)
 
     env = os.environ.copy()
     env.setdefault("ROBOT_TYPE", "WF_TRON1A")
     env.setdefault("RL_TYPE", "isaacgym")
     env.setdefault("FCR_TRON_CMD_VEL_TOPIC", "/fcr_tron/cmd_vel")
     env.setdefault("FCR_TRON_CMD_VEL_TIMEOUT_SEC", "0.25")
-    env.setdefault("ROS_DOMAIN_ID", "83")
 
-    guard_ok, guard_detail = real_robot_guard(args.allow_robot_network, args.robot_ip)
+    print(f"[INFO] 自动验收使用 ROS_DOMAIN_ID={env.get('ROS_DOMAIN_ID')}")
+    guard_ok, guard_detail = real_robot_guard(args.allow_robot_network, robot_ip)
     if not guard_ok:
         print("[FAIL] 真机进程/网络守卫拒绝启动自动验收")
         print(guard_detail)
@@ -595,13 +819,22 @@ def main() -> int:
             print("[FAIL] --with-gazebo 已请求，但 ROS graph 中未看到 /gazebo 或 robot_hw_node")
             return 3
 
-        results = run_cases(probe, require_robot_hw_subscriber=args.with_gazebo)
+        graph_guard_ok, graph_guard_detail = graph_robot_guard(probe, args.with_gazebo)
+        if not graph_guard_ok:
+            print("[FAIL] ROS graph 真机误启动守卫拒绝继续")
+            print(graph_guard_detail)
+            return 4
+        print(f"[PASS] ROS graph 真机误启动守卫：{graph_guard_detail}")
+
+        results = run_negative_gate_prechecks(env)
+        results.extend(run_cases(probe, require_robot_hw_subscriber=args.with_gazebo))
         passed = sum(1 for item in results if item.passed)
         for item in results:
             mark = "PASS" if item.passed else "FAIL"
             print(f"[{mark}] {item.name}: {item.detail}")
 
         print(f"\n结果：{passed}/{len(results)} 组通过")
+        print(f"代码状态：{git_head_summary('/home/miya/follow_ws/src/fcr_ros2_3')}")
         if args.with_gazebo:
             print("Gazebo/robot_hw_sim 已随测试启动；姿态漂移不作为本脚本判定项。")
         else:

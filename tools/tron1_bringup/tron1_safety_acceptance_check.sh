@@ -179,10 +179,10 @@ echo
 
 echo "[7/7] 自动 topic/Gazebo 验收与真机人工门"
 if [ -f "$PROJECT_ROOT/docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md" ] &&
-  grep -q "PASS：45/45" "$PROJECT_ROOT/docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md"; then
-  pass "已记录 45/45 topic + Gazebo/robot_hw_sim 安全验收"
+  grep -q "PASS：47/47" "$PROJECT_ROOT/docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md"; then
+  pass "已记录 47/47 topic + Gazebo/robot_hw_sim 安全验收"
 else
-  block "未找到 45/45 topic + Gazebo/robot_hw_sim 安全验收记录"
+  block "未找到 47/47 topic + Gazebo/robot_hw_sim 安全验收记录"
 fi
 
 if [ "${A10_CONFIRMED:-}" = "yes" ]; then
