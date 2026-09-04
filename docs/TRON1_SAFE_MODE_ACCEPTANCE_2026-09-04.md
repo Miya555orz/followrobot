@@ -1,15 +1,16 @@
 # TRON1 安全模式管理验收记录
 
-日期：2026-09-03
+日期：2026-09-04
 
 结论：
 
 ```text
-PASS：32/32 组通过。
-PASS：带 --with-gazebo 时，脚本确认 ROS graph 中存在 Gazebo 或 robot_hw_node。
+PASS：38/38 组通过。
+PASS：带 --with-gazebo 时，脚本确认 /fcr_tron/cmd_vel 只有 limiter 一个发布者，且官方 robot_hw 订阅 limiter 输出。
 PASS：状态机未进入 TRON_FOLLOW 前，/fcr_tron/cmd_vel 始终保持 0。
 PASS：进入 TRON_FOLLOW 后，输出仍被 limiter 限幅。
 PASS：timeout、外部急停、软件 estop 都会让输出回到 0。
+PASS：mode manager 死亡后，limiter 因授权信号超时继续输出 0。
 ```
 
 运行命令：
@@ -26,6 +27,8 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 关键输出：
 
 ```text
+[PASS] 00 /fcr_tron/cmd_vel 只有 limiter 一个发布者
+[PASS] 00b 官方 robot_hw 订阅 limiter 输出
 [PASS] 01 初始/复位后进入 IDLE
 [PASS] 02 IDLE 不授权运动
 [PASS] 03 IDLE 下输入大速度仍输出零
@@ -56,10 +59,14 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 [PASS] 28 clear_estop 后仍不授权
 [PASS] 29 软件模式请求 estop 进入 ESTOP
 [PASS] 30 软件 estop 后不授权
-[PASS] 31 reset 可回到 IDLE
-[PASS] 32 reset 后输出保持零
+[PASS] 31 软件 estop 锁存时 reset 不能清除急停
+[PASS] 32 clear_estop 后回到 IDLE
+[PASS] 33 clear_estop 后输出保持零
+[PASS] 34 死亡测试前已进入 TRON_FOLLOW 授权态
+[PASS] 35 杀死 mode manager 进程
+[PASS] 36 mode manager 死亡后继续发命令仍因授权超时归零
 
-结果：32/32 组通过
+结果：38/38 组通过
 Gazebo/robot_hw_sim 已随测试启动；姿态漂移不作为本脚本判定项。
 ```
 
@@ -69,9 +76,13 @@ Gazebo/robot_hw_sim 已随测试启动；姿态漂移不作为本脚本判定项
 - 非法跳转无法直接进入 `TRON_FOLLOW`。
 - `REMOTE_WALK_READY` 默认仍不授权运动，避免“同款行走准备”变成实际运动许可。
 - 只有按顺序进入 `TRON_FOLLOW`，`/tron1/motion_authorized` 才为 true。
+- `allow_tron_follow_motion` 默认 false；验收脚本会显式传 true，真机 launch 不会默认放行。
+- `tron1_safety_limiter_node` 会检查授权信号新鲜度，mode manager 死亡后 0.5 秒内关门。
+- `tron1_safety_limiter_node` 自己锁存急停；`/safety/estop_state=false` 不会自动解除 limiter 急停。
 - `tron1_safety_limiter_node` 需要同时满足：
   - `enable_motion=true`
   - `/tron1/motion_authorized=true`
+  - 授权信号未 timeout
   - 没有急停
   - 输入未 timeout
 - 横移 `linear.y` 被强制为 0。

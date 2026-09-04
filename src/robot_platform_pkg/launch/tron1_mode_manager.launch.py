@@ -50,8 +50,8 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "allow_tron_follow_motion",
-                default_value="true",
-                description="仅进入 TRON_FOLLOW 且无急停时，才允许 limiter 放行。",
+                default_value="false",
+                description="默认 false；真机前必须由操作员显式确认后才允许 TRON_FOLLOW 放行。",
             ),
             mode_manager,
         ]

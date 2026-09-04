@@ -150,13 +150,19 @@ ros2 topic pub --once /tron1/mode_request std_msgs/msg/String "{data: estop}"
 ros2 topic pub --once /tron1/mode_request std_msgs/msg/String "{data: clear_estop}"
 ```
 
+解除 limiter 自身急停锁存：
+
+```bash
+ros2 topic pub --once /tron1/limiter_clear_estop std_msgs/msg/Bool "{data: true}"
+```
+
 复位到空闲：
 
 ```bash
 ros2 topic pub --once /tron1/mode_request std_msgs/msg/String "{data: reset}"
 ```
 
-注意：`clear_estop` / `reset` 只处理 FCR 软件状态机。它不能替代 TRON1 物理急停、硬件 motor switch、遥控器急停锁存或官方错误码处理。
+注意：`reset` 不能解除软件急停锁存；急停后必须显式 `clear_estop`。这些软件命令都不能替代 TRON1 物理急停、硬件 motor switch、遥控器急停锁存或官方错误码处理。
 
 ## 6. 启动仿真安全栈
 
@@ -168,6 +174,7 @@ source /home/miya/follow_ws/install/setup.bash
 
 ros2 launch bringup_pkg fcr_tron_safe_mode_sim.launch.py \
   enable_motion:=true \
+  allow_tron_follow_motion:=true \
   max_linear_x:=0.03 \
   max_angular_z:=0.10 \
   input_timeout_sec:=0.25
@@ -189,7 +196,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 1. 启动 `fcr_tron_safe_mode_sim.launch.py`；
 2. 启动官方 `robot_hw pointfoot_hw_sim.launch.py`；
 3. 设置 `ROBOT_TYPE=WF_TRON1A`、`RL_TYPE=isaacgym`、`FCR_TRON_CMD_VEL_TOPIC=/fcr_tron/cmd_vel`；
-4. 自动跑 32 组验收；
+4. 自动跑 38 组验收；
 5. 结束后关闭测试进程。
 
 如果本机 Gazebo 图形环境不可用，可以先跑不带 Gazebo 的 topic 安全仿真：
@@ -198,9 +205,9 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/run_tron1_safe_mode_acceptance.sh
 ```
 
-## 8. 32 组验收覆盖内容
+## 8. 38 组验收覆盖内容
 
-当前脚本实际跑 32 组，超过“至少 20 组”的要求：
+当前脚本实际跑 38 组，超过“至少 20 组”的要求：
 
 1. 初始/复位后进入 `IDLE`
 2. `IDLE` 不授权运动
@@ -232,8 +239,14 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 28. `clear_estop` 后仍不授权
 29. 软件模式请求 `estop` 进入 `ESTOP`
 30. 软件 `estop` 后不授权
-31. `reset` 可回到 `IDLE`
-32. `reset` 后输出保持零
+31. 软件急停锁存时 `reset` 不能清除急停
+32. `clear_estop` 后回到 `IDLE`
+33. `clear_estop` 后输出保持零
+34. 死亡测试前已进入 `TRON_FOLLOW` 授权态
+35. 杀死 `tron1_mode_manager_node`
+36. mode manager 死亡后继续发命令仍因授权超时归零
+37. `/fcr_tron/cmd_vel` 只有 limiter 一个发布者
+38. 官方 `robot_hw` 订阅 limiter 输出
 
 ## 9. 真机限制
 

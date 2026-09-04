@@ -11,6 +11,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -58,13 +59,31 @@ def generate_launch_description():
                 "tron1_safety_limiter.yaml",
             ]),
             {
-                "enable_motion": LaunchConfiguration("enable_motion"),
-                "enable_lateral": LaunchConfiguration("enable_lateral"),
-                "input_timeout_sec": LaunchConfiguration("input_timeout_sec"),
-                "max_linear_x": LaunchConfiguration("max_linear_x"),
-                "max_linear_y": LaunchConfiguration("max_linear_y"),
-                "max_angular_z": LaunchConfiguration("max_angular_z"),
+                "enable_motion": ParameterValue(LaunchConfiguration("enable_motion"), value_type=bool),
+                "enable_lateral": ParameterValue(LaunchConfiguration("enable_lateral"), value_type=bool),
+                "input_timeout_sec": ParameterValue(LaunchConfiguration("input_timeout_sec"), value_type=float),
+                "motion_authorized_timeout_sec": ParameterValue(
+                    LaunchConfiguration("motion_authorized_timeout_sec"), value_type=float
+                ),
+                "max_linear_x": ParameterValue(LaunchConfiguration("max_linear_x"), value_type=float),
+                "max_linear_y": ParameterValue(LaunchConfiguration("max_linear_y"), value_type=float),
+                "max_angular_z": ParameterValue(LaunchConfiguration("max_angular_z"), value_type=float),
             },
+        ],
+    )
+
+    tron1_mode_manager = Node(
+        package="robot_platform_pkg",
+        executable="tron1_mode_manager_node",
+        name="tron1_mode_manager",
+        output="screen",
+        parameters=[
+            {
+                "allow_walk_motion": False,
+                "allow_tron_follow_motion": ParameterValue(
+                    LaunchConfiguration("allow_tron_follow_motion"), value_type=bool
+                ),
+            }
         ],
     )
 
@@ -132,10 +151,17 @@ def generate_launch_description():
             description="Forward FCR linear.y to TRON. false is safer for first tests.",
         ),
         DeclareLaunchArgument("input_timeout_sec", default_value="0.25"),
+        DeclareLaunchArgument("motion_authorized_timeout_sec", default_value="0.50"),
         DeclareLaunchArgument("max_linear_x", default_value="0.03"),
-        DeclareLaunchArgument("max_linear_y", default_value="0.03"),
+        DeclareLaunchArgument("max_linear_y", default_value="0.0"),
         DeclareLaunchArgument("max_angular_z", default_value="0.10"),
+        DeclareLaunchArgument(
+            "allow_tron_follow_motion",
+            default_value="false",
+            description="默认 false；真机前必须显式打开，且仍需按状态机顺序授权。",
+        ),
         DeclareLaunchArgument("use_foxglove", default_value="false"),
         fcr,
+        TimerAction(period=0.5, actions=[tron1_mode_manager]),
         TimerAction(period=1.0, actions=[tron1_safety_limiter]),
     ])

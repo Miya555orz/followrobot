@@ -60,6 +60,9 @@ def generate_launch_description():
                 "input_timeout_sec": ParameterValue(
                     LaunchConfiguration("input_timeout_sec"), value_type=float
                 ),
+                "motion_authorized_timeout_sec": ParameterValue(
+                    LaunchConfiguration("motion_authorized_timeout_sec"), value_type=float
+                ),
             },
         ],
     )
@@ -68,13 +71,14 @@ def generate_launch_description():
         [
             DeclareLaunchArgument(
                 "enable_motion",
-                default_value="true",
-                description="仿真验收可设为 true；真机 launch 必须默认 false。",
+                default_value="false",
+                description="默认 false；只有验收脚本会显式传 true，禁止人工误用为真机启动入口。",
             ),
-            DeclareLaunchArgument("allow_tron_follow_motion", default_value="true"),
+            DeclareLaunchArgument("allow_tron_follow_motion", default_value="false"),
             DeclareLaunchArgument("max_linear_x", default_value="0.03"),
             DeclareLaunchArgument("max_angular_z", default_value="0.10"),
             DeclareLaunchArgument("input_timeout_sec", default_value="0.25"),
+            DeclareLaunchArgument("motion_authorized_timeout_sec", default_value="0.50"),
             mode_manager,
             limiter,
         ]

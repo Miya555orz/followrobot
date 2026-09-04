@@ -21,7 +21,7 @@ https://github.com/Miya555orz/followrobot
 - [docs/TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md](docs/TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md)：TRON1 安全验收清单
 - [docs/base_interface_tron1_adapter_design.md](docs/base_interface_tron1_adapter_design.md)：`base_interface + tron1_adapter` 设计
 - [docs/TRON1_SAFE_MODE_MANAGER_USAGE.md](docs/TRON1_SAFE_MODE_MANAGER_USAGE.md)：TRON1 安全模式管理使用文档
-- [docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-03.md](docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-03.md)：32 组 Gazebo/robot_hw_sim 安全验收记录
+- [docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md](docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md)：38 组 Gazebo/robot_hw_sim 安全验收记录
 - [docs/ai/OPENCODE_USAGE.md](docs/ai/OPENCODE_USAGE.md)：OpenCode 命令行与使用指南
 
 ## 当前最新状态
@@ -40,8 +40,8 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - LimX SDK `SensorJoy` 已读到遥控器 axes/buttons。
 - `L1 + 三角/Y` 会启动 `WheelfootController`。
 - `L1 + X` 是软件 `stopController()` + `abort()`，不是泄力/阻尼。
-- FCR 侧已新增 `tron1_mode_manager_node`，`/fcr_tron/cmd_vel` 现在必须同时满足 `enable_motion=true` 和 `/tron1/motion_authorized=true` 才可能非零。
-- TRON1 安全模式管理已通过 32/32 组 Gazebo/robot_hw_sim 验收。
+- FCR 侧已新增 `tron1_mode_manager_node`，`/fcr_tron/cmd_vel` 现在必须同时满足 `enable_motion=true`、`/tron1/motion_authorized=true` 且授权信号新鲜才可能非零。
+- TRON1 安全模式管理已通过 38/38 组 Gazebo/robot_hw_sim 验收；已覆盖 mode manager 死亡后授权超时归零、limiter 急停锁存、官方控制器订阅关系。
 - 物理 motor switch / hardware action 会触发 `Motor in damping mode`。
 - TRON1 不允许裸接旧 `/cmd_vel`；安全链路必须是 `/fcr/cmd_vel_stamped -> tron1_safety_limiter -> /fcr_tron/cmd_vel`。
 - `WF_TRON1A + isaacgym` 官方 Gazebo pose 仍有零命令漂移/纯 yaw 横移；FCR topic safety 已 PASS，但 Gazebo pose 不作为真机运动 PASS 条件。

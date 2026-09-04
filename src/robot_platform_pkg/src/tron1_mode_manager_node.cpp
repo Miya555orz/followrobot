@@ -105,17 +105,6 @@ private:
       return true;
     }
 
-    if (request == "reset" || request == "idle") {
-      if (external_estop_active_) {
-        mode_ = Mode::Estop;
-        estop_latched_ = true;
-        return false;
-      }
-      mode_ = Mode::Idle;
-      estop_latched_ = false;
-      return true;
-    }
-
     if (mode_ == Mode::Estop || estop_latched_ || external_estop_active_) {
       if (request == "clear_estop" && !external_estop_active_) {
         mode_ = Mode::Idle;
@@ -123,6 +112,11 @@ private:
         return true;
       }
       return false;
+    }
+
+    if (request == "reset" || request == "idle") {
+      mode_ = Mode::Idle;
+      return true;
     }
 
     if (request == "developer_mode" && mode_ == Mode::Idle) {

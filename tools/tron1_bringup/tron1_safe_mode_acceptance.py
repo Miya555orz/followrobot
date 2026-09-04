@@ -45,6 +45,9 @@ class SafeModeProbe(Node):
         super().__init__("tron1_safe_mode_acceptance_probe")
         self.mode_request_pub = self.create_publisher(String, "/tron1/mode_request", 10)
         self.estop_pub = self.create_publisher(Bool, "/safety/estop_state", TRANSIENT_QOS)
+        self.limiter_estop_clear_pub = self.create_publisher(
+            Bool, "/tron1/limiter_clear_estop", 10
+        )
         self.cmd_pub = self.create_publisher(TwistStamped, "/fcr/cmd_vel_stamped", 10)
 
         self.last_state: str | None = None
@@ -83,6 +86,13 @@ class SafeModeProbe(Node):
         msg.data = active
         for _ in range(3):
             self.estop_pub.publish(msg)
+            self.spin_for(0.05)
+
+    def clear_limiter_estop(self) -> None:
+        msg = Bool()
+        msg.data = True
+        for _ in range(3):
+            self.limiter_estop_clear_pub.publish(msg)
             self.spin_for(0.05)
 
     def cmd(self, x: float, y: float, yaw: float) -> None:
@@ -158,9 +168,76 @@ def wait_until(probe: SafeModeProbe, predicate: Callable[[], bool], timeout: flo
     return False
 
 
-def run_cases(probe: SafeModeProbe) -> list[CaseResult]:
+def run_cases(probe: SafeModeProbe, require_robot_hw_subscriber: bool) -> list[CaseResult]:
     results: list[CaseResult] = []
     tol = 1e-3
+
+    def output_has_single_limiter_publisher() -> tuple[bool, str]:
+        infos = probe.get_publishers_info_by_topic("/fcr_tron/cmd_vel")
+        names = [info.node_name for info in infos]
+        ok = len(names) == 1 and names[0] == "tron1_safety_limiter"
+        return ok, f"publishers={names}"
+
+    def robot_hw_subscribes_output() -> tuple[bool, str]:
+        if not require_robot_hw_subscriber:
+            infos = probe.get_subscriptions_info_by_topic("/fcr_tron/cmd_vel")
+            names = [info.node_name for info in infos]
+            return True, f"跳过：未请求 --with-gazebo；subscribers={names}"
+        ok = wait_until(
+            probe,
+            lambda: any(
+                info.node_name in ("cmd_vel_node", "robot_hw_node")
+                for info in probe.get_subscriptions_info_by_topic("/fcr_tron/cmd_vel")
+            ),
+            8.0,
+        )
+        infos = probe.get_subscriptions_info_by_topic("/fcr_tron/cmd_vel")
+        names = [info.node_name for info in infos]
+        return ok, f"subscribers={names}"
+
+    def kill_mode_manager() -> tuple[bool, str]:
+        before = subprocess.run(
+            ["pgrep", "-af", "[t]ron1_mode_manager_node"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        proc = subprocess.run(
+            ["pkill", "-f", "[t]ron1_mode_manager_node"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        after = None
+        end = time.monotonic() + 2.0
+        while time.monotonic() < end:
+            probe.spin_for(0.05)
+            after = subprocess.run(
+                ["pgrep", "-af", "[t]ron1_mode_manager_node"],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if after.returncode != 0:
+                break
+        if after is not None and after.returncode == 0:
+            subprocess.run(["pkill", "-TERM", "-f", "[t]ron1_mode_manager_node"], check=False)
+            probe.spin_for(0.3)
+            after = subprocess.run(
+                ["pgrep", "-af", "[t]ron1_mode_manager_node"],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+        ok = before.returncode == 0 and proc.returncode == 0 and after is not None and after.returncode != 0
+        return ok, (
+            f"before={before.stdout.strip()!r}, "
+            f"pkill_return={proc.returncode}, after={after.stdout.strip() if after else '<none>'!r}"
+        )
 
     def state_is(expected: str) -> tuple[bool, str]:
         ok = wait_until(probe, lambda: probe.last_state == expected, 1.0)
@@ -171,7 +248,14 @@ def run_cases(probe: SafeModeProbe) -> list[CaseResult]:
         return ok, f"motion_authorized={probe.last_auth}, expected={expected}"
 
     probe.estop(False)
+    probe.clear_limiter_estop()
     probe.request("reset")
+    results.append(
+        check("00 /fcr_tron/cmd_vel 只有 limiter 一个发布者", output_has_single_limiter_publisher)
+    )
+    results.append(
+        check("00b 官方 robot_hw 订阅 limiter 输出", robot_hw_subscribes_output)
+    )
     results.append(check("01 初始/复位后进入 IDLE", lambda: state_is("IDLE")))
     results.append(check("02 IDLE 不授权运动", lambda: auth_is(False)))
 
@@ -280,6 +364,7 @@ def run_cases(probe: SafeModeProbe) -> list[CaseResult]:
     results.append(check("25 外部急停未解除时 clear_estop 无效", lambda: state_is("ESTOP")))
     results.append(check("26 外部急停未解除时仍不授权", lambda: auth_is(False)))
     probe.estop(False)
+    probe.clear_limiter_estop()
     probe.request("clear_estop")
     results.append(check("27 clear_estop 后回到 IDLE", lambda: state_is("IDLE")))
     results.append(check("28 clear_estop 后仍不授权", lambda: auth_is(False)))
@@ -288,8 +373,35 @@ def run_cases(probe: SafeModeProbe) -> list[CaseResult]:
     results.append(check("29 软件模式请求 estop 进入 ESTOP", lambda: state_is("ESTOP")))
     results.append(check("30 软件 estop 后不授权", lambda: auth_is(False)))
     probe.request("reset")
-    results.append(check("31 reset 可回到 IDLE", lambda: state_is("IDLE")))
-    results.append(check("32 reset 后输出保持零", lambda: (probe.last_output_near_zero(), "已归零")))
+    results.append(check("31 软件 estop 锁存时 reset 不能清除急停", lambda: state_is("ESTOP")))
+    probe.request("clear_estop")
+    probe.clear_limiter_estop()
+    results.append(check("32 clear_estop 后回到 IDLE", lambda: state_is("IDLE")))
+    results.append(check("33 clear_estop 后输出保持零", lambda: (probe.last_output_near_zero(), "已归零")))
+
+    for req in [
+        "developer_mode",
+        "developer_self_check_pass",
+        "stand_ready",
+        "walk_ready",
+        "device_self_check_pass",
+        "gimbal_follow",
+        "tron_follow",
+    ]:
+        probe.request(req)
+    results.append(check("34 死亡测试前已进入 TRON_FOLLOW 授权态", lambda: auth_is(True)))
+    results.append(check("35 杀死 mode manager 进程", kill_mode_manager))
+    probe.reset_outputs()
+    probe.publish_cmd_for(0.03, 0.0, 0.05, 0.8)
+    results.append(
+        check(
+            "36 mode manager 死亡后继续发命令仍因授权超时归零",
+            lambda: (
+                probe.last_output_near_zero(),
+                f"last_output={probe.outputs[-1] if probe.outputs else None}, last_auth={probe.last_auth}",
+            ),
+        )
+    )
 
     return results
 
@@ -317,9 +429,11 @@ def main() -> int:
         "bringup_pkg",
         "fcr_tron_safe_mode_sim.launch.py",
         "enable_motion:=true",
+        "allow_tron_follow_motion:=true",
         "max_linear_x:=0.03",
         "max_angular_z:=0.10",
         "input_timeout_sec:=0.25",
+        "motion_authorized_timeout_sec:=0.50",
     ]
     safe_proc = start_process(safe_stack_cmd, env)
     gazebo_proc = None
@@ -354,7 +468,7 @@ def main() -> int:
             print("[FAIL] --with-gazebo 已请求，但 ROS graph 中未看到 /gazebo 或 robot_hw_node")
             return 3
 
-        results = run_cases(probe)
+        results = run_cases(probe, require_robot_hw_subscriber=args.with_gazebo)
         passed = sum(1 for item in results if item.passed)
         for item in results:
             mark = "PASS" if item.passed else "FAIL"

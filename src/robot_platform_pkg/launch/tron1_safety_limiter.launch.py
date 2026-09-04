@@ -31,10 +31,14 @@ def generate_launch_description():
                 "input_topic": LaunchConfiguration("input_topic"),
                 "output_topic": LaunchConfiguration("output_topic"),
                 "estop_topic": LaunchConfiguration("estop_topic"),
+                "estop_clear_topic": LaunchConfiguration("estop_clear_topic"),
                 "motion_authorized_topic": LaunchConfiguration("motion_authorized_topic"),
                 "enable_motion": ParameterValue(LaunchConfiguration("enable_motion"), value_type=bool),
                 "enable_lateral": ParameterValue(LaunchConfiguration("enable_lateral"), value_type=bool),
                 "input_timeout_sec": ParameterValue(LaunchConfiguration("input_timeout_sec"), value_type=float),
+                "motion_authorized_timeout_sec": ParameterValue(
+                    LaunchConfiguration("motion_authorized_timeout_sec"), value_type=float
+                ),
                 "max_linear_x": ParameterValue(LaunchConfiguration("max_linear_x"), value_type=float),
                 "max_linear_y": ParameterValue(LaunchConfiguration("max_linear_y"), value_type=float),
                 "max_angular_z": ParameterValue(LaunchConfiguration("max_angular_z"), value_type=float),
@@ -55,6 +59,7 @@ def generate_launch_description():
         DeclareLaunchArgument("input_topic", default_value="/fcr/cmd_vel_stamped"),
         DeclareLaunchArgument("output_topic", default_value="/fcr_tron/cmd_vel"),
         DeclareLaunchArgument("estop_topic", default_value="/safety/estop_state"),
+        DeclareLaunchArgument("estop_clear_topic", default_value="/tron1/limiter_clear_estop"),
         DeclareLaunchArgument(
             "motion_authorized_topic", default_value="/tron1/motion_authorized"
         ),
@@ -69,6 +74,7 @@ def generate_launch_description():
             description="false forces linear.y to zero for TRON1 first tests.",
         ),
         DeclareLaunchArgument("input_timeout_sec", default_value="0.25"),
+        DeclareLaunchArgument("motion_authorized_timeout_sec", default_value="0.50"),
         DeclareLaunchArgument("max_linear_x", default_value="0.03"),
         DeclareLaunchArgument("max_linear_y", default_value="0.0"),
         DeclareLaunchArgument("max_angular_z", default_value="0.10"),

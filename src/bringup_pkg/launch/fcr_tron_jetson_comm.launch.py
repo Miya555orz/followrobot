@@ -38,6 +38,8 @@ def generate_launch_description():
             "max_linear_y": "0.0",
             "max_angular_z": LaunchConfiguration("max_angular_z"),
             "input_timeout_sec": LaunchConfiguration("input_timeout_sec"),
+            "motion_authorized_timeout_sec": LaunchConfiguration("motion_authorized_timeout_sec"),
+            "allow_tron_follow_motion": LaunchConfiguration("allow_tron_follow_motion"),
             "use_foxglove": LaunchConfiguration("use_foxglove"),
         }.items(),
     )
@@ -55,6 +57,8 @@ def generate_launch_description():
         additional_env={
             "ROBOT_TYPE": LaunchConfiguration("tron_robot_type"),
             "RL_TYPE": LaunchConfiguration("tron_rl_type"),
+            "FCR_TRON_CMD_VEL_TOPIC": "/fcr_tron/cmd_vel",
+            "FCR_TRON_CMD_VEL_TIMEOUT_SEC": LaunchConfiguration("input_timeout_sec"),
         },
         condition=IfCondition(LaunchConfiguration("start_tron_hw")),
     )
@@ -86,6 +90,12 @@ def generate_launch_description():
             description="First-real-test yaw speed limit in rad/s.",
         ),
         DeclareLaunchArgument("input_timeout_sec", default_value="0.25"),
+        DeclareLaunchArgument("motion_authorized_timeout_sec", default_value="0.50"),
+        DeclareLaunchArgument(
+            "allow_tron_follow_motion",
+            default_value="false",
+            description="默认 false；即使状态进入 TRON_FOLLOW，也必须显式打开才授权底盘运动。",
+        ),
         DeclareLaunchArgument(
             "enable_gimbal",
             default_value="true",
