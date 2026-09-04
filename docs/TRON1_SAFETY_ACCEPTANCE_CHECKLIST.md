@@ -64,6 +64,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 - `--with-gazebo` 自动验收必须看到 `/gazebo` 节点，并且只允许本次 Gazebo `robot_hw_node` 订阅 `/fcr_tron/cmd_vel`。
 - `/safety/estop_state` 是 FCR 聚合软件急停状态，不代表 TRON1 物理 motor switch；`/tron1/limiter_clear_estop` 是受控 ROS_DOMAIN 内的 limiter 软件恢复入口，不能替代物理急停/阻尼。
 - 真机前 A 门会打印 git `HEAD`，并在工作区 dirty 时保持 `BLOCK`，避免用未提交代码给出最终许可。
+- A-02/A-03 是 ROS graph 级检查；节点名匹配只能证明拓扑形态，不能替代现场确认官方 controller 确实连接到 TRON1 硬件。
 
 A-10 逐项确认变量：
 
@@ -79,7 +80,7 @@ export A10_REVIEWED_AT="$(date -Is)"
 ./tools/tron1_bringup/tron1_safety_acceptance_check.sh
 ```
 
-这些变量只是把人工复核显式记录到当前 shell；它们不能让机器人更安全，也不能替代架空/支架、旁人扶稳、物理停止动作和现场判断。`A10_REVIEWED_BY` / `A10_REVIEWED_AT` 用于留下审核痕迹，缺失只会提示，不会放宽安全门。即使脚本最终没有 `FAIL/BLOCK`，结论也只能是“可进入架空/支架极低速分步测试”，不是“100% 安全”。
+这些变量只是把人工复核显式记录到当前 shell；它们不能让机器人更安全，也不能替代架空/支架、旁人扶稳、物理停止动作、现场判断和硬件连接确认。`A10_REVIEWED_BY` / `A10_REVIEWED_AT` 用于留下审核痕迹，缺失只会提示，不会放宽安全门。即使脚本最终没有 `FAIL/BLOCK`，结论也只能是“可进入架空/支架极低速分步测试”，不是“100% 安全”。
 
 ## 阶段 B：官方控制器和遥控器状态机
 

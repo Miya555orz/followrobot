@@ -252,7 +252,7 @@ Python 验收脚本是 `ROS_DOMAIN_ID` 的单一真源：默认读取 `FCR_TRON_
 ./tools/tron1_bringup/tron1_safety_acceptance_check.sh
 ```
 
-如果没有启动 live ROS graph、没有逐项确认 A-10 物理/后果人工门，这个脚本输出 `BLOCK` 是正常且正确的；它的目的不是证明“可以动”，而是阻止把仿真验收误当成真机运动许可。若现场已经按分步清单启动 live bringup 并要复查 graph，需要显式设置 `TRON1_LIVE_BRINGUP_INTENDED=yes`，否则 gate 会把运行中的 TRON1/FCR 进程继续当作 blocker。该脚本即使最终无 `FAIL/BLOCK`，也只表示可进入架空/支架、极低速、短脉冲分步测试，不是“100% 安全”保证。
+如果没有启动 live ROS graph、没有逐项确认 A-10 物理/后果人工门，这个脚本输出 `BLOCK` 是正常且正确的；它的目的不是证明“可以动”，而是阻止把仿真验收误当成真机运动许可。若现场已经按分步清单启动 live bringup 并要复查 graph，需要显式设置 `TRON1_LIVE_BRINGUP_INTENDED=yes`，否则 gate 会把运行中的 TRON1/FCR 进程继续当作 blocker；Gazebo/robot_hw_sim/steering GUI/裸 topic pub 即使在该变量为 yes 时也仍然 BLOCK。该脚本即使最终无 `FAIL/BLOCK`，也只表示 ROS graph 形态可进入架空/支架、极低速、短脉冲分步测试，不能替代官方 controller 已物理连到硬件的现场确认，也不是“100% 安全”保证。
 
 ## 8. 47 组验收覆盖内容
 

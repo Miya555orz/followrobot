@@ -45,11 +45,13 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - FCR 侧已新增 `tron1_mode_manager_node`，`/fcr_tron/cmd_vel` 现在必须同时满足 `enable_motion=true`、`/tron1/motion_authorized=true` 且授权信号新鲜才可能非零。
 - TRON1 安全模式管理已通过 47/47 组 Gazebo/robot_hw_sim 验收；已覆盖 enable_motion=false、allow_tron_follow_motion=false、mode manager 死亡后授权超时归零、limiter 急停锁存、estop 样本超时 fail-closed、limiter_state 诊断、官方控制器订阅关系。
 - 官方 WheelfootController 语义已只读摸底：zero cmd 只是 RL policy 的零期望速度，不是急停/泄力/阻尼。
-- 真机前 read-only A 门脚本会在没有 live graph/物理急停确认时输出 `BLOCK`；这是预期保护，不等同于仿真失败。
+- 真机前 read-only A 门已拆成逐项人工确认：物理停止可触达、damping 证据、`L1+X` 语义、controller watchdog 后果、Gazebo 零漂 blocker 和实机分步 checklist 都必须显式确认。
+- 真机前 read-only A 门脚本会在没有 live graph/逐项 A-10 确认时输出 `BLOCK`；若正在做 live bringup graph 复查，必须设置 `TRON1_LIVE_BRINGUP_INTENDED=yes`，但 Gazebo/robot_hw_sim/steering GUI/裸 topic pub 仍会被拦截。
+- `/fcr_tron/cmd_vel` 的 graph 检查只能证明唯一 limiter 发布者和官方型节点名订阅关系，不能替代“官方 controller 确实连接 TRON1 硬件”的现场人工确认。
 - 物理 motor switch / hardware action 会触发 `Motor in damping mode`。
 - FCR 链路中的“遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆；手柄只保留官方控制器启停、物理急停/阻尼备份。
 - TRON1 不允许裸接旧 `/cmd_vel`；安全链路必须是 `/fcr/cmd_vel_stamped -> tron1_safety_limiter -> /fcr_tron/cmd_vel`。
-- `WF_TRON1A + isaacgym` 官方 Gazebo pose 仍有零命令漂移/纯 yaw 横移；FCR topic safety 已 PASS，但 Gazebo pose 不作为真机运动 PASS 条件。
+- `WF_TRON1A + isaacgym` 官方 Gazebo pose 仍有零命令漂移/纯 yaw 横移；当前处理方式是把它保留为官方 sim-policy/physics blocker 并要求人工确认，不把 Gazebo pose 当作真机运动 PASS 条件。
 
 ## 模块级进度
 
@@ -92,13 +94,13 @@ TRON1 仿真
   Gazebo / official sim launch   ████████░░  80%  可启动，rqt steering 默认关闭
   /fcr_tron/cmd_vel 控制链       ███████░░░  70%  可驱动，可归零
   基础动作                       ██████░░░░  60%  forward/back 可控，纯 yaw 有横移
-  仿真安全验收                   ██████░░░░  60%  limiter PASS；官方 Gazebo pose 漂移仍是 blocker
+  仿真安全验收                   ████████░░  80%  47/47 PASS；官方 Gazebo pose 漂移保留为 blocker
 
 TRON1 真机
   PC <-> TRON Ethernet           ██████████ 100%  10.192.1.2 ping 通
   PC -> TRON SDK                 █████████░  90%  pointfoot_node 已连接
   物理 damping / hardware stop   ████████░░  80%  Motor in damping mode 已观察
-  L1 + X 软件 stop               ████░░░░░░  40%  不是泄力，体验未验收
+  L1 + X 软件 stop               █████░░░░░  50%  已确认不是泄力/阻尼，后果仍需现场分步验收
   低速实机运动                   ███░░░░░░░  30%  能激活，但太猛，暂停
 
 安全链路
@@ -106,7 +108,8 @@ TRON1 真机
   input timeout -> zero          █████████░  90%  已验证
   shutdown zero burst            █████████░  90%  SIGINT/SIGTERM 尾包为 0
   kill/crash 兜底                █████░░░░░  50%  仍依赖 controller watchdog / 物理 stop
-  裸 /cmd_vel 隔离               ████████░░  80%  FCR 链路已隔离，官方 joystick publisher 仍需注意
+  裸 /cmd_vel 隔离               █████████░  90%  FCR 链路已隔离，真机前 gate 会拦截裸 TRON 订阅
+  真机前 read-only gate          ████████░░  80%  A-10 逐项人工门 + live graph 显式声明已就位
 
 集成目标
   Jetson 控 TRON                 █████░░░░░  50%  架构 ready；Jetson 实网/仿真安全/低速验收未完
@@ -198,7 +201,8 @@ ros2 launch bringup_pkg fcr_bringup.launch.py \
 - 不让 TRON1 订阅旧 `/cmd_vel`。
 - 默认 `enable_motion=false`。
 - `L1 + X` 不是泄力；物理 motor switch / hardware action 才观察到 damping。
-- 下一次真机必须有人扶稳/空旷低速/物理急停可触达。
+- 即使 read-only gate 无 `FAIL/BLOCK`，结论也只是可进入架空/支架、`enable_motion=false` 起步、极低速短脉冲分步测试，不是 100% 安全保证，也不是地面自由运动许可。
+- 下一次真机必须有人扶稳/架空或支架、空旷低速、物理急停可触达，并按 [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](docs/TRON1_REAL_TEST_STEP_CHECKLIST.md) 逐步放行。
 
 ## 未来优化方向
 

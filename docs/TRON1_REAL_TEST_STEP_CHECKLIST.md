@@ -49,7 +49,7 @@ export A10_REVIEWED_AT="$(date -Is)"
 ./tools/tron1_bringup/tron1_safety_acceptance_check.sh
 ```
 
-只有该 read-only gate 没有 `FAIL/BLOCK`，且现场仍满足硬件要求时，才进入第 1 步的 `enable_motion=false` 验证；仍不得直接做地面跟拍。若第 1 步已经启动 live bringup 并要复查 `/fcr_tron/cmd_vel` graph，可额外设置 `TRON1_LIVE_BRINGUP_INTENDED=yes`，表示当前 `tron1_safety_limiter_node`、`tron1_mode_manager_node` 和官方 controller 进程是本次现场分步检查的预期对象，而不是遗留进程。
+只有该 read-only gate 没有 `FAIL/BLOCK`，且现场仍满足硬件要求时，才进入第 1 步的 `enable_motion=false` 验证；仍不得直接做地面跟拍。若第 1 步已经启动 live bringup 并要复查 `/fcr_tron/cmd_vel` graph，可额外设置 `TRON1_LIVE_BRINGUP_INTENDED=yes`，表示当前 `tron1_safety_limiter_node`、`tron1_mode_manager_node` 和官方 controller 进程是本次现场分步检查的预期对象，而不是遗留进程。graph 中的官方型节点名只能证明拓扑，不替代“controller 确实连到 TRON1 硬件”的现场人工判断。
 
 ## 三步路线
 

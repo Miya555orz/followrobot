@@ -116,7 +116,7 @@ fi
 echo
 
 echo "[2/7] 残留进程快照"
-process_snapshot="$(pgrep -af 'gazebo|gzserver|gzclient|pointfoot_node|robot_hw_node|tron1_mode_manager_node|tron1_safety_limiter_node|rqt_robot_steering|ros2 topic pub' || true)"
+process_snapshot="$(pgrep -af 'gazebo|gzserver|gzclient|pointfoot_hw_sim|robot_hw_sim|use_gazebo:=true|pointfoot_node|robot_hw_node|tron1_mode_manager_node|tron1_safety_limiter_node|rqt_robot_steering|ros2 topic pub' || true)"
 real_tron_processes=""
 if [ -z "$process_snapshot" ]; then
   pass "未发现 Gazebo/TRON/limiter/裸 ros2 topic pub 残留进程"
@@ -126,7 +126,7 @@ else
     | grep -Ev 'tron1_safety_acceptance_check|pgrep -af' \
     >/tmp/tron1_relevant_processes.txt || true
   printf "%s\n" "$(cat /tmp/tron1_relevant_processes.txt)" \
-    | grep -E 'gazebo|gzserver|gzclient|rqt_robot_steering|ros2 topic pub' \
+    | grep -E 'gazebo|gzserver|gzclient|pointfoot_hw_sim|robot_hw_sim|use_gazebo:=true|rqt_robot_steering|ros2 topic pub' \
     >/tmp/tron1_unexpected_processes.txt || true
   printf "%s\n" "$(cat /tmp/tron1_relevant_processes.txt)" \
     | grep -E 'pointfoot_node|robot_hw_node|tron1_mode_manager_node|tron1_safety_limiter_node' \
@@ -134,7 +134,7 @@ else
 
   if [ -s /tmp/tron1_unexpected_processes.txt ]; then
     cat /tmp/tron1_unexpected_processes.txt
-    block "发现非预期 Gazebo/steering/topic-pub 进程；真机前请先人工确认并关闭"
+    block "发现非预期 Gazebo/sim/steering/topic-pub 进程；真机前请先人工确认并关闭"
   fi
   if [ -s /tmp/tron1_expected_live_processes.txt ]; then
     real_tron_processes="$(cat /tmp/tron1_expected_live_processes.txt)"
@@ -219,7 +219,7 @@ if has_ros_graph_topic /fcr_tron/cmd_vel; then
     in_subscribers && /Node name:/ {print $3}
   ' /tmp/tron1_topic_info.txt)"
   if printf "%s\n" "$subscriber_names" | grep -Eq "^(robot_hw_node|cmd_vel_node|pointfoot_node)$"; then
-    pass "官方控制器已订阅 /fcr_tron/cmd_vel"
+    pass "graph 显示官方型节点名已订阅 /fcr_tron/cmd_vel；硬件连接仍由现场 A-10 人工确认"
   else
     block "当前 graph 未看到官方控制器订阅 /fcr_tron/cmd_vel；subscribers=$subscriber_names；若准备真机运动，必须先启动官方控制器并复查"
   fi
