@@ -285,7 +285,7 @@ Gazebo 练习脚本：
 ./tools/tron1_bringup/tron1_practice_keyboard_gazebo.sh
 ```
 
-这两个脚本只用于仿真练习；它们默认使用 `ROS_DOMAIN_ID=90`，拒绝空值、`0`、前导零、非十进制或越界 domain，启动前会检查 TRON1 默认地址不可达、无真实 `pointfoot_node`/`robot_hw_node` 进程、`/fcr_tron/cmd_vel` 和 `/tron1/mode_state` 无残留 endpoint，启动后会最多等待 60 秒直到看到 `/gazebo` 节点，才会推进状态机。推进后还会读回 `/tron1/mode_state`，确认进入 `TRON_FOLLOW` 后再打开控制台。退出时会按本脚本启动的进程组清理 Gazebo/robot_hw/FCR launch；只有脚本启动前 ROS daemon 没在运行时，cleanup 才会 stop daemon。若启动前残留 graph 被 BLOCK，先确认同 domain 没有其他 ROS 会话，再按脚本提示重启对应 `ROS_DOMAIN_ID` 的 daemon。
+这两个脚本只用于仿真练习；它们默认使用 `ROS_DOMAIN_ID=90`，拒绝空值、`0`、前导零、非十进制或越界 domain，启动前会检查 TRON1 默认地址不可达、无真实 `pointfoot_node`/`robot_hw_node` 进程、`/fcr_tron/cmd_vel` 和 `/tron1/mode_state` 无残留 endpoint，启动后会最多等待 60 秒直到看到 `/gazebo` 节点，才会推进状态机。推进后还会读回 `/tron1/mode_state`，确认进入 `TRON_FOLLOW` 后再打开控制台。退出时会按本脚本启动的进程组清理 Gazebo/robot_hw/FCR launch；只有脚本启动前 ROS daemon 没在运行时，cleanup 才会 stop daemon。若启动前残留 graph 被 BLOCK，先确认没有其他 ROS CLI 会话依赖当前 daemon 缓存，再按脚本提示运行 `ros2 daemon stop && ros2 daemon start`；该操作只重置命令行 graph 缓存，不会停止运行中的 ROS 节点。
 
 ## 9. 真机限制
 

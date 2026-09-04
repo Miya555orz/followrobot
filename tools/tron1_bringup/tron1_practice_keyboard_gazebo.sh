@@ -136,7 +136,7 @@ prelaunch_graph_guard() {
   if timeout 3s ros2 topic info "$topic" -v >"$info_file" 2>&1; then
     if grep -q "Node name:" "$info_file"; then
       cat "$info_file" >&2
-      die "启动前 $topic 已有 graph endpoint；请清理残留 graph 后重试。若确认同 domain 没有其他 ROS 会话，可运行：ROS_DOMAIN_ID=$ROS_DOMAIN_ID ros2 daemon stop && ROS_DOMAIN_ID=$ROS_DOMAIN_ID ros2 daemon start"
+      die "启动前 $topic 已有 graph endpoint；请清理残留 graph 后重试。若确认没有其他 ROS CLI 会话依赖当前 daemon 缓存，可运行：ros2 daemon stop && ros2 daemon start"
     fi
   elif ! grep -q "Unknown topic" "$info_file"; then
     cat "$info_file" >&2
@@ -246,7 +246,7 @@ cleanup() {
     kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
   done
   if [ "$ROS_DAEMON_WAS_RUNNING" -eq 0 ] && command -v ros2 >/dev/null 2>&1; then
-    ROS_DOMAIN_ID="$ROS_DOMAIN_ID" ros2 daemon stop >/dev/null 2>&1 || true
+    ros2 daemon stop >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
