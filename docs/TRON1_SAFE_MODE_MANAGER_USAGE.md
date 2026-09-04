@@ -43,6 +43,8 @@ FCR 现在使用自己的安全状态机：
 真机默认 enable_motion=false
 ```
 
+在 FCR 文档和 launch 里，“遥控/连续遥控”默认指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄。键盘控制台跑在哪台机器，按键就在哪台机器的 ROS 进程里生效。真机第 2 步上 Jetson 时，PC 只应通过 SSH 输入到 Jetson 上的 `fcr_mode_console`，不要让 PC 本地和 Jetson 跨 DDS graph 混跑键盘。
+
 ## 3. 安全架构
 
 ```text
@@ -303,6 +305,8 @@ enable_motion=false
   - `linear.x = 0.01~0.02 m/s`
   - `angular.z = 0.03~0.05 rad/s`
   - 持续 `0.3~0.5 s`
+
+实机从 PC 到 Jetson 的分步路线见：[docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](TRON1_REAL_TEST_STEP_CHECKLIST.md)。
 
 ## 10. 当前限制
 

@@ -23,6 +23,7 @@ https://github.com/Miya555orz/followrobot
 - [docs/TRON1_SAFE_MODE_MANAGER_USAGE.md](docs/TRON1_SAFE_MODE_MANAGER_USAGE.md)：TRON1 安全模式管理使用文档
 - [docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md](docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md)：45 组 Gazebo/robot_hw_sim 安全验收记录
 - [docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md](docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md)：TRON1 官方 controller/SDK stop、damping、zero-cmd 语义摸底
+- [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](docs/TRON1_REAL_TEST_STEP_CHECKLIST.md)：TRON1 从 PC 直连到 Jetson 云台协同的实机分步验收清单
 - [docs/ai/OPENCODE_USAGE.md](docs/ai/OPENCODE_USAGE.md)：OpenCode 命令行与使用指南
 
 ## 当前最新状态
@@ -46,6 +47,7 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - 官方 WheelfootController 语义已只读摸底：zero cmd 只是 RL policy 的零期望速度，不是急停/泄力/阻尼。
 - 真机前 read-only A 门脚本会在没有 live graph/物理急停确认时输出 `BLOCK`；这是预期保护，不等同于仿真失败。
 - 物理 motor switch / hardware action 会触发 `Motor in damping mode`。
+- FCR 链路中的“遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆；手柄只保留官方控制器启停、物理急停/阻尼备份。
 - TRON1 不允许裸接旧 `/cmd_vel`；安全链路必须是 `/fcr/cmd_vel_stamped -> tron1_safety_limiter -> /fcr_tron/cmd_vel`。
 - `WF_TRON1A + isaacgym` 官方 Gazebo pose 仍有零命令漂移/纯 yaw 横移；FCR topic safety 已 PASS，但 Gazebo pose 不作为真机运动 PASS 条件。
 
@@ -139,6 +141,16 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/tron1_safety_acceptance_check.sh
 ./tools/tron1_bringup/tron1_real_motion_path_preflight.sh
 ```
+
+### TRON1 实机分步验收路线
+
+```text
+1. PC 直连 TRON：PC 上跑 FCR 安全栈和键盘控制台，验证架空/支架低速短脉冲。
+2. Jetson 直连 TRON：FCR 安全栈和键盘控制台都跑在 Jetson；PC 只通过 SSH 观察和操作。
+3. Jetson 加云台/相机：Jetson 同时跑 RS2、Gemini/Sony 和 TRON 通信，只做低速底盘修正，不做全速跟拍。
+```
+
+详细步骤见 [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](docs/TRON1_REAL_TEST_STEP_CHECKLIST.md)。
 
 ### TRON1 遥控器只读监视
 

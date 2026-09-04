@@ -120,6 +120,7 @@ R1 + 方向键上/下 -> 高度调节
 - 上面是官网状态机图语义；本项目代码里已确认的是 `PointfootHardwareNode.cpp` 的 `L1 + Y` 启动控制器、`L1 + X` 停止控制器并 abort。
 - 对 FCR 集成来说，不应依赖遥控模式的预设运动算法；FCR 应走 `/fcr/cmd_vel_stamped -> tron1_safety_limiter -> /fcr_tron/cmd_vel`。
 - 急停/解除急停必须单独做实机低风险验证；不要把图示等同于已经在本机证明安全。
+- FCR 文档里说的“遥控/连续遥控”是电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆。手柄在 FCR 测试中只负责官方 controller 启停和物理急停/阻尼备份。
 
 ## 4. 只读遥控器监视
 

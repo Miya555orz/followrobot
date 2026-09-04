@@ -1,47 +1,47 @@
-# Current Status
+# 当前状态
 
-Last aligned on 2026-09-03.
+最后对齐日期：2026-09-04。
 
-## Distance To The Next Milestones
+## 距离下一阶段还有多远
 
-- Jetson controls TRON1: about halfway to a safe acceptance test. The FCR command path and PC-side TRON Ethernet/SDK path are proven, but Jetson <-> TRON Ethernet, Jetson-side graph checks, simulation stop behavior, and low-speed real acceptance are still open.
-- Jetson controls RS2 gimbal follow: nearly ready. Sony UVC -> perception/tracking -> RS2 over `can1` has already worked on Jetson; CRSDK remains optional/unverified.
-- Jetson controls RS2 follow + TRON1 base: not ready for real full-chain following. Keep this in simulation until TRON1 stop/damping/controller behavior is familiar and the base is limited to slow long-term yaw/distance correction rather than chasing the same error as the gimbal.
+- Jetson 控制 TRON1：大约完成一半。FCR 命令路径、PC 侧 TRON Ethernet/SDK、45/45 组 Gazebo 安全验收、estop 样本新鲜度 fail-closed、真机误启动守卫都已经就位；还缺 Jetson <-> TRON1 Ethernet、Jetson 侧 ROS graph 检查、低速实机验收。
+- Jetson 控制 RS2 云台跟拍：接近可用。Sony UVC -> perception/tracking -> RS2 over `can1` 已经在 Jetson 上跑通过；CRSDK 仍是可选且未验证。
+- Jetson 控制 RS2 跟拍 + TRON1 底盘：还不能做真实全链路跟拍。TRON1 仍需保持在仿真和低速安全验收阶段，底盘只允许后续作为慢速 yaw / 距离修正，不应和云台抢同一个误差。
 
-Current posture: TRON1 real motion is paused. Continue remote-controller familiarization and Gazebo simulation first.
+当前姿态：TRON1 真机运动暂停。继续以遥控器熟悉、Gazebo 仿真、安全链路和官方 controller 语义摸底为优先。
 
-## Verified
+## 已验证
 
-- Jetson + Sony camera + DJI RS2 gimbal can work together.
-- Vision -> tracking -> gimbal control can perform real follow shooting.
-- The active followrobot checkout is `/home/miya/follow_ws/src/fcr_ros2_3`.
-- The latest observed commit was `b680058 Record final Sony RS2 follow tuning`.
-- TRON1 official workspace exists at `/home/miya/limx_ws`.
-- TRON1 ROS packages are visible under the local ROS 2 Humble environment.
-- TRON1 official `robot_hw` launch exposes `fcr_cmd_vel_topic`; the local official workspace still contains the FCR override patch.
-- FCR-side `robot_platform_pkg`, `teleop_control_pkg`, and `bringup_pkg` build successfully on this machine.
-- TRON1-side `robot_controllers` and `robot_hw` build successfully on this machine.
-- Simulation-only safety limiter smoke test passed: with `enable_motion=false`, oversized upstream commands still produced zero `/fcr_tron/cmd_vel`; with `enable_motion=true`, oversized commands were clamped and returned to zero after timeout.
-- Current DJI RS2 bench wiring uses external USB-CAN `can1`; TRON1 communication launch defaults have been aligned to `can1`.
-- PC-side Jetson network preflight exists at `tools/tron1_bringup/pc_jetson_network_preflight.sh`.
-- TRON1 read-only real-motion path preflight exists at `tools/tron1_bringup/tron1_real_motion_path_preflight.sh`.
-- TRON1 migration gate report exists at `docs/tron1_migration_gate_report_2026-09-03.md`.
-- TRON1 official sim launch now defaults `start_steering_gui=false`, so FCR safety-chain tests no longer auto-start `rqt_robot_steering`.
+- Jetson + Sony 相机 + DJI RS2 云台可以协同运行。
+- 视觉 -> tracking -> 云台控制可以完成真实 RS2 跟拍。
+- 当前活跃仓库是 `/home/miya/follow_ws/src/fcr_ros2_3`。
+- TRON1 官方工作区存在于 `/home/miya/limx_ws`。
+- TRON1 ROS package 在本地 ROS 2 Humble 环境下可见。
+- TRON1 官方 `robot_hw` launch 暴露 `fcr_cmd_vel_topic`；本地官方工作区仍包含让官方控制器订阅 `/fcr_tron/cmd_vel` 的 FCR override 补丁。
+- FCR 侧 `robot_platform_pkg`、`teleop_control_pkg`、`bringup_pkg` 可以在本机成功 build。
+- TRON1 侧 `robot_controllers` 和 `robot_hw` 可以在本机成功 build。
+- TRON1 safety mode acceptance 已于 2026-09-04 通过 45/45 组 Gazebo/robot_hw_sim 验收。
+- TRON1 official sim launch 默认 `start_steering_gui=false`，FCR 安全链测试不会再自动启动 `rqt_robot_steering`。
+- FCR 的“遥控/连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆。Jetson 测试时，控制台应跑在 Jetson 上，PC 只通过 SSH 输入。
+- TRON1 实机分步验收清单见 `docs/TRON1_REAL_TEST_STEP_CHECKLIST.md`。
+- 当前 DJI RS2 桌面/Jetson bench 接线使用 external USB-CAN `can1`。
+- PC 侧 Jetson 网络预检脚本存在：`tools/tron1_bringup/pc_jetson_network_preflight.sh`。
+- TRON1 只读实机运动路径预检脚本存在：`tools/tron1_bringup/tron1_real_motion_path_preflight.sh`。
+- TRON1 迁移 gate report 存在：`docs/tron1_migration_gate_report_2026-09-03.md`。
 
-## Current Work
+## 当前工作
 
-TRON1 EDU wheeled-foot base secondary development and full system integration.
+TRON1 EDU 双轮足底盘二次开发和整机系统集成。
 
-## Important Caveats
+## 重要注意事项
 
-- The official TRON1 ROS2 docs target ROS 2 Iron, while this local machine currently uses ROS 2 Humble.
-- `/home/miya/limx_ws/src/tron1-rl-deploy-ros2` contains a local patch that lets the official controller subscribe to `/fcr_tron/cmd_vel`.
-- Ollama was not installed when this AI environment was created, so local model routing is prepared but not active.
-- Real TRON1 movement is not part of OpenCode fallback dry runs.
-- A TRON1 Gazebo simulation process was already running during the 2026-09-03 environment check; no real robot hardware movement was commanded.
-- Current PC network blocker: Ethernet `enp0s31f6` has `carrier=0`, and route to Jetson `172.31.178.242` is captured by Mihomo table 2022. Fix physical link first; if carrier is present but route is still captured, use the preflight script's `--fix-route` mode.
-- TRON1 PC-side Ethernet blocker was cleared on 2026-09-03: `10.192.1.2` became reachable through `enp0s31f6`, and official `pointfoot_node` connected to the real robot.
-- TRON1 remote controller axes/buttons were observed through a read-only SDK monitor. `L1 + Y/triangle` activated `WheelfootController`.
-- A physical motor switch/hardware action produced `Motor in damping mode`; official `pointfoot_node` then stopped the controller and exited. `L1 + X` should be treated as software stop/abort, not damping/torque release.
-- Real TRON1 motion is paused because the first controller activation felt too strong/fast. Continue in Gazebo/simulation and remote-controller familiarization before any more real motion.
-- Current TRON1 safety state: FCR limiter clamp/acceleration/timeout/estop and clean-shutdown zero-burst pass at topic-output level. The official controller watchdog clears stale velocity intent; however `WF_TRON1A + isaacgym` Gazebo still drifts at zero command and pure yaw produces lateral translation. Lightweight controller/URDF/friction/isaaclab experiments did not fix it and were withdrawn/restored. Treat this as an official sim-policy blocker, not an FCR limiter bug. Do not run real TRON1 motion until controller/SDK/hardware stop behavior is verified.
+- 官方 TRON1 ROS2 文档面向 ROS 2 Iron；当前本机使用 ROS 2 Humble。
+- `/home/miya/limx_ws/src/tron1-rl-deploy-ros2` 中有本地补丁，允许官方控制器订阅 `/fcr_tron/cmd_vel`。
+- OpenCode fallback dry run 不允许真实 TRON1 运动。
+- 当前 PC 网络曾出现 Mihomo/TUN 路由劫持；实机低速验收阶段不建议依赖 PC 和 Jetson 跨机器 DDS 分发键盘。
+- TRON1 PC 侧 Ethernet 已于 2026-09-03 打通：`10.192.1.2` 可通过 `enp0s31f6` 访问，官方 `pointfoot_node` 能连接真机。
+- TRON1 遥控器 axes/buttons 已通过只读 SDK monitor 观察到。`L1 + Y/三角` 会激活 `WheelfootController`。
+- 物理 motor switch / hardware action 曾触发 `Motor in damping mode`；随后官方 `pointfoot_node` 停止 controller 并退出。`L1 + X` 应视作软件 stop/abort，不是 damping/torque release。
+- TRON1 第一次 controller 激活体感过猛，因此真实运动暂停。下一步仍应先走 Gazebo、遥控器熟悉和低速安全验收。
+- 当前 TRON1 安全状态：FCR limiter 的限幅、加速度限制、输入 timeout、estop 样本新鲜度、clean-shutdown zero burst 已在 topic 输出层通过；官方 controller watchdog 会清理陈旧速度意图。但 `WF_TRON1A + isaacgym` Gazebo 仍有零命令漂移和纯 yaw 横移。此前轻量 controller/URDF/friction/isaaclab 实验没有解决并已撤回/恢复，应把它视作官方 sim-policy blocker，而不是 FCR limiter bug。
+- 不要在 controller/SDK/hardware stop 行为弄清楚前运行真实 TRON1 自动跟拍。

@@ -58,6 +58,8 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 - `tools/tron1_bringup/tron1_safety_acceptance_check.sh` 是真机前 read-only 闸门；没有 live ROS graph、没有确认物理急停/阻尼前，它应该输出 `BLOCK`，这不是脚本失败，而是在防止误把仿真 PASS 当成真机许可。
 - `L1 + X` 是软件停止/中止，不是已证明的阻尼/泄力。
 - 物理 motor switch / 硬件动作曾被观察到触发 `Motor in damping mode`。
+- FCR 的“连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆；手柄摇杆不作为 FCR 实机验收输入。
+- 实机分步路线见 [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](TRON1_REAL_TEST_STEP_CHECKLIST.md)：先 PC 直连，再 Jetson 直连，最后 Jetson 加云台/相机。
 
 ## 阶段 B：官方控制器和遥控器状态机
 
