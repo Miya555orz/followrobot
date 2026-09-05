@@ -26,6 +26,8 @@ https://github.com/Miya555orz/followrobot
 - [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](docs/TRON1_REAL_TEST_STEP_CHECKLIST.md)：TRON1 从 PC 直连到 Jetson 云台协同的实机分步验收清单
 - [docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md](docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md)：第十五轮审查后下一阶段计划
 - [docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md](docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md)：Jetson USB SSH 连接指令，含 Mihomo/TUN 分流与 known_hosts 修复
+- [docs/ai/TRON1_JETSON_NETWORK_PREFLIGHT_2026-09-05.md](docs/ai/TRON1_JETSON_NETWORK_PREFLIGHT_2026-09-05.md)：Jetson 到 TRON1 的 network-only 连通性 PASS 记录
+- [docs/ai/TRON1_AFTERNOON_RD_TEST_PLAN_2026-09-05.md](docs/ai/TRON1_AFTERNOON_RD_TEST_PLAN_2026-09-05.md)：2026-09-05 下午只读/仿真研发与测试安排
 - [docs/ai/OPENCODE_USAGE.md](docs/ai/OPENCODE_USAGE.md)：OpenCode 命令行与使用指南
 
 ## 当前最新状态
@@ -70,7 +72,7 @@ Jetson
   Jetson 刷机 / NVMe 启动       ██████████ 100%  JetPack 6.2.3
   Jetson ROS2 Humble            ██████████ 100%  基础环境可用
   PC <-> Jetson SSH             █████████░  90%  以太网 SSH 可用；USB SSH quickstart 已记录 Mihomo/TUN 坑
-  Jetson <-> TRON Ethernet      ███░░░░░░░  30%  PC 侧已通，Jetson 侧未实测
+  Jetson <-> TRON Ethernet      █████████░  90%  2026-09-05 network-only route/ping/preflight PASS；未做运动
 
 DJI RS2 云台
   USB-CAN can1 / gs_usb         ██████████ 100%  can1 可用
@@ -116,7 +118,7 @@ TRON1 真机
   真机前 read-only gate          ████████░░  80%  A-10 逐项人工门 + live graph 显式声明已就位
 
 集成目标
-  Jetson 控 TRON                 █████░░░░░  50%  架构 ready；Jetson 实网/仿真安全/低速验收未完
+  Jetson 控 TRON                 ██████░░░░  60%  Jetson 实网已通；仍缺 A-10/Gazebo blocker/架空低速验收
   Jetson 控云台跟拍              █████████░  90%  已实测，可继续优化
   RS2 + Camera + TRON 协同       ████░░░░░░  40%  底盘未安全联调
   Full Person Following          ███░░░░░░░  30%  视觉/云台 ready，TRON 真机安全未过
@@ -225,7 +227,7 @@ ros2 launch bringup_pkg fcr_bringup.launch.py \
 
 - 把 TRON1 官方 repo 的本地补丁整理成可复现 patch 或 fork。
 - 先完成 TRON1 Safety Acceptance Checklist，不再以“能动”为目标。
-- 在 Jetson 上验证 Jetson <-> TRON1 Ethernet 和 `/fcr_tron/cmd_vel` ROS graph。
+- Jetson <-> TRON1 Ethernet 已完成 network-only 验证；后续 `/fcr_tron/cmd_vel` ROS graph 只能在 Step 1 前 A 门中复查。
 - 在 Gazebo 中系统复核 stop、timeout、lost-command、node-crash、damping 行为。
 - 将底盘控制抽象成更干净的 `base_interface`，只让 adapter/limiter 知道 TRON1 细节。
 - 将云台负责短时小角度修正、TRON1 负责长期 yaw/距离补偿，避免双控制器互相抢误差。

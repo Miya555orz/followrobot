@@ -513,7 +513,7 @@ Current state:
 
 - `[VERIFIED]` Official repos exist under `/home/miya/limx_ws/src`.
 - `[VERIFIED]` `tron1-rl-deploy-ros2` has a local topic override patch so official controller can subscribe to `/fcr_tron/cmd_vel`.
-- `[UNVERIFIED]` Real Jetson <-> TRON1 Ethernet connection is not verified.
+- `[VERIFIED]` 2026-09-05 Jetson <-> TRON1 Ethernet network-only route/ping/preflight passed. Evidence: `docs/ai/TRON1_JETSON_NETWORK_PREFLIGHT_2026-09-05.md`.
 - `[CONTEXT ONLY / NEEDS RE-VERIFY]` Official diagrams/code suggest robot controller IP may be `10.192.1.2`; development computer/Jetson side may be `10.192.1.200`.
 
 Required safe command path:
@@ -596,14 +596,14 @@ Current `can0`/`can1` rule:
 [!] TRON controller watchdog clears stale velocity intent, but zero-command behavior still drifts in `WF_TRON1A + isaacgym` Gazebo. This remains a real-motion blocker.
 [✓] PC reached TRON1 default IP `10.192.1.2` through `enp0s31f6` after the Ethernet link came up on 2026-09-03.
 [✓] 2026-09-05 PC-side read-only preflight was rerun after direct Ethernet routing was restored: `10.192.1.2 dev enp0s31f6 src 10.192.1.200`, ping OK, `PASS=4 WARN=0 BLOCK=0 FAIL=0`. Evidence: `docs/ai/TRON1_PC_DIRECT_PREFLIGHT_2026-09-05.md`. No motion was attempted; the user was in a small office, so real motion remained paused.
-[ ] Next planned check: PC connects to Jetson over USB/SSH, Jetson connects to TRON1 over Ethernet, and only `ip/route/ping` plus `tools/tron1_bringup/jetson_tron1_network_preflight.sh` are allowed.
+[✓] PC connects to Jetson over USB/SSH, Jetson connects to TRON1 over Ethernet, and `tools/tron1_bringup/jetson_tron1_network_preflight.sh` passed with `PASS=2 WARN=0 BLOCK=0 FAIL=0`.
 [✓] TRON1 official `pointfoot_node` connected to the real robot, loaded `WF_TRON1A` / `isaacgym`, and subscribed to `/fcr_tron/cmd_vel`.
 [✓] Remote controller axes/buttons were observed through SDK `SensorJoy`; `L1 + Y/triangle` starts `WheelfootController`.
 [✓] Physical motor switch/hardware action produced `Motor in damping mode`; official node then stopped the controller and exited.
 [!] `L1 + X` is software `stopController()` + `abort()`, not damping/torque release.
 [!] Real motion is paused. Continue with remote-controller familiarization and Gazebo/simulation first. See `docs/TRON1_REMOTE_AND_SIM_SAFETY.md`.
 [✓] Sony camera UVC stream, perception smoke test, and low-speed RS2 follow verified; CRSDK node still unbuilt.
-[ ] Jetson <-> TRON1 real Ethernet not verified.
+[✓] Jetson <-> TRON1 real Ethernet network-only verified; no ROS/controller/motion was started.
 [ ] TRON1 controlled low-speed real motion not accepted; first activation was too aggressive for this stage.
 [ ] Full perception -> follow -> gimbal -> base chain not completed on real robot.
 ```

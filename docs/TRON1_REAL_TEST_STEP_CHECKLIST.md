@@ -193,6 +193,8 @@ ping 10.192.1.2 成功
 jetson_tron1_network_preflight: FAIL=0 BLOCK=0
 ```
 
+2026-09-05 实测记录：`enP8p1s0` 直连 `10.192.1.2`，`src 10.192.1.200`，`ping` 成功，`jetson_tron1_network_preflight` 输出 `PASS=2 WARN=0 BLOCK=0 FAIL=0`。这只完成 network-only 前置项，不构成地面运动许可。
+
 仍然禁止：
 
 ```text
