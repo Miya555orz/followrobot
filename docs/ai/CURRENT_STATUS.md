@@ -41,6 +41,7 @@ TRON1 EDU 双轮足底盘二次开发和整机系统集成。
 - OpenCode fallback dry run 不允许真实 TRON1 运动。
 - 当前 PC 网络曾出现 Mihomo/TUN 路由劫持；实机低速验收阶段不建议依赖 PC 和 Jetson 跨机器 DDS 分发键盘。
 - TRON1 PC 侧 Ethernet 已于 2026-09-03 打通过：`10.192.1.2` 当时可通过 `enp0s31f6` 访问，官方 `pointfoot_node` 能连接真机；但 2026-09-05 当前机器路由再次落到 `Mihomo`/policy table 且 ping 失败，实机前要重新修复并验证直连。
+- 未接 TRON1 直连网线时，route/ping `BLOCK` 是预期安全状态，不代表脚本或代码缺陷；接线后仍只能先重跑只读 preflight。
 - TRON1 遥控器 axes/buttons 已通过只读 SDK monitor 观察到。`L1 + Y/三角` 会激活 `WheelfootController`。
 - 物理 motor switch / hardware action 曾触发 `Motor in damping mode`；随后官方 `pointfoot_node` 停止 controller 并退出。`L1 + X` 应视作软件 stop/abort，不是 damping/torque release。
 - `/safety/estop_state` 是 FCR `command_mux` 聚合软件急停状态，不是物理 motor switch；`/tron1/limiter_clear_estop` 是同一受控 ROS_DOMAIN 内的 limiter 软件恢复入口，不能替代物理急停/阻尼，真机 limiter-only 部署应使用隔离 domain/namespace 或外层访问控制。

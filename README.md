@@ -150,6 +150,8 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 
 `tron1_real_motion_path_preflight.sh` 是只读检查：它只看路由、ping、launch 默认值和 ROS graph，不会启动 controller 或发布速度。若 `10.192.1.2` 走 `Mihomo`/Meta/TUN/tun*/utun*/tap*/wg*/container/policy table、ping 不通、路由接口不是有线形态，或默认安全参数不可确认，会返回非零并阻止进入实机准备。可设置 `TRON_LINK_IFACE=enp0s31f6` 这类显式白名单，强制只接受指定接口；退出码语义是 `0=PASS, 1=FAIL, 2=WARN-only, 3=BLOCK`。官方 `robot_hw` 默认 `/cmd_vel` 只打印 INFO，不影响 preflight 退出码；真机仍必须通过 FCR launch override 到 `/fcr_tron/cmd_vel`。
 
+尚未用网线直连 TRON1 时，route/ping `BLOCK` 是预期安全状态，不代表脚本或代码缺陷；接好直连网线并建立直连路由后，重新跑上述只读 preflight，再决定是否进入架空/支架 Step 1。
+
 ### TRON1 实机分步验收路线
 
 ```text
