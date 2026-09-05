@@ -677,7 +677,7 @@ Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 - `[UPDATED]` 真机前 A-10 不再接受单个 `A10_CONFIRMED=yes` 作为充分证据；read-only gate 现在要求逐项确认物理停止可触达、damping 证据、`L1+X` 语义、controller watchdog 后果、Gazebo 零漂 blocker 和分步 checklist。
 - `[UPDATED]` read-only gate 的进程扫描区分非预期残留和预期 live bringup；只有显式设置 `TRON1_LIVE_BRINGUP_INTENDED=yes` 时，运行中的 limiter/mode manager/官方 controller 才会进入 graph 检查路径。
 - `[UPDATED]` read-only gate 仍会把 Gazebo/robot_hw_sim/steering GUI/裸 topic pub 视为非预期进程；graph 中官方型节点名只能证明拓扑，不能替代硬件连接的现场确认。
-- `[UPDATED]` 第十五轮建议已转成下一阶段计划：先做上装重量/重心、Jetson 到 TRON1 non-motion 网络检查、起立稳定等待 `N` 秒的规程记录；目标速度前馈、限速分档和 depth fusion 外推先走设计/仿真审查，不直接改真机输出。
+- `[UPDATED]` 第十五轮建议已转成下一阶段计划：先做上装重量/重心、Jetson 到 TRON1 non-motion 网络检查、起立稳定等待 `N` 秒的规程记录；non-motion 网络检查只到链路/IP/ping，不激活官方 controller；目标速度前馈、限速分档和 depth fusion 外推先走设计/仿真审查，不直接改真机输出。
 
 ## 10. Next work
 
@@ -701,7 +701,8 @@ Then:
 3. Implement `base_interface` / TRON1 adapter only after the interface design is reviewed.
    - Start with [docs/base_interface_tron1_adapter_design.md](base_interface_tron1_adapter_design.md).
    - Acceptance: stable command API, message/topic choices, adapter boundaries, and safety path are documented.
-4. Verify Jetson <-> TRON1 Ethernet topology using official SDK and real hardware, without motor command.
+4. Verify Jetson <-> TRON1 Ethernet topology without motor command.
+   - Non-motion means route/IP/ping only. Starting or activating the official controller belongs to the protected Step 1 flow, not the network precheck.
    - Acceptance: `tools/tron1_bringup/pc_jetson_network_preflight.sh` reports Ethernet carrier, route not captured by Mihomo/TUN, and SSH `SSH_OK`.
 5. Re-run RS2 + Orbbec coexistence after a fresh boot if hardware is connected.
    - Acceptance: `/gimbal/status connected=true`, `can1 ERROR-ACTIVE`, depth topic about 10 Hz.

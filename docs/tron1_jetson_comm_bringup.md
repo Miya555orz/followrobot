@@ -66,7 +66,7 @@ ip -details -statistics link show can1
 - 深度图和深度 CameraInfo 都有消息。
 - `/fcr_tron/cmd_vel` 有且只有 `tron1_safety_limiter` 一个发布者。
 
-### 2. TRON1 控制器只接入通信，不允许运动
+### 2. TRON1 控制器接入检查，仍不做非零命令
 
 只有当 TRON1 已经架空或周围留出防护空间时才打开 `start_tron_hw`。
 
@@ -97,9 +97,9 @@ ros2 param get /tron1_safety_limiter enable_motion
 
 - TRON 官方 `robot_hw_node` 订阅 `/fcr_tron/cmd_vel`，不是裸 `/cmd_vel`。
 - `/tron1_safety_limiter enable_motion` 返回 `False`。
-- 发布任意上游速度时，`/fcr_tron/cmd_vel` 仍为 0。
+- 不按 `L1 + 三角/Y` 激活 controller，不推手柄摇杆，不发布任何非零上游速度命令。`enable_motion=false` 只约束 FCR limiter 输出，不约束官方 controller 自己的起立/进入 WALK 行为。
 
-安全 gate 验证：
+上游非零输入的安全 gate 验证只能放到架空/支架 Step 1：
 
 ```bash
 ros2 topic pub --once /fcr/cmd_vel_stamped geometry_msgs/msg/TwistStamped \

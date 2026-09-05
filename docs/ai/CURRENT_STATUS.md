@@ -4,7 +4,7 @@
 
 ## 距离下一阶段还有多远
 
-- Jetson 控制 TRON1：大约完成一半。FCR 命令路径、PC 侧 TRON Ethernet/SDK、47/47 组 Gazebo 安全验收、estop 样本新鲜度 fail-closed、真机误启动守卫都已经就位；下一阶段先做上装重量/重心记录和 Jetson <-> TRON1 non-motion 网络检查，之后才进入架空/支架低速实机验收。
+- Jetson 控制 TRON1：大约完成一半。FCR 命令路径、PC 侧 TRON Ethernet/SDK、47/47 组 Gazebo 安全验收、estop 样本新鲜度 fail-closed、真机误启动守卫都已经就位；下一阶段先做上装重量/重心记录和 Jetson <-> TRON1 non-motion 网络检查。这里的 non-motion 只到链路/IP/ping，不激活官方 controller；之后才进入架空/支架低速实机验收。
 - Jetson 控制 RS2 云台跟拍：接近可用。Sony UVC -> perception/tracking -> RS2 over `can1` 已经在 Jetson 上跑通过；CRSDK 仍是可选且未验证。
 - Jetson 控制 RS2 跟拍 + TRON1 底盘：还不能做真实全链路跟拍。TRON1 仍需保持在仿真和低速安全验收阶段，底盘只允许后续作为慢速 yaw / 距离修正，不应和云台抢同一个误差。
 
@@ -48,5 +48,6 @@ TRON1 EDU 双轮足底盘二次开发和整机系统集成。
 - 真机前 read-only gate 的 live bringup 进程需要 `TRON1_LIVE_BRINGUP_INTENDED=yes` 显式声明，否则仍按残留进程 BLOCK；声明后还必须继续通过 `/fcr_tron/cmd_vel` 唯一 limiter 发布者、官方型节点名订阅和裸 `/cmd_vel` 检查。Gazebo/robot_hw_sim/steering GUI/裸 topic pub 仍然 BLOCK；graph 节点名不能替代硬件连接现场确认。
 - TRON1 第一次 controller 激活体感过猛，因此真实运动暂停。下一步仍应先走 Gazebo、遥控器熟悉和低速安全验收。
 - 起立瞬态和 FCR 运动授权必须分开：`L1 + 三角/Y` 激活官方 controller 后，先保持 FCR `enable_motion=false` 并记录稳定等待 `N` 秒；当前没有 TRON1 IMU/姿态输入可自动证明稳定，不能把计时当作 100% 安全。
+- `enable_motion=false` 不能约束官方 controller 自己的起立/进入 WALK；所以官方 controller 启动或激活不属于 non-motion 网络检查。
 - 当前 TRON1 安全状态：FCR limiter 的限幅、加速度限制、输入 timeout、estop 样本新鲜度、clean-shutdown zero burst 已在 topic 输出层通过；官方 controller watchdog 会清理陈旧速度意图。但 `WF_TRON1A + isaacgym` Gazebo 仍有零命令漂移和纯 yaw 横移。此前轻量 controller/URDF/friction/isaaclab 实验没有解决并已撤回/恢复，应把它视作官方 sim-policy blocker，而不是 FCR limiter bug。
 - 不要在 controller/SDK/hardware stop 行为弄清楚前运行真实 TRON1 自动跟拍。

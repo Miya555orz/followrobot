@@ -12,8 +12,8 @@
    - 记录 Jetson、RS2、Gemini、Sony、电池、支架和线缆总重。
    - 能下移的部件优先下移；不要把“起立太猛”先归因到 FCR 增益。
 2. 打通 Jetson 到 TRON1 的以太网链路，只做 non-motion hardware check。
-   - 允许开机和只读连接确认，但不发布速度。
-   - 目标证据：Jetson 静态 IP、ping `10.192.1.2`、官方 node 能连接但 `enable_motion=false`。
+   - 允许开机、静态 IP、路由和 ping；不发布速度，不按 `L1 + 三角/Y`，不激活官方 `WheelfootController`。
+   - 目标证据：Jetson 静态 IP、ping `10.192.1.2`、read-only preflight 输出。若需要启动官方 node 建立 SDK 连接，必须转入架空/支架 Step 1，并记录为 controller bring-up，不再称作 non-motion 网络检查。
 3. 起立瞬态稳定后才允许 FCR 授权，先做规程版。
    - `L1 + 三角/Y` 激活官方 controller 后，不立刻打开 `enable_motion=true`。
    - 先人工等待并记录稳定时间 `N`，初始建议 `N=10s`，最终以第一次架空/支架 IMU 和现场观察为准。
@@ -55,7 +55,7 @@
 ```text
 1. git status，确认 followrobot/main clean。
 2. 不接 TRON1 运动链路，整理上装重量和安装高度记录表。
-3. 准备 Jetson<->TRON1 non-motion 网络检查命令。
+3. 准备 Jetson<->TRON1 non-motion 网络检查命令；该检查只到链路/IP/ping，不激活官方 controller。
 4. 更新 A-10/Step 1 记录模板，加入起立稳定等待 N 秒和 IMU/现场观察栏。
 5. 只读跑 gate；BLOCK 是预期安全状态，不把它当失败。
 ```

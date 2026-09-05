@@ -66,6 +66,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 - 真机前 A 门会打印 git `HEAD`，并在工作区 dirty 时保持 `BLOCK`，避免用未提交代码给出最终许可。
 - A-02/A-03 是 ROS graph 级检查；节点名匹配只能证明拓扑形态，不能替代现场确认官方 controller 确实连接到 TRON1 硬件。
 - 第十五轮建议的起立稳定门先作为规程执行：`L1 + 三角/Y` 激活官方 controller 后，保持 FCR `enable_motion=false`，等待并记录 `N` 秒稳定观察；当前没有 TRON1 IMU/姿态输入可自动证明稳定，因此不写自动放行代码。
+- 第 0 步 non-motion 网络检查只到链路/IP/ping；`enable_motion=false` 不能约束官方 controller 起立/进入 WALK，因此不要把启动或激活官方 controller 写成 non-motion 检查。
 
 A-10 逐项确认变量：
 

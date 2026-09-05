@@ -57,11 +57,11 @@ export A10_REVIEWED_AT="$(date -Is)"
 
 1. 称量上装总重，记录 Jetson、RS2、Gemini、Sony、电池、支架和线缆总重。
 2. 记录主要部件安装高度；能下移的重量先下移，避免把起立瞬态直接归因到 FCR 增益。
-3. 在 Jetson 上做 TRON1 non-motion 网络检查：静态 IP、ping `10.192.1.2`、官方 node 只读连接证据。
+3. 在 Jetson 上做 TRON1 non-motion 网络检查：静态 IP、路由、ping `10.192.1.2`。本项只证明网络可达，不按 `L1 + 三角/Y`，不激活官方 controller。
 4. 准备起立稳定等待记录：`L1 + 三角/Y` 激活官方 controller 后，先等待 `N` 秒并记录 IMU/现场观察；初始建议 `N=10s`，实际值以后续架空/支架观测为准。
 5. 复核：在 `enable_motion=true` 前，操作员已经确认物理停止/阻尼可触达，且有人负责遥控器/物理停止。
 
-当前不使用代码自动判断“已经稳定”：仓库内还没有 TRON1 IMU/姿态状态输入能证明起立瞬态结束。等待 `N` 秒只是规程门，不是安全保证。
+当前不使用代码自动判断“已经稳定”：仓库内还没有 TRON1 IMU/姿态状态输入能证明起立瞬态结束。等待 `N` 秒只是规程门，不是安全保证。`enable_motion=false` 只约束 FCR limiter 输出，不约束官方 controller 自己的起立、站立插值或进入 WALK policy；所以 controller 激活不属于第 0 步 non-motion 网络检查。
 
 ## 三步路线
 

@@ -102,6 +102,8 @@ TRON1 official controller
 
 现场规程还要求：官方 controller 经 `L1 + 三角/Y` 激活后，FCR 继续保持 `enable_motion=false`，等待并记录起立/姿态稳定 `N` 秒；初始建议 `N=10s`，最终以架空/支架 IMU 和现场观察为准。当前仓库没有 TRON1 IMU/姿态状态输入，因此不把“等 N 秒”写成自动安全证明。
 
+注意：`enable_motion=false` 只约束 FCR limiter 输出，不约束官方 controller 自己的起立、站立插值或 WALK policy。Jetson 到 TRON1 的 non-motion 网络检查只应验证链路/IP/ping；若要启动官方 node 或通过 `L1 + 三角/Y` 激活 controller，必须按实机分步清单进入架空/支架 Step 1。
+
 ## 5. 模式请求
 
 请求 topic：

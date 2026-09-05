@@ -62,7 +62,7 @@ run ros2 topic info -v /cmd_vel
 section "Result guide"
 echo "PASS for low-speed prep requires:"
 echo "  1) TRON_IP route does not go through a proxy/TUN interface."
-echo "  2) ping or SDK-level connection to TRON succeeds."
+echo "  2) non-motion network checks stop at route/ping; do not press L1+Y/triangle or activate the official controller."
 echo "  3) fcr_tron_jetson_comm.launch.py keeps start_tron_hw=false and enable_motion=false by default."
 echo "  4) /fcr_tron/cmd_vel has exactly one publisher: tron1_safety_limiter."
 echo "  5) /cmd_vel has no TRON controller subscriber during FCR tests."
