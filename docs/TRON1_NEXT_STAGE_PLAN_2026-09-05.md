@@ -14,6 +14,7 @@
 2. 打通 Jetson 到 TRON1 的以太网链路，只做 non-motion hardware check。
    - 允许开机、静态 IP、路由和 ping；不发布速度，不按 `L1 + 三角/Y`，不激活官方 `WheelfootController`。
    - 目标证据：Jetson 静态 IP、ping `10.192.1.2`、read-only preflight 输出。若需要启动官方 node 建立 SDK 连接，必须转入架空/支架 Step 1，并记录为 controller bring-up，不再称作 non-motion 网络检查。
+   - 2026-09-05 当前 PC 侧只读 preflight 发现 `10.192.1.2` 走 `Mihomo`/policy table 2022 且 ping 不通；这是实机前置 `BLOCK`，需先恢复直连路由。
 3. 起立瞬态稳定后才允许 FCR 授权，先做规程版。
    - `L1 + 三角/Y` 激活官方 controller 后，不立刻打开 `enable_motion=true`。
    - 先人工等待并记录稳定时间 `N`，初始建议 `N=10s`，最终以第一次架空/支架 IMU 和现场观察为准。

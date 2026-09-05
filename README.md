@@ -38,7 +38,7 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - Orbbec Gemini 335 深度流已在 Jetson USB3 下跑通，约 424x240@10Hz。
 - Sony UVC 图像链路、YOLO 检测、tracking、aim target、RS2 闭环跟拍已在 Jetson 实测跑通。
 - Sony CRSDK 不在仓库，CRSDK 版 `sony_camera_node` 尚未启用。
-- PC 到 TRON1 `10.192.1.2` 的 Ethernet / SDK 通信已通。
+- PC 到 TRON1 `10.192.1.2` 的 Ethernet / SDK 通信曾于 2026-09-03 打通；实机前必须重新跑只读 preflight。2026-09-05 本机最新检查发现路由被 `Mihomo`/policy table 捕获且 ping 不通，不能作为实机前提。
 - TRON1 官方 `pointfoot_node` 已连接真机并加载 `WF_TRON1A` / `isaacgym` ONNX。
 - LimX SDK `SensorJoy` 已读到遥控器 axes/buttons。
 - `L1 + 三角/Y` 会启动 `WheelfootController`。
@@ -48,6 +48,7 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - 官方 WheelfootController 语义已只读摸底：zero cmd 只是 RL policy 的零期望速度，不是急停/泄力/阻尼。
 - 真机前 read-only A 门已拆成逐项人工确认：物理停止可触达、damping 证据、`L1+X` 语义、controller watchdog 后果、Gazebo 零漂 blocker 和实机分步 checklist 都必须显式确认。
 - 真机前 read-only A 门脚本会在没有 live graph/逐项 A-10 确认时输出 `BLOCK`；若正在做 live bringup graph 复查，必须设置 `TRON1_LIVE_BRINGUP_INTENDED=yes`，但 Gazebo/robot_hw_sim/steering GUI/裸 topic pub 仍会被拦截。
+- TRON1 只读实机运动路径预检现在会把代理/TUN/container/policy-table 路由或 `TRON_IP` ping 不通判为 `BLOCK` 并返回非零；这只是阻止继续实机准备，不会发布任何速度命令。
 - `/fcr_tron/cmd_vel` 的 graph 检查只能证明唯一 limiter 发布者和官方型节点名订阅关系，不能替代“官方 controller 确实连接 TRON1 硬件”的现场人工确认。
 - 第十五轮建议已转成下一阶段计划：先做上装重量/重心记录、Jetson 到 TRON1 non-motion 网络检查、起立稳定等待 `N` 秒的规程记录；non-motion 网络检查只到链路/IP/ping，不激活官方 controller；目标速度前馈、限速分档、depth fusion 外推先走设计/仿真审查，不直接改真机输出。
 - 物理 motor switch / hardware action 会触发 `Motor in damping mode`。
@@ -99,7 +100,7 @@ TRON1 仿真
   仿真安全验收                   ████████░░  80%  47/47 PASS；官方 Gazebo pose 漂移保留为 blocker
 
 TRON1 真机
-  PC <-> TRON Ethernet           ██████████ 100%  10.192.1.2 ping 通
+  PC <-> TRON Ethernet           ██████░░░░  60%  2026-09-03 曾通；本轮被 Mihomo 路由/ping BLOCK，需复核直连
   PC -> TRON SDK                 █████████░  90%  pointfoot_node 已连接
   物理 damping / hardware stop   ████████░░  80%  Motor in damping mode 已观察
   L1 + X 软件 stop               █████░░░░░  50%  已确认不是泄力/阻尼，后果仍需现场分步验收
@@ -146,6 +147,8 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/tron1_safety_acceptance_check.sh
 ./tools/tron1_bringup/tron1_real_motion_path_preflight.sh
 ```
+
+`tron1_real_motion_path_preflight.sh` 是只读检查：它只看路由、ping、launch 默认值和 ROS graph，不会启动 controller 或发布速度。若 `10.192.1.2` 走 `Mihomo`/TUN/policy table、ping 不通，或默认安全参数不可确认，会返回非零并阻止进入实机准备。
 
 ### TRON1 实机分步验收路线
 

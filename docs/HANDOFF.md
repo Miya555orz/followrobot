@@ -588,7 +588,8 @@ Current `can0`/`can1` rule:
 [✓] TRON1 official controller/SDK semantics were read-only audited. See `docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md`.
 [✓] TRON1 real-motion path preflight script added; it is read-only and sends no velocity commands.
 [!] TRON controller watchdog clears stale velocity intent, but zero-command behavior still drifts in `WF_TRON1A + isaacgym` Gazebo. This remains a real-motion blocker.
-[✓] PC reached TRON1 default IP `10.192.1.2` through `enp0s31f6` after the Ethernet link came up.
+[✓] PC reached TRON1 default IP `10.192.1.2` through `enp0s31f6` after the Ethernet link came up on 2026-09-03.
+[!] 2026-09-05 current PC-side read-only preflight found `enp0s31f6` down, `10.192.1.2` routed through `Mihomo`/policy table 2022, and ping loss. Fix direct wired routing before any hardware prep.
 [✓] TRON1 official `pointfoot_node` connected to the real robot, loaded `WF_TRON1A` / `isaacgym`, and subscribed to `/fcr_tron/cmd_vel`.
 [✓] Remote controller axes/buttons were observed through SDK `SensorJoy`; `L1 + Y/triangle` starts `WheelfootController`.
 [✓] Physical motor switch/hardware action produced `Motor in damping mode`; official node then stopped the controller and exited.
@@ -678,6 +679,7 @@ Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 - `[UPDATED]` read-only gate 的进程扫描区分非预期残留和预期 live bringup；只有显式设置 `TRON1_LIVE_BRINGUP_INTENDED=yes` 时，运行中的 limiter/mode manager/官方 controller 才会进入 graph 检查路径。
 - `[UPDATED]` read-only gate 仍会把 Gazebo/robot_hw_sim/steering GUI/裸 topic pub 视为非预期进程；graph 中官方型节点名只能证明拓扑，不能替代硬件连接的现场确认。
 - `[UPDATED]` 第十五轮建议已转成下一阶段计划：先做上装重量/重心、Jetson 到 TRON1 non-motion 网络检查、起立稳定等待 `N` 秒的规程记录；non-motion 网络检查只到链路/IP/ping，不激活官方 controller；目标速度前馈、限速分档和 depth fusion 外推先走设计/仿真审查，不直接改真机输出。
+- `[UPDATED]` `tools/tron1_bringup/tron1_real_motion_path_preflight.sh` now returns nonzero `BLOCK` when `TRON_IP` is routed through proxy/TUN/container/policy-table paths or does not answer read-only ping. This does not publish velocity or activate the controller.
 
 ## 10. Next work
 
