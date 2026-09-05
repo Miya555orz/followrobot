@@ -101,6 +101,7 @@ TRON_LINK_IFACE=enp0s31f6 ./tools/tron1_bringup/tron1_real_motion_path_preflight
 ```text
 FAIL=0
 允许 BLOCK：未启动 live graph、A-10 逐项人工门未确认
+未接直连网线时，real_motion_path_preflight 的 route/ping BLOCK 属预期安全状态，不代表脚本或代码缺陷；接线后必须重跑只读 preflight
 real_motion_path_preflight: 进入 Step 1 前必须无 FAIL/BLOCK；route + wired iface + ping 必须 PASS。官方 robot_hw 默认 `/cmd_vel` 只作为提示，真机启动必须使用 FCR override 到 `/fcr_tron/cmd_vel`。
 ```
 
