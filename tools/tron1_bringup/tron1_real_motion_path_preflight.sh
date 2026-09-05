@@ -35,6 +35,10 @@ mark_warn() {
   printf '[WARN] %s\n' "$1"
 }
 
+mark_info() {
+  printf '[INFO] %s\n' "$1"
+}
+
 mark_block() {
   BLOCK_COUNT=$((BLOCK_COUNT + 1))
   printf '[BLOCK] %s\n' "$1"
@@ -51,7 +55,7 @@ print_command_output() {
 }
 
 proxy_or_virtual_route() {
-  grep -Eq '(^|[[:space:]])dev[[:space:]](Mihomo|mihomo|Meta|meta|TUN|tun[0-9]*|utun[0-9]*|utun4|tap[0-9]*|wg[0-9]*|tailscale[0-9]*|zt[a-zA-Z0-9]*|docker[0-9]*|br-[a-fA-F0-9]+|veth[a-zA-Z0-9]*)($|[[:space:]])|(^|[[:space:]])table[[:space:]]2022($|[[:space:]])'
+  grep -Eq '(^|[[:space:]])dev[[:space:]](Mihomo|mihomo|Meta|meta|TUN|tun[[:alnum:]_.:-]*|utun[[:alnum:]_.:-]*|tap[[:alnum:]_.:-]*|wg[[:alnum:]_.:-]*|tailscale[[:alnum:]_.:-]*|zt[a-zA-Z0-9_.:-]*|docker[[:alnum:]_.:-]*|br-[a-fA-F0-9]+|veth[a-zA-Z0-9_.:-]*)($|[[:space:]])|(^|[[:space:]])table[[:space:]]2022($|[[:space:]])'
 }
 
 route_dev_from() {
@@ -164,7 +168,7 @@ print_command_output "ros2 launch robot_hw pointfoot_hw.launch.py --show-args" "
 if [ "$robot_hw_rc" -ne 0 ]; then
   mark_warn "Cannot inspect official robot_hw launch defaults; rely on FCR launch override and manual checklist."
 elif printf '%s\n' "$robot_hw_output" | grep -Eq '/cmd_vel'; then
-  mark_warn "Official robot_hw launch exposes /cmd_vel as a default; real bringup must use the FCR launch override to /fcr_tron/cmd_vel."
+  mark_info "Official robot_hw launch exposes /cmd_vel as a default; real bringup must use the FCR launch override to /fcr_tron/cmd_vel."
 else
   mark_pass "Official robot_hw launch defaults do not visibly advertise /cmd_vel."
 fi
