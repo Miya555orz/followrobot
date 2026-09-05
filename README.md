@@ -28,6 +28,7 @@ https://github.com/Miya555orz/followrobot
 - [docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md](docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md)：Jetson USB SSH 连接指令，含 Mihomo/TUN 分流与 known_hosts 修复
 - [docs/ai/TRON1_JETSON_NETWORK_PREFLIGHT_2026-09-05.md](docs/ai/TRON1_JETSON_NETWORK_PREFLIGHT_2026-09-05.md)：Jetson 到 TRON1 的 network-only 连通性 PASS 记录
 - [docs/ai/TRON1_AFTERNOON_RD_TEST_PLAN_2026-09-05.md](docs/ai/TRON1_AFTERNOON_RD_TEST_PLAN_2026-09-05.md)：2026-09-05 下午只读/仿真研发与测试安排
+- [docs/ai/TRON1_JETSON_NETWORK_SETUP_REPEATABLE_2026-09-05.md](docs/ai/TRON1_JETSON_NETWORK_SETUP_REPEATABLE_2026-09-05.md)：Jetson 到 TRON1 的可复现 network-only 路由设置流程
 - [docs/ai/OPENCODE_USAGE.md](docs/ai/OPENCODE_USAGE.md)：OpenCode 命令行与使用指南
 
 ## 当前最新状态
@@ -161,6 +162,17 @@ TRON_LINK_IFACE=<Jetson接TRON1的有线接口名> ./tools/tron1_bringup/jetson_
 Jetson 直连 TRON1 的下一步仍是 network-only。PC 通过 USB/SSH 进入 Jetson，Jetson 用网线接 TRON1 后，只在 Jetson 上运行 `tools/tron1_bringup/jetson_tron1_network_preflight.sh` 或等价的 `ip/route/ping` 检查；不得启动 `robot_hw`、不得激活官方 controller、不得发布速度命令。
 
 `jetson_tron1_network_preflight.sh` 不检查 ROS 或 launch 默认值；它只证明 Jetson 到 TRON1 的直连路由与 ping。ROS/launch 默认安全值仍由 `tron1_real_motion_path_preflight.sh` 和 Step 1 前 A 门复查。
+
+如果 Jetson 重启后丢失 `10.192.1.0/24` 直连路由，优先用 dry-run 方式复核命令，再临时恢复：
+
+```bash
+cd /home/miya/follow_ws/src/fcr_ros2_3  # or the Jetson repo directory if different
+TRON_IFACE=enP8p1s0 ./tools/tron1_bringup/jetson_tron1_route_setup.sh --dry-run
+CONFIRM_TRON1_ROUTE_SETUP=yes TRON_IFACE=enP8p1s0 ./tools/tron1_bringup/jetson_tron1_route_setup.sh --apply
+TRON_LINK_IFACE=enP8p1s0 ./tools/tron1_bringup/jetson_tron1_network_preflight.sh
+```
+
+该 route setup helper 只配置 `ip link`/`ip addr`/`ip route`，不 source ROS、不启动 `robot_hw`、不激活 controller、不发布速度。若后续想改成 NetworkManager profile，先按 `docs/ai/TRON1_JETSON_NETWORK_SETUP_REPEATABLE_2026-09-05.md` 的 `autoconnect no` 方案审查。
 
 ### TRON1 实机分步验收路线
 

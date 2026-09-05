@@ -106,6 +106,7 @@ Active checkout:
         ├── install_jetson_camera_deps.sh
         ├── jetson_post_flash_setup.sh
         ├── jetson_rs2_preflight.sh
+        ├── jetson_tron1_route_setup.sh
         ├── jetson_tron1_network_preflight.sh
         ├── pc_jetson_network_preflight.sh
         ├── tron1_real_motion_path_preflight.sh
@@ -597,6 +598,7 @@ Current `can0`/`can1` rule:
 [✓] PC reached TRON1 default IP `10.192.1.2` through `enp0s31f6` after the Ethernet link came up on 2026-09-03.
 [✓] 2026-09-05 PC-side read-only preflight was rerun after direct Ethernet routing was restored: `10.192.1.2 dev enp0s31f6 src 10.192.1.200`, ping OK, `PASS=4 WARN=0 BLOCK=0 FAIL=0`. Evidence: `docs/ai/TRON1_PC_DIRECT_PREFLIGHT_2026-09-05.md`. No motion was attempted; the user was in a small office, so real motion remained paused.
 [✓] PC connects to Jetson over USB/SSH, Jetson connects to TRON1 over Ethernet, and `tools/tron1_bringup/jetson_tron1_network_preflight.sh` passed with `PASS=2 WARN=0 BLOCK=0 FAIL=0`.
+[✓] Jetson TRON1 route setup helper and docs exist: `tools/tron1_bringup/jetson_tron1_route_setup.sh` and `docs/ai/TRON1_JETSON_NETWORK_SETUP_REPEATABLE_2026-09-05.md`. Default is dry-run; dry-run, invalid-interface BLOCK, and no-confirm `--apply` BLOCK branches were locally verified. Jetson-side `--apply` has not yet been end-to-end verified; it still requires human `CONFIRM_TRON1_ROUTE_SETUP=yes` and only touches link/address/route.
 [✓] TRON1 official `pointfoot_node` connected to the real robot, loaded `WF_TRON1A` / `isaacgym`, and subscribed to `/fcr_tron/cmd_vel`.
 [✓] Remote controller axes/buttons were observed through SDK `SensorJoy`; `L1 + Y/triangle` starts `WheelfootController`.
 [✓] Physical motor switch/hardware action produced `Motor in damping mode`; official node then stopped the controller and exited.
@@ -710,9 +712,10 @@ Then:
 3. Implement `base_interface` / TRON1 adapter only after the interface design is reviewed.
    - Start with [docs/base_interface_tron1_adapter_design.md](base_interface_tron1_adapter_design.md).
    - Acceptance: stable command API, message/topic choices, adapter boundaries, and safety path are documented.
-4. Verify Jetson <-> TRON1 Ethernet topology without motor command.
+4. Preserve Jetson <-> TRON1 Ethernet topology as a reproducible network-only flow.
+   - Current evidence is PASS; if the Jetson route is lost after reboot, use `tools/tron1_bringup/jetson_tron1_route_setup.sh --dry-run`, then `CONFIRM_TRON1_ROUTE_SETUP=yes ... --apply`, then rerun `jetson_tron1_network_preflight.sh`.
    - Non-motion means route/IP/ping only. Starting or activating the official controller belongs to the protected Step 1 flow, not the network precheck.
-   - Acceptance: `tools/tron1_bringup/pc_jetson_network_preflight.sh` reports Ethernet carrier, route not captured by Mihomo/TUN, and SSH `SSH_OK`.
+   - Acceptance: PC -> Jetson is covered by `tools/tron1_bringup/pc_jetson_network_preflight.sh` reporting USB route not captured by Mihomo/TUN and SSH `SSH_OK`; Jetson -> TRON1 is covered by `tools/tron1_bringup/jetson_tron1_network_preflight.sh` reporting direct wired route/ping PASS.
 5. Re-run RS2 + Orbbec coexistence after a fresh boot if hardware is connected.
    - Acceptance: `/gimbal/status connected=true`, `can1 ERROR-ACTIVE`, depth topic about 10 Hz.
 6. Prepare first TRON1 real-motion checklist, but keep real motion disabled until Ethernet/SDK/no-bare-`/cmd_vel` checks pass.

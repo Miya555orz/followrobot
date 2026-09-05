@@ -25,9 +25,10 @@ Forbidden:
 
 ### 13:30-14:00 - Archive and Review Current Evidence
 
-- Save PC USB SSH quickstart evidence.
-- Save Jetson-to-TRON1 network-only PASS evidence.
-- Ask OpenCode to review the new evidence and confirm no P0/P1 wording risk.
+- Status: complete before continuing to the route-repeatability step.
+- PC USB SSH quickstart evidence is saved.
+- Jetson-to-TRON1 network-only PASS evidence is saved.
+- OpenCode review prompt is saved and should confirm no P0/P1 wording risk.
 
 Exit condition:
 
@@ -40,8 +41,10 @@ Real motion is still paused.
 
 ### 14:00-14:45 - Make the Network Setup Repeatable
 
-- Decide whether to keep temporary `ip route replace` commands or add a documented NetworkManager profile.
-- If changing NetworkManager, keep it route-only and document rollback.
+- Status: implement as a temporary route helper plus a documented optional NetworkManager profile.
+- Temporary helper: `tools/tron1_bringup/jetson_tron1_route_setup.sh`.
+- Documentation: `docs/ai/TRON1_JETSON_NETWORK_SETUP_REPEATABLE_2026-09-05.md`.
+- If changing NetworkManager later, keep it route-only and document rollback.
 - Do not make this an auto-start controller path.
 
 Exit condition:

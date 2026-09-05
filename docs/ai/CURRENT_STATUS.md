@@ -29,7 +29,9 @@
 - PC 侧 Jetson 网络预检脚本存在：`tools/tron1_bringup/pc_jetson_network_preflight.sh`。
 - TRON1 只读实机运动路径预检脚本存在：`tools/tron1_bringup/tron1_real_motion_path_preflight.sh`；它会把代理/TUN/container/policy-table 路由、非有线形态接口、与可选 `TRON_LINK_IFACE` 不一致的接口，或 `TRON_IP` ping 不通判为 `BLOCK` 并返回非零。官方 `robot_hw` 默认 `/cmd_vel` 只打印 INFO，真机仍必须用 FCR override 到 `/fcr_tron/cmd_vel`。
 - Jetson 侧 TRON1 network-only 预检脚本存在：`tools/tron1_bringup/jetson_tron1_network_preflight.sh`；只检查 Jetson 到 TRON1 的 route/ping，不启动 ROS、`robot_hw` 或 controller。
+- Jetson 侧 TRON1 临时路由设置脚本存在：`tools/tron1_bringup/jetson_tron1_route_setup.sh`；默认 dry-run，本机已验证 dry-run、错误接口 BLOCK 与无确认 `--apply` BLOCK 分支；Jetson 上 `--apply` 尚未端到端验证，后续需人工设置 `CONFIRM_TRON1_ROUTE_SETUP=yes` 后执行，且只执行 `ip link`/`ip addr`/`ip route` 并复查 route/ping。
 - 2026-09-05 Jetson 到 TRON1 network-only PASS 已记录：`docs/ai/TRON1_JETSON_NETWORK_PREFLIGHT_2026-09-05.md`；`10.192.1.2 dev enP8p1s0 src 10.192.1.200`，ping 成功，脚本 `PASS=2 WARN=0 BLOCK=0 FAIL=0`。
+- 2026-09-05 Jetson 到 TRON1 可复现网络设置流程已记录：`docs/ai/TRON1_JETSON_NETWORK_SETUP_REPEATABLE_2026-09-05.md`。
 - 2026-09-05 PC 直连 TRON1 只读结果已记录：`docs/ai/TRON1_PC_DIRECT_PREFLIGHT_2026-09-05.md`。
 - 2026-09-05 下午计划已记录：`docs/ai/TRON1_AFTERNOON_RD_TEST_PLAN_2026-09-05.md`。
 - TRON1 迁移 gate report 存在：`docs/tron1_migration_gate_report_2026-09-03.md`。

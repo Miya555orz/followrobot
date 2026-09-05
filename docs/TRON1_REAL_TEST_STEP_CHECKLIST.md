@@ -180,10 +180,13 @@ TRON_LINK_IFACE=<Jetson接TRON1的有线接口名> ./tools/tron1_bringup/jetson_
 如果 Jetson 的 TRON1 有线口还没有 `10.192.1.x/24` 地址，只允许临时配置网络，不启动 ROS 或 controller：
 
 ```bash
-sudo ip link set <iface> up
-sudo ip addr add 10.192.1.200/24 dev <iface> 2>/dev/null || true
-sudo ip route replace 10.192.1.0/24 dev <iface> src 10.192.1.200 metric 10
+cd /home/miya/follow_ws/src/fcr_ros2_3  # or the Jetson repo directory if different
+TRON_IFACE=<iface> ./tools/tron1_bringup/jetson_tron1_route_setup.sh --dry-run
+CONFIRM_TRON1_ROUTE_SETUP=yes TRON_IFACE=<iface> ./tools/tron1_bringup/jetson_tron1_route_setup.sh --apply
+TRON_LINK_IFACE=<iface> ./tools/tron1_bringup/jetson_tron1_network_preflight.sh
 ```
+
+这个 helper 只配置 `ip link` / `ip addr` / `ip route` 并复查 route/ping；它不 source ROS、不启动 controller、不发布速度。
 
 期望：
 
