@@ -1,10 +1,21 @@
 # followrobot / fcr_ros2_3
 
-![followrobot ROS2 system architecture](docs/figures/system_architecture.svg)
+## What Is followrobot
 
 基于 ROS 2 Humble 的智能跟拍机器人项目：目标是在 Jetson Orin Nano 上运行 Sony/Orbbec 感知、DJI RS2 云台控制，并逐步接入 LimX TRON1 EDU 双轮足底盘。
 
 一句话历史：本仓库源自学长的 FCR 视觉伺服项目，原底盘是 LEKIWI/三全向轮；当前开发重点已经切换到 `Miya555orz/followrobot` 的 Jetson + RS2 + Orbbec + TRON1 迁移。
+
+## Current Status
+
+- `[VERIFIED]` Jetson + Sony UVC + DJI RS2 已经协同运行，并完成真实云台跟拍；底盘当时未参与运动。
+- `[CURRENT]` TRON1 处于仿真/安全链路收敛阶段：FCR limiter、mode manager、timeout、estop 语义在软件层已记录；`WF_TRON1A + isaacgym` Gazebo 零命令漂移仍作为 blocker 保留。
+- `[NEXT]` 下一阶段只能进入 TRON1 受控实机测试准备：先 support-frame/架空、再草坪低风险；在 runbook 和 A-10 人工门完成前，真实底盘运动仍暂停。
+- `[UNVERIFIED]` 官网“按住左右摇杆全局急停”尚未证明会在 FCR 连续发布 `/fcr_tron/cmd_vel` 时锁存并覆盖 FCR，所以不能作为首次实机测试的唯一急停。
+
+## System Architecture
+
+![followrobot ROS2 system architecture](docs/figures/system_architecture.svg)
 
 当前活跃仓库：
 
@@ -24,6 +35,10 @@ https://github.com/Miya555orz/followrobot
 - [docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md](docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md)：47 组 Gazebo/robot_hw_sim 安全验收记录
 - [docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md](docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md)：TRON1 官方 controller/SDK stop、damping、zero-cmd 语义摸底
 - [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](docs/TRON1_REAL_TEST_STEP_CHECKLIST.md)：TRON1 从 PC 直连到 Jetson 云台协同的实机分步验收清单
+- [docs/TRON1_REAL_TEST_RUNBOOK.md](docs/TRON1_REAL_TEST_RUNBOOK.md)：未来架空/支架和草坪低风险测试 runbook，未验证命令显式禁止执行
+- [docs/TRON1_FCR_REMOTE_ESTOP_SEMANTICS_2026-09-05.md](docs/TRON1_FCR_REMOTE_ESTOP_SEMANTICS_2026-09-05.md)：FCR 运行时手柄左右摇杆急停覆盖关系证据链
+- [docs/TRON1_GAZEBO_SAFETY_SEMANTICS_FREEZE_2026-09-05.md](docs/TRON1_GAZEBO_SAFETY_SEMANTICS_FREEZE_2026-09-05.md)：Gazebo zero-cmd/timeout/node-crash/damping 语义冻结
+- [docs/TRON1_PHASE_FREEZE_2026-09-05.md](docs/TRON1_PHASE_FREEZE_2026-09-05.md)：2026-09-05 TRON1 non-motion 阶段冻结记录
 - [docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md](docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md)：第十五轮审查后下一阶段计划
 - [docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md](docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md)：Jetson USB SSH 连接指令，含 Mihomo/TUN 分流与 known_hosts 修复
 - [docs/ai/TRON1_JETSON_NETWORK_PREFLIGHT_2026-09-05.md](docs/ai/TRON1_JETSON_NETWORK_PREFLIGHT_2026-09-05.md)：Jetson 到 TRON1 的 network-only 连通性 PASS 记录
@@ -31,7 +46,7 @@ https://github.com/Miya555orz/followrobot
 - [docs/ai/TRON1_JETSON_NETWORK_SETUP_REPEATABLE_2026-09-05.md](docs/ai/TRON1_JETSON_NETWORK_SETUP_REPEATABLE_2026-09-05.md)：Jetson 到 TRON1 的可复现 network-only 路由设置流程
 - [docs/ai/OPENCODE_USAGE.md](docs/ai/OPENCODE_USAGE.md)：OpenCode 命令行与使用指南
 
-## 当前最新状态
+## Hardware Snapshot
 
 TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过猛；当前策略改为：真机运动暂停，先回 Gazebo 仿真、遥控器熟悉和安全链路复核。
 
@@ -57,6 +72,7 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - 第十五轮建议已转成下一阶段计划：先做上装重量/重心记录、Jetson 到 TRON1 non-motion 网络检查、起立稳定等待 `N` 秒的规程记录；non-motion 网络检查只到链路/IP/ping，不激活官方 controller；目标速度前馈、限速分档、depth fusion 外推先走设计/仿真审查，不直接改真机输出。
 - 物理 motor switch / hardware action 会触发 `Motor in damping mode`。
 - FCR 链路中的“遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆；手柄只保留官方控制器启停、物理急停/阻尼备份。
+- 官网“按住左右摇杆全局急停”尚未在 FCR 连续命令路径中验证覆盖权，当前结论是 `[UNVERIFIED]`；详见 [docs/TRON1_FCR_REMOTE_ESTOP_SEMANTICS_2026-09-05.md](docs/TRON1_FCR_REMOTE_ESTOP_SEMANTICS_2026-09-05.md)。
 - TRON1 不允许裸接旧 `/cmd_vel`；安全链路必须是 `/fcr/cmd_vel_stamped -> tron1_safety_limiter -> /fcr_tron/cmd_vel`。
 - `WF_TRON1A + isaacgym` 官方 Gazebo pose 仍有零命令漂移/纯 yaw 横移；当前处理方式是把它保留为官方 sim-policy/physics blocker 并要求人工确认，不把 Gazebo pose 当作真机运动 PASS 条件。
 
@@ -125,7 +141,7 @@ TRON1 真机
   Full Person Following          ███░░░░░░░  30%  视觉/云台 ready，TRON 真机安全未过
 ```
 
-## 当前推荐启动入口
+## Quick Start
 
 ### OpenCode 低风险辅助
 
@@ -193,6 +209,8 @@ export ROBOT_TYPE=WF_TRON1A
 ros2 run limxsdk_lowlevel pf_sensorjoy_monitor 10.192.1.2
 ```
 
+## Simulation
+
 ### TRON1 仿真优先
 
 ```bash
@@ -223,17 +241,19 @@ ros2 launch bringup_pkg fcr_bringup.launch.py \
   can_interface:=can1
 ```
 
-## 安全原则
+## Safety
 
 - 真机 TRON1 当前暂停运动；先回 Gazebo。
 - Gazebo 只用于验证 launch、topic safety、limiter、timeout 和基础方向；`WF_TRON1A + isaacgym` pose 漂移尚未解决，不能替代真机低速安全验收。
+- Gazebo 安全语义冻结见 [docs/TRON1_GAZEBO_SAFETY_SEMANTICS_FREEZE_2026-09-05.md](docs/TRON1_GAZEBO_SAFETY_SEMANTICS_FREEZE_2026-09-05.md)：zero-cmd 只是零期望速度，timeout/lost-command 只证明命令意图归零，不证明物理阻尼。
 - 不让 TRON1 订阅旧 `/cmd_vel`。
 - 默认 `enable_motion=false`。
 - `L1 + X` 不是泄力；物理 motor switch / hardware action 才观察到 damping。
+- 左右摇杆“全局急停”对 FCR 运行时连续命令的覆盖权仍是 `[UNVERIFIED]`，不能作为唯一急停。
 - 即使 read-only gate 无 `FAIL/BLOCK`，结论也只是可进入架空/支架、`enable_motion=false` 起步、极低速短脉冲分步测试，不是 100% 安全保证，也不是地面自由运动许可。
-- 下一次真机必须有人扶稳/架空或支架、空旷低速、物理急停可触达，并按 [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](docs/TRON1_REAL_TEST_STEP_CHECKLIST.md) 逐步放行。
+- 下一次真机必须有人扶稳/架空或支架、空旷低速、物理急停可触达，并按 [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](docs/TRON1_REAL_TEST_STEP_CHECKLIST.md) 和 [docs/TRON1_REAL_TEST_RUNBOOK.md](docs/TRON1_REAL_TEST_RUNBOOK.md) 逐步放行。
 
-## 未来优化方向
+## Roadmap
 
 工程优先：
 

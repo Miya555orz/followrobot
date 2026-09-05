@@ -1,6 +1,6 @@
 # followrobot / fcr_ros2_3 -> TRON1 EDU 工程交接文档
 
-最后更新：2026-09-04，Asia/Shanghai
+最后更新：2026-09-05，Asia/Shanghai
 
 当前活跃 GitHub 仓库：<https://github.com/Miya555orz/followrobot>
 
@@ -55,7 +55,8 @@ Design intent:
 - `[VERIFIED]` Sony ZV-E10M2：UVC 模式枚举为 `/dev/video8`，发布 `/sony/image_raw`，已通过 YOLO/person detection、tracking、aim-target smoke test 和保守中速 RS2 闭环跟拍；专有 CRSDK node 仍未接入。
 - `[VERIFIED]` 2026-09-02 Sony->RS2 实验室最终 profile 使用 `gimbal_visual_servo_low_speed_lab.yaml`；方向确认正常后，yaw 限制 `0.12 rad/s`，pitch 限制 `0.075 rad/s`。当天结束时相关实验进程均已停止。
 - `[VERIFIED]` 轻量 live viewer：`tools/visualization/ros_image_mjpeg_viewer.py` 可在 `http://<JETSON_IP>:8088/` 提供 Sony raw 和 OpenCV debug 图像。
-- `[PARTIAL]` TRON1 EDU：目标机器人底盘。2026-09-03 已观察到 PC Ethernet、SDK 连接、遥控器输入和 controller 激活，但由于首次激活体感过猛，真实运动暂停；后续先继续仿真。
+- `[PARTIAL]` TRON1 EDU：目标机器人底盘。2026-09-03 已观察到 PC Ethernet、SDK 连接、遥控器输入和 controller 激活，但由于首次激活体感过猛，真实运动暂停；2026-09-05 已完成 PC USB SSH 到 Jetson 与 Jetson Ethernet 到 TRON1 的 network-only PASS，后续仍先走 runbook 的架空/支架门。
+- `[UNVERIFIED]` 官网“按住左右摇杆全局急停”尚未证明会在 FCR 连续发布 `/fcr_tron/cmd_vel` 时锁存并覆盖 FCR；当前不能作为首次实机测试唯一急停。证据链见 `docs/TRON1_FCR_REMOTE_ESTOP_SEMANTICS_2026-09-05.md`。
 
 ## 2. Current code and directories
 
@@ -85,6 +86,10 @@ Active checkout:
 │   ├── tron1_external_repo_note.md
 │   ├── tron1_sim_test_framework.md
 │   ├── tron1_sim_test_log.csv
+│   ├── TRON1_FCR_REMOTE_ESTOP_SEMANTICS_2026-09-05.md
+│   ├── TRON1_GAZEBO_SAFETY_SEMANTICS_FREEZE_2026-09-05.md
+│   ├── TRON1_PHASE_FREEZE_2026-09-05.md
+│   ├── TRON1_REAL_TEST_RUNBOOK.md
 │   └── figures/system_architecture.svg|png
 ├── src/
 │   ├── vision_servo_msgs/
@@ -305,7 +310,7 @@ timedatectl
 Current verified bench topology:
 
 ```text
-                       Ethernet / SSH
+                      USB SSH or Ethernet SSH
 PC / laptop ─────────────────────────────────▶ Jetson Orin Nano CLB
                                                     │
                                                     ├── USB3 ── Orbbec Gemini 335
@@ -317,13 +322,14 @@ PC / laptop ──────────────────────�
                                                     │
                                                     ├── [UNVERIFIED] USB ── Sony camera
                                                     │
-                                                    └── [UNVERIFIED] Ethernet ── TRON1 EDU controller
+                                                    └── [VERIFIED network-only] Ethernet ── TRON1 EDU controller
 ```
 
 Important:
 
 - `[VERIFIED]` Current RS2 uses external USB-CAN `can1`.
 - `[VERIFIED]` Jetson board `can0` exists but is not the current RS2 wiring path.
+- `[VERIFIED]` 2026-09-05 Jetson `enP8p1s0` to TRON1 `10.192.1.2` route/ping passed network-only preflight. This did not start ROS, `robot_hw`, controller, or any velocity publisher.
 
 ## 6. Device startup manuals
 
@@ -533,7 +539,7 @@ enable_motion=false until explicitly enabled
 max_linear_x=0.03 m/s
 max_angular_z=0.10 rad/s
 enable_lateral=false
-timeout ~= 0.30 s
+timeout ~= 0.25 s
 ```
 
 Do not send real motor commands until TRON1 is physically protected and e-stop behavior is verified.
@@ -599,10 +605,14 @@ Current `can0`/`can1` rule:
 [✓] 2026-09-05 PC-side read-only preflight was rerun after direct Ethernet routing was restored: `10.192.1.2 dev enp0s31f6 src 10.192.1.200`, ping OK, `PASS=4 WARN=0 BLOCK=0 FAIL=0`. Evidence: `docs/ai/TRON1_PC_DIRECT_PREFLIGHT_2026-09-05.md`. No motion was attempted; the user was in a small office, so real motion remained paused.
 [✓] PC connects to Jetson over USB/SSH, Jetson connects to TRON1 over Ethernet, and `tools/tron1_bringup/jetson_tron1_network_preflight.sh` passed with `PASS=2 WARN=0 BLOCK=0 FAIL=0`.
 [✓] Jetson TRON1 route setup helper and docs exist: `tools/tron1_bringup/jetson_tron1_route_setup.sh` and `docs/ai/TRON1_JETSON_NETWORK_SETUP_REPEATABLE_2026-09-05.md`. Default is dry-run; dry-run, invalid-interface BLOCK, and no-confirm `--apply` BLOCK branches were locally verified. Jetson-side `--apply` has not yet been end-to-end verified; it still requires human `CONFIRM_TRON1_ROUTE_SETUP=yes` and only touches link/address/route.
+[✓] Gazebo safety semantics freeze added: `docs/TRON1_GAZEBO_SAFETY_SEMANTICS_FREEZE_2026-09-05.md`. The command layer is understood; zero-command pose drift remains a blocker and must not be hidden with damping/friction tweaks.
+[✓] Future real-test runbook added: `docs/TRON1_REAL_TEST_RUNBOOK.md`. Any `[UNVERIFIED - DO NOT EXECUTE]` step is documentation only.
+[✓] Phase freeze added: `docs/TRON1_PHASE_FREEZE_2026-09-05.md`; rollback point before this freeze is `9c63c11`.
 [✓] TRON1 official `pointfoot_node` connected to the real robot, loaded `WF_TRON1A` / `isaacgym`, and subscribed to `/fcr_tron/cmd_vel`.
 [✓] Remote controller axes/buttons were observed through SDK `SensorJoy`; `L1 + Y/triangle` starts `WheelfootController`.
 [✓] Physical motor switch/hardware action produced `Motor in damping mode`; official node then stopped the controller and exited.
 [!] `L1 + X` is software `stopController()` + `abort()`, not damping/torque release.
+[!] Left/right stick "global e-stop" is still `[UNVERIFIED]` for FCR runtime command override; it cannot be the only e-stop for first support-frame or lawn testing.
 [!] Real motion is paused. Continue with remote-controller familiarization and Gazebo/simulation first. See `docs/TRON1_REMOTE_AND_SIM_SAFETY.md`.
 [✓] Sony camera UVC stream, perception smoke test, and low-speed RS2 follow verified; CRSDK node still unbuilt.
 [✓] Jetson <-> TRON1 real Ethernet network-only verified; no ROS/controller/motion was started.
@@ -684,6 +694,7 @@ Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 - `[VERIFIED]` 自动 Gazebo 验收脚本默认使用独立 `ROS_DOMAIN_ID=83`；Python 脚本是 domain 单一真源，支持 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，拒绝空值、`0`、前导零、非十进制或越界值，并在发布验收速度前检查 `/fcr_tron/cmd_vel` graph。
 - `[VERIFIED]` `--with-gazebo` 验收用独立 60 秒上限等待 `/gazebo` 节点存在；启动后的 graph 守卫只允许 probe 和本次 Gazebo `robot_hw_node` 订阅 `/fcr_tron/cmd_vel`。
 - `[BLOCKER]` `WF_TRON1A + isaacgym` Gazebo 仍有零速度命令漂移，纯 yaw 命令也会产生横移。2026-09-03 轻量 controller wheel-hold、URDF friction/contact、micro-yaw、`RL_TYPE=isaaclab` 检查都没有解决；实验性改动已撤回/恢复。应把它视作官方 sim-policy/physics blocker，不是 FCR limiter bug。在官方 SDK/controller/hardware stop 路径确认前，不运行 TRON1 真实运动。
+- `[BLOCKER]` 官网左右摇杆“全局急停”对 FCR 连续命令覆盖权仍是 `[UNVERIFIED]`。在 `docs/TRON1_FCR_REMOTE_ESTOP_SEMANTICS_2026-09-05.md` 的证据链升级为 `[VERIFIED YES]` 前，它只能作为待验证备份，不能替代物理 motor switch / hardware stop。
 - `[UPDATED]` 真机前 A-10 不再接受单个 `A10_CONFIRMED=yes` 作为充分证据；read-only gate 现在要求逐项确认物理停止可触达、damping 证据、`L1+X` 语义、controller watchdog 后果、Gazebo 零漂 blocker 和分步 checklist。
 - `[UPDATED]` read-only gate 的进程扫描区分非预期残留和预期 live bringup；只有显式设置 `TRON1_LIVE_BRINGUP_INTENDED=yes` 时，运行中的 limiter/mode manager/官方 controller 才会进入 graph 检查路径。
 - `[UPDATED]` read-only gate 仍会把 Gazebo/robot_hw_sim/steering GUI/裸 topic pub 视为非预期进程；graph 中官方型节点名只能证明拓扑，不能替代硬件连接的现场确认。

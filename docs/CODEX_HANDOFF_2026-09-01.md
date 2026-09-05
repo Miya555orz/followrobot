@@ -2,6 +2,8 @@
 
 Date: 2026-09-01
 
+> 2026-09-05 safety note: this is a historical handoff prompt. Use `docs/HANDOFF.md`, `docs/ai/CURRENT_STATUS.md`, and `docs/TRON1_REAL_TEST_RUNBOOK.md` for current TRON1 safety state. Do not copy old real-motion instructions from this file into hardware testing.
+
 请你作为资深 ROS 2/C++/机器人系统工程师，继续接手 Miya 的跟拍机器人迁移项目。用户 Linux/ROS2 经验较少，需要你给出非常具体、可复制、低风险的命令行步骤，并在涉及真机运动、刷机、磁盘、CAN 通信时优先保证安全。
 
 ## 项目目标

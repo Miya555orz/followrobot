@@ -2,6 +2,8 @@
 
 日期：2026-09-04
 
+> 2026-09-05 安全注记：本文说明 FCR mode manager / limiter 软件语义，不能当作真实地面运动许可。后续真机命令必须从 `docs/TRON1_REAL_TEST_RUNBOOK.md` 进入；官网左右摇杆“全局急停”对 FCR 连续命令覆盖权仍为 `[UNVERIFIED]`。
+
 适用范围：TRON1 EDU / `WF_TRON1A`、FCR ROS 2 Humble、Gazebo 仿真、后续 Jetson/真机低速验收。
 
 ## 1. 新增功能

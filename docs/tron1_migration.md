@@ -1,5 +1,7 @@
 # TRON1 EDU 底盘迁移说明
 
+> 2026-09-05 安全注记：本文包含历史仿真和早期迁移命令，不是当前真机运动 runbook。真实 TRON1 后续只按 `docs/TRON1_REAL_TEST_RUNBOOK.md` 和 `docs/TRON1_REAL_TEST_STEP_CHECKLIST.md` 分步执行；任何 `[UNVERIFIED - DO NOT EXECUTE]` 或旧 `enable_motion:=true` 示例不得单独复制到真机。
+
 本文记录将学长的 `fcr_ros2_3` 跟拍项目从三全向轮底盘迁移到逐际动力 TRON1 EDU 双轮足底盘的当前工程状态、启动链路和第一次实机测试前检查项。
 
 > 安全原则：TRON1 EDU 体积和惯量明显大于原三全向轮底盘，不能让 FCR 跟拍算法直接发布到真机 `/cmd_vel`。必须经过 `tron1_safety_limiter`，并且第一次实机只允许低速、短距离、可急停测试。

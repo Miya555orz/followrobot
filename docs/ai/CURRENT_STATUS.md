@@ -7,6 +7,7 @@
 - Jetson 控制 TRON1：约 60%。FCR 命令路径、历史 PC 侧 TRON Ethernet/SDK、47/47 组 Gazebo 安全验收、estop 样本新鲜度 fail-closed、真机误启动守卫都已经就位；2026-09-05 PC USB SSH 与 Jetson <-> TRON1 Ethernet network-only 检查已 PASS。这里的 PASS 只证明链路/IP/ping，不激活官方 controller；真实运动仍暂停，之后才进入架空/支架低速实机验收。
 - Jetson 控制 RS2 云台跟拍：接近可用。Sony UVC -> perception/tracking -> RS2 over `can1` 已经在 Jetson 上跑通过；CRSDK 仍是可选且未验证。
 - Jetson 控制 RS2 跟拍 + TRON1 底盘：还不能做真实全链路跟拍。TRON1 仍需保持在仿真和低速安全验收阶段，底盘只允许后续作为慢速 yaw / 距离修正，不应和云台抢同一个误差。
+- FCR 运行时手柄左右摇杆急停覆盖关系：`[UNVERIFIED]`。官网称其为全局急停，但本地 ROS2 代码只证明 `L1 + Y` 启动 controller、`L1 + X` 停止 controller 并 abort，未证明左右摇杆按下会锁存并压过 FCR 连续 `/fcr_tron/cmd_vel`；详见 `docs/TRON1_FCR_REMOTE_ESTOP_SEMANTICS_2026-09-05.md`。
 
 当前姿态：TRON1 真机运动暂停。继续以遥控器熟悉、Gazebo 仿真、安全链路和官方 controller 语义摸底为优先。
 
@@ -21,9 +22,12 @@
 - FCR 侧 `robot_platform_pkg`、`teleop_control_pkg`、`bringup_pkg` 可以在本机成功 build。
 - TRON1 侧 `robot_controllers` 和 `robot_hw` 可以在本机成功 build。
 - TRON1 safety mode acceptance 已于 2026-09-04 通过 47/47 组 Gazebo/robot_hw_sim 验收；验收 Python 脚本默认使用独立 `ROS_DOMAIN_ID=83`，可由 `FCR_TRON_ACCEPTANCE_ROS_DOMAIN_ID` 或 `--ros-domain-id` 覆盖，拒绝空值/0/前导零/非十进制/越界值，并在发布验收速度前检查 `/fcr_tron/cmd_vel` graph，`--with-gazebo` 用独立 60 秒上限等待 `/gazebo` 节点。
+- Gazebo 安全语义已冻结到 `docs/TRON1_GAZEBO_SAFETY_SEMANTICS_FREEZE_2026-09-05.md`：FCR limiter 输出层和 stale-command 归零是 PASS，`WF_TRON1A + isaacgym` zero-cmd pose drift 不是 PASS，继续作为 official sim-policy/physics blocker。
 - TRON1 official sim launch 默认 `start_steering_gui=false`，FCR 安全链测试不会再自动启动 `rqt_robot_steering`。
 - FCR 的“遥控/连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆。Jetson 测试时，控制台应跑在 Jetson 上，PC 只通过 SSH 输入。
 - TRON1 实机分步验收清单见 `docs/TRON1_REAL_TEST_STEP_CHECKLIST.md`。
+- 未来实机测试 runbook 见 `docs/TRON1_REAL_TEST_RUNBOOK.md`；未验证步骤均标为 `[UNVERIFIED - DO NOT EXECUTE]`，不得从聊天里临时拼真实运动命令。
+- 当前阶段冻结记录见 `docs/TRON1_PHASE_FREEZE_2026-09-05.md`。
 - 当前 DJI RS2 桌面/Jetson bench 接线使用 external USB-CAN `can1`。
 - Jetson USB SSH quickstart 已记录：`docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md`。2026-09-05 观察到 `192.168.55.1` 会被 `Mihomo table 2022` 捕获；修正后走 `enx964a2d124484 src 192.168.55.100`，ping 成功。
 - PC 侧 Jetson 网络预检脚本存在：`tools/tron1_bringup/pc_jetson_network_preflight.sh`。
@@ -59,3 +63,4 @@ TRON1 EDU 双轮足底盘二次开发和整机系统集成。
 - `enable_motion=false` 不能约束官方 controller 自己的起立/进入 WALK；所以官方 controller 启动或激活不属于 non-motion 网络检查。
 - 当前 TRON1 安全状态：FCR limiter 的限幅、加速度限制、输入 timeout、estop 样本新鲜度、clean-shutdown zero burst 已在 topic 输出层通过；官方 controller watchdog 会清理陈旧速度意图。但 `WF_TRON1A + isaacgym` Gazebo 仍有零命令漂移和纯 yaw 横移。此前轻量 controller/URDF/friction/isaaclab 实验没有解决并已撤回/恢复，应把它视作官方 sim-policy blocker，而不是 FCR limiter bug。
 - 不要在 controller/SDK/hardware stop 行为弄清楚前运行真实 TRON1 自动跟拍。
+- 不能把官网左右摇杆“全局急停”当作已验证的 FCR 运行时覆盖急停；在当前固件/当前 FCR launch path 上验证前，它只能作为待验证备份路径。

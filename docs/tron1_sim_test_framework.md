@@ -1,5 +1,7 @@
 # TRON1 仿真测试框架
 
+> 2026-09-05 安全注记：本文仅用于仿真和软件验收。Gazebo `WF_TRON1A + isaacgym` zero-command pose drift 仍是 blocker；仿真 PASS 不能替代真实 support-frame/架空测试。
+
 本文用于组织后续大量 TRON1 迁移仿真测试。目标不是一次把自动跟拍跑起来，而是分层验收：每一层通过后，才允许进入下一层。
 
 当前阶段建议采用“由小到大、由假到真、由话题到 Gazebo、由开环到闭环”的测试顺序：

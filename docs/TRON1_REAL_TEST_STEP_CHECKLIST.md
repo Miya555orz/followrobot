@@ -10,6 +10,7 @@
 
 - FCR 链路里的“遥控”是电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆。
 - TRON 手柄只保留两个用途：启动/停止官方控制器、物理急停/阻尼备份。
+- 官网左右摇杆“全局急停”在 FCR 连续命令路径中的覆盖权仍为 `[UNVERIFIED]`；不能作为首次架空/支架或草坪测试的唯一急停。
 - FCR 测试时不使用手柄推杆控制底盘；不要让手柄摇杆绕过 limiter。
 - TRON1 官方控制器必须订阅 `/fcr_tron/cmd_vel`。
 - `/fcr_tron/cmd_vel` 唯一发布者必须是 `tron1_safety_limiter`。
@@ -258,6 +259,7 @@ TRON1 底盘：只负责长期 yaw / 距离补偿
 | TRON 手柄 `L1 + 三角/Y` | 启动官方 `WheelfootController` | 否，仅官方控制器启停 |
 | TRON 手柄 `L1 + X` | 官方软件 `stopController()` + `abort()` | 否，不等同于泄力/阻尼 |
 | 物理 motor switch / 硬件停止 | 已观察到 `Motor in damping mode` | 作为实机安全备份 |
+| 手柄左右摇杆按下 | 官网图示为全局急停；FCR 覆盖权未验证 | 只能作为待验证备份，不能作为唯一急停 |
 | 手柄摇杆 | 官方 joystick 路径，可能发布裸 `/cmd_vel` | FCR 测试禁止使用 |
 
 ## 每步通过标准
@@ -283,3 +285,5 @@ IMU/现场稳定观察：
 ```
 
 只有上一项全部可解释，才进入下一项。这里慢一点，是为了后面能大胆一点。  
+
+完整未来测试 runbook 见 `docs/TRON1_REAL_TEST_RUNBOOK.md`；未验证步骤中的命令一律按 `[UNVERIFIED - DO NOT EXECUTE]` 处理。
