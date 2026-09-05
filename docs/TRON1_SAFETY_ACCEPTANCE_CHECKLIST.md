@@ -65,6 +65,7 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 - `/safety/estop_state` 是 FCR 聚合软件急停状态，不代表 TRON1 物理 motor switch；`/tron1/limiter_clear_estop` 是受控 ROS_DOMAIN 内的 limiter 软件恢复入口，不能替代物理急停/阻尼。
 - 真机前 A 门会打印 git `HEAD`，并在工作区 dirty 时保持 `BLOCK`，避免用未提交代码给出最终许可。
 - A-02/A-03 是 ROS graph 级检查；节点名匹配只能证明拓扑形态，不能替代现场确认官方 controller 确实连接到 TRON1 硬件。
+- 第十五轮建议的起立稳定门先作为规程执行：`L1 + 三角/Y` 激活官方 controller 后，保持 FCR `enable_motion=false`，等待并记录 `N` 秒稳定观察；当前没有 TRON1 IMU/姿态输入可自动证明稳定，因此不写自动放行代码。
 
 A-10 逐项确认变量：
 
@@ -127,14 +128,15 @@ export A10_REVIEWED_AT="$(date -Is)"
 1. 真机被可靠支撑，或轮子离地。
 2. 确认硬件阻尼 / 急停动作可立即触达。
 3. 先以 `enable_motion=false` 启动。
-4. 确认上游输入非零时，`/fcr_tron/cmd_vel` 仍保持 0。
-5. 只允许一次短脉冲：
+4. 若已用 `L1 + 三角/Y` 激活官方 controller，先等待并记录起立/姿态稳定 `N` 秒；初始建议 `N=10s`，实际值由架空/支架 IMU 和现场观察决定。
+5. 确认上游输入非零时，`/fcr_tron/cmd_vel` 仍保持 0。
+6. 只允许一次短脉冲：
    - `linear.x = 0.01~0.02 m/s`
    - 持续 `0.3~0.5 s`
-6. 停止输入并验证停止。
-7. 测试软件 estop。
-8. 测试物理停止/阻尼。
-9. 最后才测试极小 yaw：
+7. 停止输入并验证停止。
+8. 测试软件 estop。
+9. 测试物理停止/阻尼。
+10. 最后才测试极小 yaw：
    - `angular.z = 0.03~0.05 rad/s`
 
 不要从 Sony + RS2 + TRON 全链路跟拍开始。

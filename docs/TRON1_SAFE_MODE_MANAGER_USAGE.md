@@ -100,6 +100,8 @@ TRON1 official controller
 
 默认设计：只有 `TRON_FOLLOW` 授权底盘运动。
 
+现场规程还要求：官方 controller 经 `L1 + 三角/Y` 激活后，FCR 继续保持 `enable_motion=false`，等待并记录起立/姿态稳定 `N` 秒；初始建议 `N=10s`，最终以架空/支架 IMU 和现场观察为准。当前仓库没有 TRON1 IMU/姿态状态输入，因此不把“等 N 秒”写成自动安全证明。
+
 ## 5. 模式请求
 
 请求 topic：
@@ -257,6 +259,8 @@ Python 验收脚本是 `ROS_DOMAIN_ID` 的单一真源：默认读取 `FCR_TRON_
 ## 8. 47 组验收覆盖内容
 
 当前脚本实际跑 47 组，超过“至少 20 组”的要求。
+
+第十五轮建议中的目标速度前馈、限速分档和 depth fusion 外推都可能改变真实底盘输出；它们先进入设计/仿真审查，不直接进入真机链路。当前验收仍保持 first-real-test 默认限幅 `max_linear_x=0.03`、`max_angular_z=0.10`。
 
 注意：真机进程/真机网络守卫、启动前 `/fcr_tron/cmd_vel` graph 预扫描、启动后 ROS graph 订阅者守卫都发生在主运动用例前；如果守卫发现真实 `pointfoot_node`、`robot_hw_node`、可达 TRON1 网络、启动前已有 `/fcr_tron/cmd_vel` endpoint，或非 Gazebo 模式下 `/fcr_tron/cmd_vel` 除 probe 外已有订阅者，脚本会在发布任何验收速度前直接拒绝运行。`--with-gazebo` 还会等待 graph 中出现 `/gazebo`，并且只把本次官方仿真的 `robot_hw_node` 作为允许的 TRON 订阅者。
 

@@ -677,6 +677,7 @@ Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 - `[UPDATED]` 真机前 A-10 不再接受单个 `A10_CONFIRMED=yes` 作为充分证据；read-only gate 现在要求逐项确认物理停止可触达、damping 证据、`L1+X` 语义、controller watchdog 后果、Gazebo 零漂 blocker 和分步 checklist。
 - `[UPDATED]` read-only gate 的进程扫描区分非预期残留和预期 live bringup；只有显式设置 `TRON1_LIVE_BRINGUP_INTENDED=yes` 时，运行中的 limiter/mode manager/官方 controller 才会进入 graph 检查路径。
 - `[UPDATED]` read-only gate 仍会把 Gazebo/robot_hw_sim/steering GUI/裸 topic pub 视为非预期进程；graph 中官方型节点名只能证明拓扑，不能替代硬件连接的现场确认。
+- `[UPDATED]` 第十五轮建议已转成下一阶段计划：先做上装重量/重心、Jetson 到 TRON1 non-motion 网络检查、起立稳定等待 `N` 秒的规程记录；目标速度前馈、限速分档和 depth fusion 外推先走设计/仿真审查，不直接改真机输出。
 
 ## 10. Next work
 
@@ -693,6 +694,7 @@ Then:
 
 1. Run the TRON1 safety acceptance checklist before any more real motion.
    - Start with [docs/TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md](TRON1_SAFETY_ACCEPTANCE_CHECKLIST.md) and `tools/tron1_bringup/tron1_safety_acceptance_check.sh`.
+   - Also follow [docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md](TRON1_NEXT_STAGE_PLAN_2026-09-05.md) for the non-motion prep queue.
    - Acceptance: safety gates are green or explicitly marked as blockers; do not chase full follow yet.
 2. Continue TRON1 controller/SDK stop investigation before real motion.
    - Acceptance: with `/fcr_tron/cmd_vel` publisher lost or limiter killed, controller/SDK/hardware path demonstrably stops or enters a documented safe state. Gazebo-only zero-command drift is not enough for real-motion PASS; no script may claim 100% safety.

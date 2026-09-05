@@ -51,6 +51,18 @@ export A10_REVIEWED_AT="$(date -Is)"
 
 只有该 read-only gate 没有 `FAIL/BLOCK`，且现场仍满足硬件要求时，才进入第 1 步的 `enable_motion=false` 验证；仍不得直接做地面跟拍。若第 1 步已经启动 live bringup 并要复查 `/fcr_tron/cmd_vel` graph，可额外设置 `TRON1_LIVE_BRINGUP_INTENDED=yes`，表示当前 `tron1_safety_limiter_node`、`tron1_mode_manager_node` 和官方 controller 进程是本次现场分步检查的预期对象，而不是遗留进程。graph 中的官方型节点名只能证明拓扑，不替代“controller 确实连到 TRON1 硬件”的现场人工判断。
 
+## 第 0 步：不动机器人准备项
+
+这些项目应在第 1 步前完成；它们不是运动测试，不得发布速度命令：
+
+1. 称量上装总重，记录 Jetson、RS2、Gemini、Sony、电池、支架和线缆总重。
+2. 记录主要部件安装高度；能下移的重量先下移，避免把起立瞬态直接归因到 FCR 增益。
+3. 在 Jetson 上做 TRON1 non-motion 网络检查：静态 IP、ping `10.192.1.2`、官方 node 只读连接证据。
+4. 准备起立稳定等待记录：`L1 + 三角/Y` 激活官方 controller 后，先等待 `N` 秒并记录 IMU/现场观察；初始建议 `N=10s`，实际值以后续架空/支架观测为准。
+5. 复核：在 `enable_motion=true` 前，操作员已经确认物理停止/阻尼可触达，且有人负责遥控器/物理停止。
+
+当前不使用代码自动判断“已经稳定”：仓库内还没有 TRON1 IMU/姿态状态输入能证明起立瞬态结束。等待 `N` 秒只是规程门，不是安全保证。
+
 ## 三步路线
 
 | 步骤 | 拓扑 | 实际验证 | 操作位置 |
@@ -95,6 +107,8 @@ FAIL=0
 ```text
 enable_motion=false
 ```
+
+如果需要由手柄 `L1 + 三角/Y` 激活官方 controller，激活后先保持 FCR `enable_motion=false`，按第 0 步记录等待 `N` 秒；未完成等待和现场确认前，不允许把 FCR 运动门打开。
 
 确认：
 
@@ -201,6 +215,9 @@ TRON1 底盘：只负责长期 yaw / 距离补偿
 /tron1/limiter_state：
 enable_motion：
 allow_tron_follow_motion：
+上装重量/主要安装高度：
+起立稳定等待 N 秒：
+IMU/现场稳定观察：
 物理急停/阻尼位置：
 测试速度：
 测试时长：

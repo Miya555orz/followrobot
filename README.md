@@ -24,6 +24,7 @@ https://github.com/Miya555orz/followrobot
 - [docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md](docs/TRON1_SAFE_MODE_ACCEPTANCE_2026-09-04.md)：47 组 Gazebo/robot_hw_sim 安全验收记录
 - [docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md](docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md)：TRON1 官方 controller/SDK stop、damping、zero-cmd 语义摸底
 - [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](docs/TRON1_REAL_TEST_STEP_CHECKLIST.md)：TRON1 从 PC 直连到 Jetson 云台协同的实机分步验收清单
+- [docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md](docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md)：第十五轮审查后下一阶段计划
 - [docs/ai/OPENCODE_USAGE.md](docs/ai/OPENCODE_USAGE.md)：OpenCode 命令行与使用指南
 
 ## 当前最新状态
@@ -48,6 +49,7 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - 真机前 read-only A 门已拆成逐项人工确认：物理停止可触达、damping 证据、`L1+X` 语义、controller watchdog 后果、Gazebo 零漂 blocker 和实机分步 checklist 都必须显式确认。
 - 真机前 read-only A 门脚本会在没有 live graph/逐项 A-10 确认时输出 `BLOCK`；若正在做 live bringup graph 复查，必须设置 `TRON1_LIVE_BRINGUP_INTENDED=yes`，但 Gazebo/robot_hw_sim/steering GUI/裸 topic pub 仍会被拦截。
 - `/fcr_tron/cmd_vel` 的 graph 检查只能证明唯一 limiter 发布者和官方型节点名订阅关系，不能替代“官方 controller 确实连接 TRON1 硬件”的现场人工确认。
+- 第十五轮建议已转成下一阶段计划：先做上装重量/重心记录、Jetson 到 TRON1 non-motion 网络检查、起立稳定等待 `N` 秒的规程记录；目标速度前馈、限速分档、depth fusion 外推先走设计/仿真审查，不直接改真机输出。
 - 物理 motor switch / hardware action 会触发 `Motor in damping mode`。
 - FCR 链路中的“遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆；手柄只保留官方控制器启停、物理急停/阻尼备份。
 - TRON1 不允许裸接旧 `/cmd_vel`；安全链路必须是 `/fcr/cmd_vel_stamped -> tron1_safety_limiter -> /fcr_tron/cmd_vel`。
