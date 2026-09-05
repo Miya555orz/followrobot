@@ -4,7 +4,7 @@
 
 ## 距离下一阶段还有多远
 
-- Jetson 控制 TRON1：大约完成一半。FCR 命令路径、历史 PC 侧 TRON Ethernet/SDK、47/47 组 Gazebo 安全验收、estop 样本新鲜度 fail-closed、真机误启动守卫都已经就位；下一阶段先做上装重量/重心记录和 Jetson <-> TRON1 non-motion 网络检查。这里的 non-motion 只到链路/IP/ping，不激活官方 controller；之后才进入架空/支架低速实机验收。2026-09-05 当前 PC 侧只读 preflight 发现 `10.192.1.2` 路由走 `Mihomo` policy table 且 ping 不通，实机前必须先修复直连链路。
+- Jetson 控制 TRON1：大约完成一半。FCR 命令路径、历史 PC 侧 TRON Ethernet/SDK、47/47 组 Gazebo 安全验收、estop 样本新鲜度 fail-closed、真机误启动守卫都已经就位；下一阶段先做上装重量/重心记录和 Jetson <-> TRON1 non-motion 网络检查。这里的 non-motion 只到链路/IP/ping，不激活官方 controller；之后才进入架空/支架低速实机验收。2026-09-05 PC 直连 TRON1 只读 preflight 已恢复 `enp0s31f6` 直连 route/ping，`PASS=4 WARN=0 BLOCK=0 FAIL=0`，但现场是小办公室，真实运动继续暂停。
 - Jetson 控制 RS2 云台跟拍：接近可用。Sony UVC -> perception/tracking -> RS2 over `can1` 已经在 Jetson 上跑通过；CRSDK 仍是可选且未验证。
 - Jetson 控制 RS2 跟拍 + TRON1 底盘：还不能做真实全链路跟拍。TRON1 仍需保持在仿真和低速安全验收阶段，底盘只允许后续作为慢速 yaw / 距离修正，不应和云台抢同一个误差。
 
@@ -27,6 +27,8 @@
 - 当前 DJI RS2 桌面/Jetson bench 接线使用 external USB-CAN `can1`。
 - PC 侧 Jetson 网络预检脚本存在：`tools/tron1_bringup/pc_jetson_network_preflight.sh`。
 - TRON1 只读实机运动路径预检脚本存在：`tools/tron1_bringup/tron1_real_motion_path_preflight.sh`；它会把代理/TUN/container/policy-table 路由、非有线形态接口、与可选 `TRON_LINK_IFACE` 不一致的接口，或 `TRON_IP` ping 不通判为 `BLOCK` 并返回非零。官方 `robot_hw` 默认 `/cmd_vel` 只打印 INFO，真机仍必须用 FCR override 到 `/fcr_tron/cmd_vel`。
+- Jetson 侧 TRON1 network-only 预检脚本存在：`tools/tron1_bringup/jetson_tron1_network_preflight.sh`；只检查 Jetson 到 TRON1 的 route/ping，不启动 ROS、`robot_hw` 或 controller。
+- 2026-09-05 PC 直连 TRON1 只读结果已记录：`docs/ai/TRON1_PC_DIRECT_PREFLIGHT_2026-09-05.md`。
 - TRON1 迁移 gate report 存在：`docs/tron1_migration_gate_report_2026-09-03.md`。
 - 第十五轮建议整理成 `docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md`；目标速度前馈、限速分档和 depth fusion 外推暂不直接进入真机链路。
 
@@ -40,7 +42,7 @@ TRON1 EDU 双轮足底盘二次开发和整机系统集成。
 - `/home/miya/limx_ws/src/tron1-rl-deploy-ros2` 中有本地补丁，允许官方控制器订阅 `/fcr_tron/cmd_vel`。
 - OpenCode fallback dry run 不允许真实 TRON1 运动。
 - 当前 PC 网络曾出现 Mihomo/TUN 路由劫持；实机低速验收阶段不建议依赖 PC 和 Jetson 跨机器 DDS 分发键盘。
-- TRON1 PC 侧 Ethernet 已于 2026-09-03 打通过：`10.192.1.2` 当时可通过 `enp0s31f6` 访问，官方 `pointfoot_node` 能连接真机；但 2026-09-05 当前机器路由再次落到 `Mihomo`/policy table 且 ping 失败，实机前要重新修复并验证直连。
+- TRON1 PC 侧 Ethernet 已于 2026-09-03 打通过：`10.192.1.2` 当时可通过 `enp0s31f6` 访问，官方 `pointfoot_node` 能连接真机；2026-09-05 重新直连后只读 preflight 已 PASS，随后用户已断开 PC 与 TRON1，准备改为 PC 通过 USB/SSH 到 Jetson、Jetson 网线到 TRON1 的 network-only 测试。
 - 未接 TRON1 直连网线时，route/ping `BLOCK` 是预期安全状态，不代表脚本或代码缺陷；接线后仍只能先重跑只读 preflight。
 - TRON1 遥控器 axes/buttons 已通过只读 SDK monitor 观察到。`L1 + Y/三角` 会激活 `WheelfootController`。
 - 物理 motor switch / hardware action 曾触发 `Motor in damping mode`；随后官方 `pointfoot_node` 停止 controller 并退出。`L1 + X` 应视作软件 stop/abort，不是 damping/torque release。

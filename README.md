@@ -38,7 +38,7 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 - Orbbec Gemini 335 深度流已在 Jetson USB3 下跑通，约 424x240@10Hz。
 - Sony UVC 图像链路、YOLO 检测、tracking、aim target、RS2 闭环跟拍已在 Jetson 实测跑通。
 - Sony CRSDK 不在仓库，CRSDK 版 `sony_camera_node` 尚未启用。
-- PC 到 TRON1 `10.192.1.2` 的 Ethernet / SDK 通信曾于 2026-09-03 打通；实机前必须重新跑只读 preflight。2026-09-05 本机最新检查发现路由被 `Mihomo`/policy table 捕获且 ping 不通，不能作为实机前提。
+- PC 到 TRON1 `10.192.1.2` 的 Ethernet / SDK 通信曾于 2026-09-03 打通；实机前必须重新跑只读 preflight。2026-09-05 本机最新 PC 直连只读 preflight 已恢复 `enp0s31f6` 直连 route/ping，`PASS=4 WARN=0 BLOCK=0 FAIL=0`；由于现场是小办公室，真实运动仍暂停。
 - TRON1 官方 `pointfoot_node` 已连接真机并加载 `WF_TRON1A` / `isaacgym` ONNX。
 - LimX SDK `SensorJoy` 已读到遥控器 axes/buttons。
 - `L1 + 三角/Y` 会启动 `WheelfootController`。
@@ -100,7 +100,7 @@ TRON1 仿真
   仿真安全验收                   ████████░░  80%  47/47 PASS；官方 Gazebo pose 漂移保留为 blocker
 
 TRON1 真机
-  PC <-> TRON Ethernet           ██████░░░░  60%  2026-09-03 曾通；本轮被 Mihomo 路由/ping BLOCK，需复核直连
+  PC <-> TRON Ethernet           █████████░  90%  2026-09-05 直连 route/ping/preflight PASS；未做运动
   PC -> TRON SDK                 █████████░  90%  pointfoot_node 已连接
   物理 damping / hardware stop   ████████░░  80%  Motor in damping mode 已观察
   L1 + X 软件 stop               █████░░░░░  50%  已确认不是泄力/阻尼，后果仍需现场分步验收
@@ -146,11 +146,16 @@ cd /home/miya/follow_ws/src/fcr_ros2_3
 cd /home/miya/follow_ws/src/fcr_ros2_3
 ./tools/tron1_bringup/tron1_safety_acceptance_check.sh
 ./tools/tron1_bringup/tron1_real_motion_path_preflight.sh
+
+# Jetson terminal only, after PC USB/SSH to Jetson and Jetson Ethernet to TRON1:
+TRON_LINK_IFACE=<Jetson接TRON1的有线接口名> ./tools/tron1_bringup/jetson_tron1_network_preflight.sh
 ```
 
 `tron1_real_motion_path_preflight.sh` 是只读检查：它只看路由、ping、launch 默认值和 ROS graph，不会启动 controller 或发布速度。若 `10.192.1.2` 走 `Mihomo`/Meta/TUN/tun*/utun*/tap*/wg*/container/policy table、ping 不通、路由接口不是有线形态，或默认安全参数不可确认，会返回非零并阻止进入实机准备。可设置 `TRON_LINK_IFACE=enp0s31f6` 这类显式白名单，强制只接受指定接口；退出码语义是 `0=PASS, 1=FAIL, 2=WARN-only, 3=BLOCK`。官方 `robot_hw` 默认 `/cmd_vel` 只打印 INFO，不影响 preflight 退出码；真机仍必须通过 FCR launch override 到 `/fcr_tron/cmd_vel`。
 
 尚未用网线直连 TRON1 时，route/ping `BLOCK` 是预期安全状态，不代表脚本或代码缺陷；接好直连网线并建立直连路由后，重新跑上述只读 preflight，再决定是否进入架空/支架 Step 1。
+
+Jetson 直连 TRON1 的下一步仍是 network-only。PC 通过 USB/SSH 进入 Jetson，Jetson 用网线接 TRON1 后，只在 Jetson 上运行 `tools/tron1_bringup/jetson_tron1_network_preflight.sh` 或等价的 `ip/route/ping` 检查；不得启动 `robot_hw`、不得激活官方 controller、不得发布速度命令。
 
 ### TRON1 实机分步验收路线
 

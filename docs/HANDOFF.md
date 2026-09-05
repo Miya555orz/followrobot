@@ -106,6 +106,7 @@ Active checkout:
         ├── install_jetson_camera_deps.sh
         ├── jetson_post_flash_setup.sh
         ├── jetson_rs2_preflight.sh
+        ├── jetson_tron1_network_preflight.sh
         ├── pc_jetson_network_preflight.sh
         ├── tron1_real_motion_path_preflight.sh
         ├── rs2_can_preflight.sh
@@ -589,7 +590,8 @@ Current `can0`/`can1` rule:
 [✓] TRON1 real-motion path preflight script added; it is read-only and sends no velocity commands.
 [!] TRON controller watchdog clears stale velocity intent, but zero-command behavior still drifts in `WF_TRON1A + isaacgym` Gazebo. This remains a real-motion blocker.
 [✓] PC reached TRON1 default IP `10.192.1.2` through `enp0s31f6` after the Ethernet link came up on 2026-09-03.
-[!] 2026-09-05 current PC-side read-only preflight found `enp0s31f6` down, `10.192.1.2` routed through `Mihomo`/policy table 2022, and ping loss. Fix direct wired routing before any hardware prep.
+[✓] 2026-09-05 PC-side read-only preflight was rerun after direct Ethernet routing was restored: `10.192.1.2 dev enp0s31f6 src 10.192.1.200`, ping OK, `PASS=4 WARN=0 BLOCK=0 FAIL=0`. Evidence: `docs/ai/TRON1_PC_DIRECT_PREFLIGHT_2026-09-05.md`. No motion was attempted; the user was in a small office, so real motion remained paused.
+[ ] Next planned check: PC connects to Jetson over USB/SSH, Jetson connects to TRON1 over Ethernet, and only `ip/route/ping` plus `tools/tron1_bringup/jetson_tron1_network_preflight.sh` are allowed.
 [✓] TRON1 official `pointfoot_node` connected to the real robot, loaded `WF_TRON1A` / `isaacgym`, and subscribed to `/fcr_tron/cmd_vel`.
 [✓] Remote controller axes/buttons were observed through SDK `SensorJoy`; `L1 + Y/triangle` starts `WheelfootController`.
 [✓] Physical motor switch/hardware action produced `Motor in damping mode`; official node then stopped the controller and exited.

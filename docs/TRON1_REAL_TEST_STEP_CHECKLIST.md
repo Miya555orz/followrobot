@@ -141,6 +141,8 @@ angular.z 暂时不测
 
 用途：确认最终上车计算平台能独立完成第 1 步。
 
+先做 network-only 连通性检查；这一步不是 controller bringup，也不是运动测试。
+
 原则：
 
 - FCR 安全栈、`fcr_mode_console`、limiter、官方 controller 都跑在 Jetson。
@@ -152,6 +154,51 @@ angular.z 暂时不测
 
 ```text
 PC --SSH--> Jetson --Ethernet--> TRON1
+```
+
+推荐物理连接：
+
+```text
+PC --USB/SSH--> Jetson
+Jetson --Ethernet--> TRON1
+PC 不同时直连 TRON1，避免 10.192.1.x 地址冲突
+```
+
+Jetson 上的只读网络检查：
+
+```bash
+ip -brief addr
+ip route get 10.192.1.2
+ping -c 1 -W 1 10.192.1.2
+
+cd /home/miya/follow_ws/src/fcr_ros2_3
+TRON_LINK_IFACE=<Jetson接TRON1的有线接口名> ./tools/tron1_bringup/jetson_tron1_network_preflight.sh
+```
+
+如果 Jetson 的 TRON1 有线口还没有 `10.192.1.x/24` 地址，只允许临时配置网络，不启动 ROS 或 controller：
+
+```bash
+sudo ip link set <iface> up
+sudo ip addr add 10.192.1.200/24 dev <iface> 2>/dev/null || true
+sudo ip route replace 10.192.1.0/24 dev <iface> src 10.192.1.200 metric 10
+```
+
+期望：
+
+```text
+route 走 Jetson 的 TRON1 有线接口
+ping 10.192.1.2 成功
+jetson_tron1_network_preflight: FAIL=0 BLOCK=0
+```
+
+仍然禁止：
+
+```text
+ros2 launch robot_hw pointfoot_hw.launch.py
+ros2 run robot_hw pointfoot_node
+ros2 topic pub 任何速度
+按 L1 + 三角/Y 激活官方 controller
+enable_motion=true
 ```
 
 键盘在哪里生效：
