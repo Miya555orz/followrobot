@@ -679,7 +679,7 @@ Fix: install matching NVIDIA `libopencv` runtime as well as `libopencv-dev`.
 - `[UPDATED]` read-only gate 的进程扫描区分非预期残留和预期 live bringup；只有显式设置 `TRON1_LIVE_BRINGUP_INTENDED=yes` 时，运行中的 limiter/mode manager/官方 controller 才会进入 graph 检查路径。
 - `[UPDATED]` read-only gate 仍会把 Gazebo/robot_hw_sim/steering GUI/裸 topic pub 视为非预期进程；graph 中官方型节点名只能证明拓扑，不能替代硬件连接的现场确认。
 - `[UPDATED]` 第十五轮建议已转成下一阶段计划：先做上装重量/重心、Jetson 到 TRON1 non-motion 网络检查、起立稳定等待 `N` 秒的规程记录；non-motion 网络检查只到链路/IP/ping，不激活官方 controller；目标速度前馈、限速分档和 depth fusion 外推先走设计/仿真审查，不直接改真机输出。
-- `[UPDATED]` `tools/tron1_bringup/tron1_real_motion_path_preflight.sh` now returns nonzero `BLOCK` when `TRON_IP` is routed through proxy/TUN/container/policy-table paths or does not answer read-only ping. This does not publish velocity or activate the controller.
+- `[UPDATED]` `tools/tron1_bringup/tron1_real_motion_path_preflight.sh` now returns nonzero `BLOCK` when `TRON_IP` is routed through proxy/TUN/container/policy-table paths, a non-wired-looking device, a device other than optional `TRON_LINK_IFACE`, or does not answer read-only ping. Exit codes are documented as `0=PASS, 1=FAIL, 2=WARN-only, 3=BLOCK`. This does not publish velocity or activate the controller.
 
 ## 10. Next work
 

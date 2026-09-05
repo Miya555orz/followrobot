@@ -93,6 +93,7 @@ source /home/miya/follow_ws/install/setup.bash
 source /home/miya/limx_ws/install/setup.bash
 
 ./tools/tron1_bringup/tron1_safety_acceptance_check.sh
+TRON_LINK_IFACE=enp0s31f6 ./tools/tron1_bringup/tron1_real_motion_path_preflight.sh
 ```
 
 期望：
@@ -100,6 +101,7 @@ source /home/miya/limx_ws/install/setup.bash
 ```text
 FAIL=0
 允许 BLOCK：未启动 live graph、A-10 逐项人工门未确认
+real_motion_path_preflight: exit 0，或仅在未进入硬件准备时接受 route/ping BLOCK；进入 Step 1 前必须是 direct wired route + ping PASS
 ```
 
 启动 FCR 安全栈时，先保持：

@@ -26,7 +26,7 @@
 - TRON1 实机分步验收清单见 `docs/TRON1_REAL_TEST_STEP_CHECKLIST.md`。
 - 当前 DJI RS2 桌面/Jetson bench 接线使用 external USB-CAN `can1`。
 - PC 侧 Jetson 网络预检脚本存在：`tools/tron1_bringup/pc_jetson_network_preflight.sh`。
-- TRON1 只读实机运动路径预检脚本存在：`tools/tron1_bringup/tron1_real_motion_path_preflight.sh`；它会把代理/TUN/container/policy-table 路由或 `TRON_IP` ping 不通判为 `BLOCK` 并返回非零。
+- TRON1 只读实机运动路径预检脚本存在：`tools/tron1_bringup/tron1_real_motion_path_preflight.sh`；它会把代理/TUN/container/policy-table 路由、非有线形态接口、与可选 `TRON_LINK_IFACE` 不一致的接口，或 `TRON_IP` ping 不通判为 `BLOCK` 并返回非零。
 - TRON1 迁移 gate report 存在：`docs/tron1_migration_gate_report_2026-09-03.md`。
 - 第十五轮建议整理成 `docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md`；目标速度前馈、限速分档和 depth fusion 外推暂不直接进入真机链路。
 

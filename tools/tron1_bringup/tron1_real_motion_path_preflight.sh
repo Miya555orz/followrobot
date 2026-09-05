@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Read-only preflight for the TRON1 real-motion path.
 # This script never publishes velocity commands.
+# Exit codes: 0=PASS, 1=FAIL, 2=WARN-only, 3=BLOCK.
 
 set -u
 
@@ -8,6 +9,7 @@ TRON_IP="${TRON_IP:-10.192.1.2}"
 JETSON_IP="${JETSON_IP:-172.31.178.242}"
 FCR_WS="${FCR_WS:-$HOME/follow_ws}"
 LIMX_WS="${LIMX_WS:-$HOME/limx_ws}"
+TRON_LINK_IFACE="${TRON_LINK_IFACE:-}"
 
 PASS_COUNT=0
 WARN_COUNT=0
@@ -49,7 +51,24 @@ print_command_output() {
 }
 
 proxy_or_virtual_route() {
-  grep -Eq '(^|[[:space:]])dev[[:space:]](Mihomo|mihomo|tun[0-9]*|tap[0-9]*|wg[0-9]*|tailscale[0-9]*|zt[a-zA-Z0-9]*|docker[0-9]*|br-[a-fA-F0-9]+|veth[a-zA-Z0-9]*)($|[[:space:]])|(^|[[:space:]])table[[:space:]]2022($|[[:space:]])'
+  grep -Eq '(^|[[:space:]])dev[[:space:]](Mihomo|mihomo|Meta|meta|TUN|tun[0-9]*|utun[0-9]*|utun4|tap[0-9]*|wg[0-9]*|tailscale[0-9]*|zt[a-zA-Z0-9]*|docker[0-9]*|br-[a-fA-F0-9]+|veth[a-zA-Z0-9]*)($|[[:space:]])|(^|[[:space:]])table[[:space:]]2022($|[[:space:]])'
+}
+
+route_dev_from() {
+  awk '
+    {
+      for (i = 1; i < NF; i++) {
+        if ($i == "dev") {
+          print $(i + 1)
+          exit
+        }
+      }
+    }
+  '
+}
+
+direct_wired_iface() {
+  grep -Eq '^(en|eth|eno|ens|enp|enx|usb)[[:alnum:]_.:-]*$'
 }
 
 show_args_default_false() {
@@ -67,21 +86,31 @@ echo "TRON_IP=$TRON_IP"
 echo "JETSON_IP=$JETSON_IP"
 echo "FCR_WS=$FCR_WS"
 echo "LIMX_WS=$LIMX_WS"
+if [ -n "$TRON_LINK_IFACE" ]; then
+  echo "TRON_LINK_IFACE=$TRON_LINK_IFACE"
+else
+  echo "TRON_LINK_IFACE=<unset; accepting only wired-looking en*/eth*/eno*/ens*/enp*/enx*/usb* route devices>"
+fi
 
 section "Network route checks"
 run_info ip -brief addr
 
 route_output="$(ip route get "$TRON_IP" 2>&1)"
 route_rc=$?
+route_dev="$(printf '%s\n' "$route_output" | route_dev_from)"
 print_command_output "ip route get $TRON_IP" "$route_output"
 if [ "$route_rc" -ne 0 ]; then
   mark_block "No OS route to TRON_IP; fix wired TRON1/JETSON network before hardware prep."
 elif printf '%s\n' "$route_output" | proxy_or_virtual_route; then
   mark_block "TRON_IP route uses a proxy, TUN, container, or policy table path; require direct wired route before hardware prep."
-elif printf '%s\n' "$route_output" | grep -Eq '(^|[[:space:]])dev[[:space:]][^[:space:]]+'; then
-  mark_pass "TRON_IP has an OS route that is not classified as proxy/TUN/container."
-else
+elif [ -z "$route_dev" ]; then
   mark_warn "TRON_IP route exists, but the output does not name an interface; inspect manually before hardware prep."
+elif [ -n "$TRON_LINK_IFACE" ] && [ "$route_dev" != "$TRON_LINK_IFACE" ]; then
+  mark_block "TRON_IP route uses dev $route_dev, not required TRON_LINK_IFACE=$TRON_LINK_IFACE."
+elif [ -z "$TRON_LINK_IFACE" ] && ! printf '%s\n' "$route_dev" | direct_wired_iface; then
+  mark_block "TRON_IP route uses dev $route_dev, which is not classified as a direct wired interface; set TRON_LINK_IFACE only after manual verification."
+else
+  mark_pass "TRON_IP route uses direct wired-looking dev $route_dev."
 fi
 
 ping_output="$(ping -c 1 -W 1 "$TRON_IP" 2>&1)"
@@ -147,11 +176,13 @@ run_info ros2 topic info -v /cmd_vel
 
 section "Result guide"
 echo "PASS for low-speed prep requires:"
-echo "  1) TRON_IP route does not go through a proxy/TUN interface."
+echo "  1) TRON_IP route uses a direct wired interface; set TRON_LINK_IFACE=<iface> to require an exact device."
 echo "  2) non-motion network checks stop at route/ping; do not press L1+Y/triangle or activate the official controller."
 echo "  3) fcr_tron_jetson_comm.launch.py keeps start_tron_hw=false and enable_motion=false by default."
 echo "  4) /fcr_tron/cmd_vel has exactly one publisher: tron1_safety_limiter."
 echo "  5) /cmd_vel has no TRON controller subscriber during FCR tests."
+echo
+echo "Exit codes: 0=PASS, 1=FAIL, 2=WARN-only, 3=BLOCK."
 echo
 echo "This preflight is read-only: no real motion command was sent."
 echo
