@@ -164,6 +164,8 @@ Jetson --Ethernet--> TRON1
 PC 不同时直连 TRON1，避免 10.192.1.x 地址冲突
 ```
 
+USB SSH 连接若被 Mihomo/TUN 分流，先按 `docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md` 修正到直连路由。
+
 Jetson 上的只读网络检查：
 
 ```bash

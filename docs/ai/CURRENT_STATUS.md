@@ -25,6 +25,7 @@
 - FCR 的“遥控/连续遥控”指电脑键盘控制台 `fcr_mode_console`，不是 TRON 手柄摇杆。Jetson 测试时，控制台应跑在 Jetson 上，PC 只通过 SSH 输入。
 - TRON1 实机分步验收清单见 `docs/TRON1_REAL_TEST_STEP_CHECKLIST.md`。
 - 当前 DJI RS2 桌面/Jetson bench 接线使用 external USB-CAN `can1`。
+- Jetson USB SSH quickstart 已记录：`docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md`。2026-09-05 观察到 `192.168.55.1` 会被 `Mihomo table 2022` 捕获；修正后走 `enx964a2d124484 src 192.168.55.100`，ping 成功。
 - PC 侧 Jetson 网络预检脚本存在：`tools/tron1_bringup/pc_jetson_network_preflight.sh`。
 - TRON1 只读实机运动路径预检脚本存在：`tools/tron1_bringup/tron1_real_motion_path_preflight.sh`；它会把代理/TUN/container/policy-table 路由、非有线形态接口、与可选 `TRON_LINK_IFACE` 不一致的接口，或 `TRON_IP` ping 不通判为 `BLOCK` 并返回非零。官方 `robot_hw` 默认 `/cmd_vel` 只打印 INFO，真机仍必须用 FCR override 到 `/fcr_tron/cmd_vel`。
 - Jetson 侧 TRON1 network-only 预检脚本存在：`tools/tron1_bringup/jetson_tron1_network_preflight.sh`；只检查 Jetson 到 TRON1 的 route/ping，不启动 ROS、`robot_hw` 或 controller。

@@ -25,6 +25,7 @@ https://github.com/Miya555orz/followrobot
 - [docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md](docs/TRON1_OFFICIAL_CONTROLLER_SEMANTICS.md)：TRON1 官方 controller/SDK stop、damping、zero-cmd 语义摸底
 - [docs/TRON1_REAL_TEST_STEP_CHECKLIST.md](docs/TRON1_REAL_TEST_STEP_CHECKLIST.md)：TRON1 从 PC 直连到 Jetson 云台协同的实机分步验收清单
 - [docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md](docs/TRON1_NEXT_STAGE_PLAN_2026-09-05.md)：第十五轮审查后下一阶段计划
+- [docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md](docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md)：Jetson USB SSH 连接指令，含 Mihomo/TUN 分流与 known_hosts 修复
 - [docs/ai/OPENCODE_USAGE.md](docs/ai/OPENCODE_USAGE.md)：OpenCode 命令行与使用指南
 
 ## 当前最新状态
@@ -68,7 +69,7 @@ TRON1 真机已短暂进入开发者模式并激活过 controller，但体感过
 Jetson
   Jetson 刷机 / NVMe 启动       ██████████ 100%  JetPack 6.2.3
   Jetson ROS2 Humble            ██████████ 100%  基础环境可用
-  PC <-> Jetson SSH             █████████░  90%  以太网 SSH 可用，注意 Mihomo/USB gadget 坑
+  PC <-> Jetson SSH             █████████░  90%  以太网 SSH 可用；USB SSH quickstart 已记录 Mihomo/TUN 坑
   Jetson <-> TRON Ethernet      ███░░░░░░░  30%  PC 侧已通，Jetson 侧未实测
 
 DJI RS2 云台

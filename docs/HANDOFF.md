@@ -218,6 +218,11 @@ SSH_OK
 
 ### USB gadget SSH problem: do not repeat this loop
 
+Current quickstart:
+
+- `[VERIFIED]` 2026-09-05 USB SSH route was recovered by forcing `192.168.55.1/32` through the actual USB gadget NIC `enx964a2d124484`.
+- Use `docs/ai/JETSON_USB_SSH_QUICKSTART_2026-09-05.md` before retrying USB SSH.
+
 Previously, USB SSH to `192.168.55.1` produced:
 
 ```text
