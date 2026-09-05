@@ -69,6 +69,7 @@ direct_wired_iface() {
 }
 
 section "Inputs"
+echo "Run this on the Jetson host wired to TRON1; do not run it from the PC unless the PC is intentionally the wired TRON1 endpoint."
 echo "TRON_IP=$TRON_IP"
 if [ -n "$TRON_LINK_IFACE" ]; then
   echo "TRON_LINK_IFACE=$TRON_LINK_IFACE"

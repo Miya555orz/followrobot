@@ -157,6 +157,8 @@ TRON_LINK_IFACE=<Jetson接TRON1的有线接口名> ./tools/tron1_bringup/jetson_
 
 Jetson 直连 TRON1 的下一步仍是 network-only。PC 通过 USB/SSH 进入 Jetson，Jetson 用网线接 TRON1 后，只在 Jetson 上运行 `tools/tron1_bringup/jetson_tron1_network_preflight.sh` 或等价的 `ip/route/ping` 检查；不得启动 `robot_hw`、不得激活官方 controller、不得发布速度命令。
 
+`jetson_tron1_network_preflight.sh` 不检查 ROS 或 launch 默认值；它只证明 Jetson 到 TRON1 的直连路由与 ping。ROS/launch 默认安全值仍由 `tron1_real_motion_path_preflight.sh` 和 Step 1 前 A 门复查。
+
 ### TRON1 实机分步验收路线
 
 ```text
